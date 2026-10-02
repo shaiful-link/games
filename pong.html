@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Pong</title>
+<style>
+  /* Full-screen canvas, no scrolling or zooming */
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b1220;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    touch-action: none;      /* stop the browser from scrolling while dragging */
+    user-select: none;
+    -webkit-user-select: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<script>
+// =====================================================
+// PONG - portrait layout for phones
+// You = bottom paddle (drag finger left/right)
+// Computer = top paddle
+// =====================================================
+
+// ---------- Settings (change these to experiment) ----------
+const WIN_SCORE     = 7;      // first to this score wins
+const PADDLE_RATIO  = 0.24;   // paddle width as a share of screen width
+const PADDLE_HEIGHT = 14;
+const BALL_RADIUS   = 9;
+const START_SPEED   = 0.55;   // ball speed as a share of screen height per second
+const SPEED_UP      = 1.05;   // ball gets 5% faster on every paddle hit
+const MAX_SPEED     = 1.6;    // speed cap (share of screen height per second)
+const AI_SPEED      = 0.85;   // computer paddle speed (share of screen width per second)
+                              // lower = easier, higher = harder
+
+// ---------- Canvas setup ----------
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0;             // screen size in CSS pixels
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;   // keep drawing sharp on phone screens
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width  = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  layout();
+}
+
+// ---------- Game objects ----------
+const player = { x: 0, y: 0, w: 0, score: 0 };
+const ai     = { x: 0, y: 0, w: 0, score: 0 };
+const ball   = { x: 0, y: 0, vx: 0, vy: 0 };
+
+let state = 'ready';          // 'ready' | 'playing' | 'over'
+let serveDirection = -1;      // -1 = ball goes up (to computer), 1 = down (to you)
+let message = 'Tap to start';
+
+// Position paddles for the current screen size
+function layout() {
+  player.w = ai.w = W * PADDLE_RATIO;
+  player.y = H - 60;
+  ai.y = 46;
+  if (state !== 'playing') {
+    player.x = ai.x = W / 2;
+    ball.x = W / 2;
+    ball.y = H / 2;
+  }
+}
+
+// Put the ball in the centre and wait for a tap
+function resetBall() {
+  ball.x = W / 2;
+  ball.y = H / 2;
+  ball.vx = 0;
+  ball.vy = 0;
+}
+
+// Launch the ball at a random slight angle
+function serve() {
+  const speed = H * START_SPEED;
+  const angle = (Math.random() * 0.8 - 0.4);          // about -23 to +23 degrees
+  ball.vx = speed * Math.sin(angle);
+  ball.vy = speed * Math.cos(angle) * serveDirection;
+  state = 'playing';
+}
+
+function newGame() {
+  player.score = 0;
+  ai.score = 0;
+  serveDirection = -1;
+  resetBall();
+}
+
+// ---------- Input: drag to move, tap to start ----------
+function movePlayer(clientX) {
+  const half = player.w / 2;
+  player.x = Math.max(half, Math.min(W - half, clientX));
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  movePlayer(e.clientX);
+  if (state === 'ready') {
+    serve();
+  } else if (state === 'over') {
+    newGame();
+    state = 'ready';
+    message = 'Tap to start';
+  }
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  movePlayer(e.clientX);
+});
+
+// ---------- Update: move everything forward by dt seconds ----------
+function update(dt) {
+  if (state !== 'playing') return;
+
+  // Move ball
+  ball.x += ball.vx * dt;
+  ball.y += ball.vy * dt;
+
+  // Bounce off left and right walls
+  if (ball.x < BALL_RADIUS) {
+    ball.x = BALL_RADIUS;
+    ball.vx = Math.abs(ball.vx);
+  } else if (ball.x > W - BALL_RADIUS) {
+    ball.x = W - BALL_RADIUS;
+    ball.vx = -Math.abs(ball.vx);
+  }
+
+  // Computer paddle follows the ball, limited by AI_SPEED
+  const maxMove = W * AI_SPEED * dt;
+  const diff = ball.x - ai.x;
+  ai.x += Math.max(-maxMove, Math.min(maxMove, diff));
+  const half = ai.w / 2;
+  ai.x = Math.max(half, Math.min(W - half, ai.x));
+
+  // Paddle collisions
+  if (ball.vy > 0 && hitsPaddle(player)) bounce(player, -1);
+  if (ball.vy < 0 && hitsPaddle(ai))     bounce(ai, 1);
+
+  // Scoring: ball left the screen
+  if (ball.y < -BALL_RADIUS * 2) {
+    player.score++;
+    pointScored(1);       // next serve goes toward you
+  } else if (ball.y > H + BALL_RADIUS * 2) {
+    ai.score++;
+    pointScored(-1);      // next serve goes toward computer
+  }
+}
+
+// True when the ball overlaps the paddle rectangle
+function hitsPaddle(p) {
+  return ball.x + BALL_RADIUS > p.x - p.w / 2 &&
+         ball.x - BALL_RADIUS < p.x + p.w / 2 &&
+         ball.y + BALL_RADIUS > p.y &&
+         ball.y - BALL_RADIUS < p.y + PADDLE_HEIGHT;
+}
+
+// Bounce the ball: where it hits the paddle decides the angle
+function bounce(p, directionY) {
+  const offset = (ball.x - p.x) / (p.w / 2);          // -1 (left edge) to 1 (right edge)
+  const clamped = Math.max(-1, Math.min(1, offset));
+  const angle = clamped * 1.0;                         // up to about 57 degrees
+  let speed = Math.hypot(ball.vx, ball.vy) * SPEED_UP;
+  speed = Math.min(speed, H * MAX_SPEED);
+
+  ball.vx = speed * Math.sin(angle);
+  ball.vy = speed * Math.cos(angle) * directionY;
+
+  // Move the ball out of the paddle so it cannot hit twice
+  ball.y = directionY < 0 ? p.y - BALL_RADIUS : p.y + PADDLE_HEIGHT + BALL_RADIUS;
+}
+
+function pointScored(nextDirection) {
+  serveDirection = nextDirection;
+  resetBall();
+  if (player.score >= WIN_SCORE) {
+    state = 'over';
+    message = 'You win! Tap to play again';
+  } else if (ai.score >= WIN_SCORE) {
+    state = 'over';
+    message = 'Computer wins. Tap to play again';
+  } else {
+    state = 'ready';
+    message = 'Tap to serve';
+  }
+}
+
+// ---------- Draw ----------
+function draw() {
+  // Background
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(0, 0, W, H);
+
+  // Centre dashed line
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([10, 12]);
+  ctx.beginPath();
+  ctx.moveTo(0, H / 2);
+  ctx.lineTo(W, H / 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Scores (computer above the line, you below)
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.font = 'bold 56px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(ai.score, W / 2, H / 2 - 70);
+  ctx.fillText(player.score, W / 2, H / 2 + 70);
+
+  // Paddles
+  ctx.fillStyle = '#ff6b6b';
+  drawPaddle(ai);
+  ctx.fillStyle = '#4dd4ac';
+  drawPaddle(player);
+
+  // Ball
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Message when waiting
+  if (state !== 'playing') {
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '600 20px system-ui, sans-serif';
+    ctx.fillText(message, W / 2, H / 2 + 150);
+  }
+}
+
+function drawPaddle(p) {
+  const x = p.x - p.w / 2;
+  const r = PADDLE_HEIGHT / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, p.y);
+  ctx.arcTo(x + p.w, p.y, x + p.w, p.y + PADDLE_HEIGHT, r);
+  ctx.arcTo(x + p.w, p.y + PADDLE_HEIGHT, x, p.y + PADDLE_HEIGHT, r);
+  ctx.arcTo(x, p.y + PADDLE_HEIGHT, x, p.y, r);
+  ctx.arcTo(x, p.y, x + p.w, p.y, r);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ---------- Main loop ----------
+let lastTime = 0;
+function loop(time) {
+  // dt = seconds since last frame, capped so a paused tab does not jump the ball
+  const dt = Math.min((time - lastTime) / 1000, 0.033);
+  lastTime = time;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ---------- Start ----------
+window.addEventListener('resize', resize);
+resize();
+newGame();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

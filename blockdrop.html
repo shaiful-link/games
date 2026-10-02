@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Block Drop</title>
+<style>
+  /* Page fills the phone screen: stats on top, board in the middle, buttons at the bottom */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b1220;
+    color: #ffffff;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    padding: 10px 12px 14px;
+    gap: 10px;
+  }
+
+  /* Top bar: score, lines, level, next piece, pause */
+  #top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .stat { text-align: center; min-width: 52px; }
+  .stat span {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+  }
+  .stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  #next {
+    width: 56px;
+    height: 56px;
+    background: #111a2e;
+    border-radius: 8px;
+  }
+  #pause {
+    width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: 10px;
+    background: #1c2742;
+    color: #ffffff;
+    font-size: 18px;
+  }
+
+  /* Board area takes all remaining space; canvas is centred inside */
+  #boardWrap {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #board {
+    background: #111a2e;
+    border-radius: 6px;
+  }
+
+  /* Control buttons */
+  #controls {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+  }
+  #controls button {
+    height: 62px;
+    border: 0;
+    border-radius: 12px;
+    background: #1c2742;
+    color: #ffffff;
+    font-size: 24px;
+    touch-action: none;
+  }
+  #controls button:active, #pause:active { background: #2c3a60; }
+  #controls #btnDrop { background: #2a6f5c; font-size: 15px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div class="stat"><span>Score</span><b id="score">0</b></div>
+    <div class="stat"><span>Lines</span><b id="lines">0</b></div>
+    <div class="stat"><span>Level</span><b id="level">1</b></div>
+    <canvas id="next" aria-label="Next piece"></canvas>
+    <button id="pause" aria-label="Pause">II</button>
+  </div>
+
+  <div id="boardWrap"><canvas id="board"></canvas></div>
+
+  <div id="controls">
+    <button id="btnLeft"   aria-label="Move left">&#9664;</button>
+    <button id="btnRight"  aria-label="Move right">&#9654;</button>
+    <button id="btnRotate" aria-label="Rotate">&#10227;</button>
+    <button id="btnDown"   aria-label="Move down">&#9660;</button>
+    <button id="btnDrop"   aria-label="Drop">DROP</button>
+  </div>
+</div>
+
+<script>
+// =====================================================
+// BLOCK DROP - falling-block puzzle for phones
+// Buttons: left, right, rotate, down, drop
+// Keyboard (for laptop testing): arrows, Space = drop, P = pause
+// =====================================================
+
+// ---------- Settings (change these to experiment) ----------
+const COLS = 10;                 // board width in cells
+const ROWS = 20;                 // board height in cells
+const START_INTERVAL = 800;      // ms between automatic drops at level 1
+const SPEED_STEP = 70;           // ms faster per level
+const MIN_INTERVAL = 100;        // fastest drop speed
+const LINES_PER_LEVEL = 10;
+const LINE_SCORES = [0, 100, 300, 500, 800];   // points for 0-4 lines at once
+
+// ---------- Pieces: shape grids and colours ----------
+const SHAPES = {
+  I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+  O: [[1,1],[1,1]],
+  T: [[0,1,0],[1,1,1],[0,0,0]],
+  S: [[0,1,1],[1,1,0],[0,0,0]],
+  Z: [[1,1,0],[0,1,1],[0,0,0]],
+  J: [[1,0,0],[1,1,1],[0,0,0]],
+  L: [[0,0,1],[1,1,1],[0,0,0]]
+};
+const COLORS = {
+  I: '#4dd4e6', O: '#f4d35e', T: '#b388eb', S: '#4dd4ac',
+  Z: '#ff6b6b', J: '#5b8def', L: '#f79d65'
+};
+
+// ---------- Page elements ----------
+const boardCanvas = document.getElementById('board');
+const boardWrap   = document.getElementById('boardWrap');
+const nextCanvas  = document.getElementById('next');
+const ctx  = boardCanvas.getContext('2d');
+const nctx = nextCanvas.getContext('2d');
+const elScore = document.getElementById('score');
+const elLines = document.getElementById('lines');
+const elLevel = document.getElementById('level');
+
+// ---------- Game state ----------
+let board = newBoard();   // ROWS x COLS grid; each cell is null or a piece letter
+let piece = null;         // the falling piece: { type, m (shape grid), x, y }
+let nextType = null;      // letter of the next piece
+let bag = [];             // shuffled bag of the 7 pieces
+let score = 0, lines = 0, level = 1;
+let state = 'ready';      // 'ready' | 'playing' | 'paused' | 'over'
+let dropTimer = 0;        // ms since the piece last moved down
+let cell = 20;            // size of one cell in CSS pixels (set by resize)
+
+function newBoard() {
+  return Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+}
+
+// ---------- Piece supply: every 7 pieces contains each shape once ----------
+function takeFromBag() {
+  if (bag.length === 0) {
+    bag = Object.keys(SHAPES);
+    for (let i = bag.length - 1; i > 0; i--) {          // shuffle
+      const j = Math.floor(Math.random() * (i + 1));
+      [bag[i], bag[j]] = [bag[j], bag[i]];
+    }
+  }
+  return bag.pop();
+}
+
+function spawn() {
+  const type = nextType;
+  nextType = takeFromBag();
+  const m = SHAPES[type].map(row => row.slice());
+  piece = { type, m, x: Math.floor((COLS - m.length) / 2), y: 0 };
+  // No room for the new piece = game over
+  if (collides(piece.m, piece.x, piece.y)) state = 'over';
+  drawNext();
+}
+
+// ---------- Rules ----------
+// True if the shape at (px, py) hits a wall, the floor or a locked block
+function collides(m, px, py) {
+  for (let r = 0; r < m.length; r++) {
+    for (let c = 0; c < m[r].length; c++) {
+      if (!m[r][c]) continue;
+      const x = px + c, y = py + r;
+      if (x < 0 || x >= COLS || y >= ROWS) return true;
+      if (y >= 0 && board[y][x]) return true;
+    }
+  }
+  return false;
+}
+
+// Return the shape grid turned 90 degrees clockwise
+function rotateCW(m) {
+  const n = m.length;
+  const out = Array.from({ length: n }, () => Array(n).fill(0));
+  for (let r = 0; r < n; r++)
+    for (let c = 0; c < n; c++)
+      out[r][c] = m[n - 1 - c][r];
+  return out;
+}
+
+// ---------- Player actions ----------
+function move(dx) {
+  if (state !== 'playing') return;
+  if (!collides(piece.m, piece.x + dx, piece.y)) piece.x += dx;
+}
+
+function rotate() {
+  if (state !== 'playing') return;
+  const turned = rotateCW(piece.m);
+  // If the turned piece hits a wall, try nudging it sideways
+  for (const kick of [0, -1, 1, -2, 2]) {
+    if (!collides(turned, piece.x + kick, piece.y)) {
+      piece.m = turned;
+      piece.x += kick;
+      return;
+    }
+  }
+}
+
+// Move down one row; lock the piece if it cannot move. Returns true if it moved.
+function stepDown() {
+  if (!collides(piece.m, piece.x, piece.y + 1)) {
+    piece.y++;
+    return true;
+  }
+  lock();
+  return false;
+}
+
+function softDrop() {
+  if (state !== 'playing') return;
+  if (stepDown()) score += 1;
+  dropTimer = 0;
+  updateHud();
+}
+
+function hardDrop() {
+  if (state !== 'playing') return;
+  while (!collides(piece.m, piece.x, piece.y + 1)) {
+    piece.y++;
+    score += 2;
+  }
+  lock();
+  dropTimer = 0;
+}
+
+// Fix the piece into the board, clear full lines, bring in the next piece
+function lock() {
+  for (let r = 0; r < piece.m.length; r++)
+    for (let c = 0; c < piece.m[r].length; c++)
+      if (piece.m[r][c] && piece.y + r >= 0)
+        board[piece.y + r][piece.x + c] = piece.type;
+
+  let cleared = 0;
+  for (let y = ROWS - 1; y >= 0; y--) {
+    if (board[y].every(v => v)) {
+      board.splice(y, 1);
+      board.unshift(Array(COLS).fill(null));
+      cleared++;
+      y++;                       // check the same row again after rows shift down
+    }
+  }
+  if (cleared) {
+    score += LINE_SCORES[cleared] * level;
+    lines += cleared;
+    level = Math.floor(lines / LINES_PER_LEVEL) + 1;
+  }
+  spawn();
+  updateHud();
+}
+
+function startGame() {
+  board = newBoard();
+  bag = [];
+  score = 0; lines = 0; level = 1;
+  dropTimer = 0;
+  nextType = takeFromBag();
+  state = 'playing';
+  spawn();
+  updateHud();
+}
+
+function togglePause() {
+  if (state === 'playing') state = 'paused';
+  else if (state === 'paused') state = 'playing';
+}
+
+function updateHud() {
+  elScore.textContent = score;
+  elLines.textContent = lines;
+  elLevel.textContent = level;
+}
+
+// ---------- Drawing ----------
+function drawBlock(c, x, y, size, color) {
+  c.fillStyle = color;
+  c.fillRect(x + 1, y + 1, size - 2, size - 2);
+  c.fillStyle = 'rgba(255,255,255,0.22)';        // light strip on top for a 3D look
+  c.fillRect(x + 1, y + 1, size - 2, Math.max(2, size * 0.14));
+}
+
+function draw() {
+  const w = COLS * cell, h = ROWS * cell;
+  ctx.clearRect(0, 0, w, h);
+
+  // Faint grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 1; x < COLS; x++) { ctx.moveTo(x * cell + 0.5, 0); ctx.lineTo(x * cell + 0.5, h); }
+  for (let y = 1; y < ROWS; y++) { ctx.moveTo(0, y * cell + 0.5); ctx.lineTo(w, y * cell + 0.5); }
+  ctx.stroke();
+
+  // Locked blocks
+  for (let y = 0; y < ROWS; y++)
+    for (let x = 0; x < COLS; x++)
+      if (board[y][x]) drawBlock(ctx, x * cell, y * cell, cell, COLORS[board[y][x]]);
+
+  if (piece && state !== 'ready') {
+    // Ghost: outline showing where the piece will land
+    let gy = piece.y;
+    while (!collides(piece.m, piece.x, gy + 1)) gy++;
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 2;
+    eachCell(piece.m, (r, c) => {
+      ctx.strokeRect((piece.x + c) * cell + 2, (gy + r) * cell + 2, cell - 4, cell - 4);
+    });
+
+    // Falling piece
+    eachCell(piece.m, (r, c) => {
+      drawBlock(ctx, (piece.x + c) * cell, (piece.y + r) * cell, cell, COLORS[piece.type]);
+    });
+  }
+
+  // Message when not playing
+  if (state !== 'playing') {
+    const text = state === 'ready'  ? ['Tap to start']
+               : state === 'paused' ? ['Paused', 'Tap to resume']
+               :                      ['Game over', 'Tap to play again'];
+    ctx.fillStyle = 'rgba(11,18,32,0.78)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '700 22px system-ui, sans-serif';
+    ctx.fillText(text[0], w / 2, h / 2 - (text[1] ? 16 : 0));
+    if (text[1]) {
+      ctx.font = '500 16px system-ui, sans-serif';
+      ctx.fillText(text[1], w / 2, h / 2 + 16);
+    }
+  }
+}
+
+// Run fn(row, col) for every filled cell of a shape grid
+function eachCell(m, fn) {
+  for (let r = 0; r < m.length; r++)
+    for (let c = 0; c < m[r].length; c++)
+      if (m[r][c]) fn(r, c);
+}
+
+// Small preview of the next piece
+function drawNext() {
+  const size = 56;
+  nctx.clearRect(0, 0, size, size);
+  if (!nextType) return;
+  const m = SHAPES[nextType];
+  const s = 12;                                   // preview cell size
+
+  // Find the filled area so the piece can be centred
+  let minR = 9, maxR = -1, minC = 9, maxC = -1;
+  eachCell(m, (r, c) => {
+    minR = Math.min(minR, r); maxR = Math.max(maxR, r);
+    minC = Math.min(minC, c); maxC = Math.max(maxC, c);
+  });
+  const offX = (size - (maxC - minC + 1) * s) / 2;
+  const offY = (size - (maxR - minR + 1) * s) / 2;
+  eachCell(m, (r, c) => {
+    drawBlock(nctx, offX + (c - minC) * s, offY + (r - minR) * s, s, COLORS[nextType]);
+  });
+}
+
+// ---------- Fit the board to the screen ----------
+function resize() {
+  const dpr = window.devicePixelRatio || 1;       // keep drawing sharp on phone screens
+
+  cell = Math.floor(Math.min(boardWrap.clientWidth / COLS, boardWrap.clientHeight / ROWS));
+  cell = Math.max(cell, 8);
+  boardCanvas.style.width  = COLS * cell + 'px';
+  boardCanvas.style.height = ROWS * cell + 'px';
+  boardCanvas.width  = Math.round(COLS * cell * dpr);
+  boardCanvas.height = Math.round(ROWS * cell * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  nextCanvas.width  = Math.round(56 * dpr);
+  nextCanvas.height = Math.round(56 * dpr);
+  nctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawNext();
+}
+
+// ---------- Input: buttons ----------
+// repeat = true means holding the button keeps repeating the action
+function bindButton(id, action, repeat) {
+  const el = document.getElementById(id);
+  let delay = null, interval = null;
+  const stop = () => { clearTimeout(delay); clearInterval(interval); };
+
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    stop();
+    action();
+    if (repeat) delay = setTimeout(() => { interval = setInterval(action, 60); }, 220);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => el.addEventListener(ev, stop));
+}
+
+bindButton('btnLeft',   () => move(-1), true);
+bindButton('btnRight',  () => move(1),  true);
+bindButton('btnDown',   softDrop,       true);
+bindButton('btnRotate', rotate,         false);
+bindButton('btnDrop',   hardDrop,       false);
+bindButton('pause',     togglePause,    false);
+
+// Tap the board to start, resume or restart
+boardCanvas.addEventListener('pointerdown', () => {
+  if (state === 'ready' || state === 'over') startGame();
+  else if (state === 'paused') state = 'playing';
+});
+
+// ---------- Input: keyboard (for testing on a laptop) ----------
+window.addEventListener('keydown', (e) => {
+  switch (e.key) {
+    case 'ArrowLeft':  move(-1);  break;
+    case 'ArrowRight': move(1);   break;
+    case 'ArrowUp':    rotate();  break;
+    case 'ArrowDown':  softDrop(); break;
+    case ' ':
+      if (state === 'ready' || state === 'over') startGame(); else hardDrop();
+      break;
+    case 'p': case 'P': togglePause(); break;
+    default: return;
+  }
+  e.preventDefault();
+});
+
+// Pause automatically when the app goes to the background
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && state === 'playing') state = 'paused';
+});
+
+// ---------- Main loop ----------
+let lastTime = 0;
+function loop(time) {
+  const dt = Math.min(time - lastTime, 100);      // cap so a long pause does not skip rows
+  lastTime = time;
+
+  if (state === 'playing') {
+    dropTimer += dt;
+    const interval = Math.max(MIN_INTERVAL, START_INTERVAL - (level - 1) * SPEED_STEP);
+    if (dropTimer >= interval) {
+      dropTimer = 0;
+      stepDown();
+    }
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ---------- Start ----------
+window.addEventListener('resize', resize);
+resize();
+updateHud();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

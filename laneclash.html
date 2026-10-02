@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Lane Clash</title>
+<style>
+  /* Page fills the phone screen: battlefield on top, controls at the bottom */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b1220;
+    color: #ffffff;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+  }
+  #stage { flex: 1; min-height: 0; }
+  #game { display: block; width: 100%; height: 100%; }
+
+  /* Controls bar: joystick on the left, skill buttons on the right */
+  #controls {
+    height: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 22px 10px;
+    background: #0e1730;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  #joy {
+    position: relative;
+    width: 116px;
+    height: 116px;
+    border-radius: 50%;
+    background: #1c2742;
+    touch-action: none;
+  }
+  #knob {
+    position: absolute;
+    left: 34px;
+    top: 34px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: #4dd4ac;
+    pointer-events: none;
+  }
+  #skills { display: flex; gap: 14px; }
+  #skills button {
+    width: 72px;
+    height: 72px;
+    border: 0;
+    border-radius: 50%;
+    color: #0b1220;
+    font-size: 15px;
+    font-weight: 700;
+    touch-action: none;
+  }
+  #btnBlast { background: #f4d35e; }
+  #btnHeal  { background: #4dd4ac; }
+  #skills button.cooling {
+    background: #1c2742;
+    color: rgba(255,255,255,0.7);
+    font-size: 22px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage"><canvas id="game"></canvas></div>
+  <div id="controls">
+    <div id="joy" aria-label="Move joystick"><div id="knob"></div></div>
+    <div id="skills">
+      <button id="btnBlast" aria-label="Blast skill">Blast</button>
+      <button id="btnHeal" aria-label="Heal skill">Heal</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================
+// LANE CLASH - one-lane hero battle (single player)
+// You = green hero at the bottom. Destroy the red tower to win.
+// Joystick moves, hero attacks automatically, two skills with cooldowns.
+// Keyboard (for laptop testing): WASD/arrows move, J = Blast, K = Heal, Space = start
+// =====================================================
+
+// ---------- Settings (change these to experiment) ----------
+const WORLD_W = 360, WORLD_H = 640;          // battlefield size in game units
+
+// r = size, hp = health, dmg = damage per hit, range = attack reach,
+// interval = seconds between attacks, speed = movement per second
+const STATS = {
+  hero:   { r: 12, hp: 600,  dmg: 45, range: 70,  interval: 0.7, speed: 95 },
+  minion: { r: 7,  hp: 140,  dmg: 12, range: 10,  interval: 0.9, speed: 38 },
+  tower:  { r: 20, hp: 1400, dmg: 55, range: 105, interval: 1.0, speed: 0  }
+};
+const ENEMY_HERO_DMG = 38;       // enemy hero hits a bit softer than you (lower = easier)
+const WAVE_SECONDS   = 9;        // time between minion waves
+const WAVE_SIZE      = 3;        // minions per wave, per team
+const RESPAWN_SECONDS = 6;       // time a hero stays dead
+const HERO_REGEN     = 5;        // hero health regained per second
+const FOUNTAIN_REGEN = 90;       // extra regen per second when standing on own base
+const BLAST = { dmg: 110, radius: 75, cooldown: 6 };    // area damage around hero
+const HEAL  = { amount: 220, cooldown: 14 };            // restore own health
+const AI_BLAST_COOLDOWN = 8;
+
+// Fixed positions: team 0 = you (bottom), team 1 = enemy (top)
+const SPAWN = [{ x: 180, y: 612 }, { x: 180, y: 28 }];
+const TOWER = [{ x: 180, y: 500 }, { x: 180, y: 140 }];
+const TEAM_COLOR = ['#4dd4ac', '#ff6b6b'];
+
+// ---------- Page elements ----------
+const stage  = document.getElementById('stage');
+const canvas = document.getElementById('game');
+const ctx    = canvas.getContext('2d');
+const joyEl  = document.getElementById('joy');
+const knobEl = document.getElementById('knob');
+const btnBlast = document.getElementById('btnBlast');
+const btnHeal  = document.getElementById('btnHeal');
+
+// ---------- Game state ----------
+let state = 'ready';             // 'ready' | 'playing' | 'over'
+let resultText = '';
+let units = [];                  // every hero, minion and tower
+let effects = [];                // short-lived attack lines and skill rings
+let player, enemyHero, towers;
+let waveTimer = 0;
+let blastCd = 0, healCd = 0;     // your skill cooldowns in seconds
+
+// Screen fitting
+let dpr = 1, scale = 1, offX = 0, offY = 0, screenW = 0, screenH = 0;
+
+// Input
+const joy = { x: 0, y: 0 };      // joystick direction, each value from -1 to 1
+const keys = {};
+
+// ---------- Create units ----------
+function makeUnit(kind, team, x, y) {
+  const s = STATS[kind];
+  return {
+    kind, team, x, y,
+    r: s.r, hp: s.hp, maxHp: s.hp, dmg: s.dmg, range: s.range,
+    interval: s.interval, speed: s.speed,
+    atkTimer: 0, alive: true,
+    respawn: 0,                  // heroes only: seconds until respawn
+    retreat: false, blastCd: 0   // enemy hero AI only
+  };
+}
+
+function spawnWave() {
+  for (let team = 0; team < 2; team++) {
+    for (let i = 0; i < WAVE_SIZE; i++) {
+      const dx = (i - (WAVE_SIZE - 1) / 2) * 18;       // spread minions side by side
+      units.push(makeUnit('minion', team, SPAWN[team].x + dx, SPAWN[team].y));
+    }
+  }
+}
+
+function startGame() {
+  player    = makeUnit('hero', 0, SPAWN[0].x, SPAWN[0].y - 40);
+  enemyHero = makeUnit('hero', 1, SPAWN[1].x, SPAWN[1].y + 40);
+  enemyHero.dmg = ENEMY_HERO_DMG;
+  towers = [
+    makeUnit('tower', 0, TOWER[0].x, TOWER[0].y),
+    makeUnit('tower', 1, TOWER[1].x, TOWER[1].y)
+  ];
+  units = [towers[0], towers[1], player, enemyHero];
+  effects = [];
+  waveTimer = 1;                 // first wave arrives after 1 second
+  blastCd = 0;
+  healCd = 0;
+  state = 'playing';
+}
+
+// ---------- Helpers ----------
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+// Nearest living enemy whose edge is within 'range' of unit u.
+// onlyKind (optional) limits the search, e.g. 'minion'.
+function nearestEnemy(u, range, onlyKind) {
+  let best = null, bestD = Infinity;
+  for (const o of units) {
+    if (!o.alive || o.team === u.team) continue;
+    if (onlyKind && o.kind !== onlyKind) continue;
+    const d = dist(u, o) - o.r;
+    if (d <= range && d < bestD) { best = o; bestD = d; }
+  }
+  return best;
+}
+
+function moveToward(u, tx, ty, dt) {
+  const dx = tx - u.x, dy = ty - u.y;
+  const d = Math.hypot(dx, dy);
+  if (d < 1) return;
+  const step = Math.min(d, u.speed * dt);
+  u.x += dx / d * step;
+  u.y += dy / d * step;
+}
+
+function keepInside(u) {
+  u.x = Math.max(u.r + 4, Math.min(WORLD_W - u.r - 4, u.x));
+  u.y = Math.max(u.r + 4, Math.min(WORLD_H - u.r - 4, u.y));
+}
+
+function damage(target, amount) {
+  if (!target.alive) return;
+  target.hp -= amount;
+  if (target.hp <= 0) {
+    target.hp = 0;
+    target.alive = false;
+    if (target.kind === 'hero') target.respawn = RESPAWN_SECONDS;
+  }
+}
+
+// ---------- Skills ----------
+// Blast: damage every enemy around the hero (half damage to towers)
+function castBlast(u) {
+  effects.push({ type: 'ring', x: u.x, y: u.y, radius: BLAST.radius, color: '#f4d35e', t: 0, life: 0.35 });
+  for (const o of units) {
+    if (!o.alive || o.team === u.team) continue;
+    if (dist(u, o) - o.r <= BLAST.radius) {
+      damage(o, o.kind === 'tower' ? BLAST.dmg / 2 : BLAST.dmg);
+    }
+  }
+}
+
+function playerBlast() {
+  if (state !== 'playing' || !player.alive || blastCd > 0) return;
+  castBlast(player);
+  blastCd = BLAST.cooldown;
+}
+
+function playerHeal() {
+  if (state !== 'playing' || !player.alive || healCd > 0) return;
+  player.hp = Math.min(player.maxHp, player.hp + HEAL.amount);
+  effects.push({ type: 'ring', x: player.x, y: player.y, radius: 30, color: '#4dd4ac', t: 0, life: 0.45 });
+  healCd = HEAL.cooldown;
+}
+
+// ---------- Behaviour of each unit type ----------
+// Minions: fight what is close, otherwise walk to the enemy tower
+function updateMinion(u, dt) {
+  if (nearestEnemy(u, u.range)) return;                 // already in reach: stand and attack
+  const seen = nearestEnemy(u, 70);
+  const goal = seen || TOWER[1 - u.team];
+  moveToward(u, goal.x, goal.y, dt);
+}
+
+// You: joystick or keyboard
+function updatePlayer(dt) {
+  let vx = joy.x, vy = joy.y;
+  if (keys['ArrowLeft']  || keys['a']) vx -= 1;
+  if (keys['ArrowRight'] || keys['d']) vx += 1;
+  if (keys['ArrowUp']    || keys['w']) vy -= 1;
+  if (keys['ArrowDown']  || keys['s']) vy += 1;
+  const len = Math.hypot(vx, vy);
+  if (len > 1) { vx /= len; vy /= len; }
+  player.x += vx * player.speed * dt;
+  player.y += vy * player.speed * dt;
+}
+
+// Enemy hero: follows its minions, fights, retreats to heal when hurt,
+// and stays out of your tower's range unless its minions are taking the hits
+function updateEnemyHero(u, dt) {
+  u.blastCd -= dt;
+
+  // Retreat to base when low on health, come back when recovered
+  if (u.hp < u.maxHp * 0.3) u.retreat = true;
+  if (u.retreat) {
+    if (u.hp > u.maxHp * 0.75) u.retreat = false;
+    else { moveToward(u, SPAWN[1].x, SPAWN[1].y, dt); return; }
+  }
+
+  // Use Blast when you or a group of your units are close
+  if (u.blastCd <= 0) {
+    let close = 0, heroClose = false;
+    for (const o of units) {
+      if (!o.alive || o.team === u.team) continue;
+      if (dist(u, o) - o.r <= BLAST.radius - 8) {
+        close++;
+        if (o.kind === 'hero') heroClose = true;
+      }
+    }
+    if (heroClose || close >= 2) { castBlast(u); u.blastCd = AI_BLAST_COOLDOWN; }
+  }
+
+  // Decide where to go
+  let dest = null;
+  const target = nearestEnemy(u, 120);
+  if (target) {
+    if (dist(u, target) - target.r > u.range - 4) dest = target;     // walk into attack reach
+  } else {
+    // No enemy near: stay just behind the front friendly minion
+    let front = null;
+    for (const o of units) {
+      if (o.alive && o.team === 1 && o.kind === 'minion' && (!front || o.y > front.y)) front = o;
+    }
+    dest = front ? { x: front.x, y: front.y - 30 } : { x: 180, y: 180 };
+  }
+  if (!dest) return;
+
+  // Tower safety check: only step into your tower's range if a red minion is already there
+  const oldX = u.x, oldY = u.y;
+  moveToward(u, dest.x, dest.y, dt);
+  const tower = towers[0];
+  if (tower.alive && dist(u, tower) < tower.range + u.r + 12) {
+    let minionTanking = false;
+    for (const o of units) {
+      if (o.alive && o.team === 1 && o.kind === 'minion' && dist(o, tower) - o.r <= tower.range) {
+        minionTanking = true;
+        break;
+      }
+    }
+    if (!minionTanking) { u.x = oldX; u.y = oldY; }
+  }
+}
+
+// Every unit attacks the nearest enemy in reach when its attack is ready
+function updateAttack(u, dt) {
+  u.atkTimer -= dt;
+  if (u.atkTimer > 0) return;
+  // Towers shoot minions first, heroes only when no minion is in range
+  let t = null;
+  if (u.kind === 'tower') t = nearestEnemy(u, u.range, 'minion');
+  if (!t) t = nearestEnemy(u, u.range);
+  if (!t) return;
+  damage(t, u.dmg);
+  effects.push({ type: 'line', x1: u.x, y1: u.y, x2: t.x, y2: t.y, color: TEAM_COLOR[u.team], t: 0, life: 0.12 });
+  u.atkTimer = u.interval;
+}
+
+// Heroes heal slowly everywhere and quickly on their own base
+function updateHeroRegen(u, dt) {
+  let regen = HERO_REGEN;
+  if (dist(u, SPAWN[u.team]) < 55) regen += FOUNTAIN_REGEN;
+  u.hp = Math.min(u.maxHp, u.hp + regen * dt);
+}
+
+// Stop units from standing on top of each other
+function separateUnits() {
+  for (let i = 0; i < units.length; i++) {
+    const a = units[i];
+    if (!a.alive) continue;
+    for (let j = i + 1; j < units.length; j++) {
+      const b = units[j];
+      if (!b.alive) continue;
+      if (a.kind === 'tower' && b.kind === 'tower') continue;
+      let dx = b.x - a.x, dy = b.y - a.y;
+      let d = Math.hypot(dx, dy);
+      const minD = a.r + b.r;
+      if (d >= minD) continue;
+      if (d < 0.01) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d = Math.hypot(dx, dy); }
+      const push = minD - d;
+      const nx = dx / d, ny = dy / d;
+      if (a.kind === 'tower')      { b.x += nx * push; b.y += ny * push; }      // towers never move
+      else if (b.kind === 'tower') { a.x -= nx * push; a.y -= ny * push; }
+      else {
+        a.x -= nx * push / 2; a.y -= ny * push / 2;
+        b.x += nx * push / 2; b.y += ny * push / 2;
+      }
+    }
+  }
+}
+
+// ---------- Update: move the whole game forward by dt seconds ----------
+function update(dt) {
+  // Effects fade out in every state
+  for (const e of effects) e.t += dt;
+  effects = effects.filter(e => e.t < e.life);
+
+  if (state !== 'playing') return;
+
+  // Minion waves
+  waveTimer -= dt;
+  if (waveTimer <= 0) { spawnWave(); waveTimer = WAVE_SECONDS; }
+
+  // Skill cooldowns
+  blastCd = Math.max(0, blastCd - dt);
+  healCd  = Math.max(0, healCd - dt);
+
+  // Hero respawn
+  for (const h of [player, enemyHero]) {
+    if (h.alive) continue;
+    h.respawn -= dt;
+    if (h.respawn <= 0) {
+      h.alive = true;
+      h.hp = h.maxHp;
+      h.retreat = false;
+      h.x = SPAWN[h.team].x;
+      h.y = SPAWN[h.team].y + (h.team === 0 ? -40 : 40);
+    }
+  }
+
+  // Movement and attacks
+  for (const u of units) {
+    if (!u.alive) continue;
+    if (u.kind === 'minion') updateMinion(u, dt);
+    else if (u === player) updatePlayer(dt);
+    else if (u === enemyHero) updateEnemyHero(u, dt);
+    if (u.kind === 'hero') updateHeroRegen(u, dt);
+    if (u.kind !== 'tower') keepInside(u);
+  }
+  separateUnits();
+  for (const u of units) {
+    if (u.alive && u.kind !== 'tower') keepInside(u);
+  }
+  for (const u of units) {
+    if (u.alive) updateAttack(u, dt);
+  }
+
+  // Remove dead minions (heroes stay in the list and respawn)
+  units = units.filter(u => u.alive || u.kind !== 'minion');
+
+  // Win or lose
+  if (!towers[1].alive) { state = 'over'; resultText = 'Victory!'; }
+  else if (!towers[0].alive) { state = 'over'; resultText = 'Defeat'; }
+}
+
+// ---------- Drawing ----------
+function draw() {
+  // Clear the whole canvas
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(0, 0, screenW, screenH);
+
+  // From here on, draw in game units (scaled and centred on screen)
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
+
+  // Ground and lane
+  ctx.fillStyle = '#12203a';
+  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+  ctx.fillStyle = '#1b2d4f';
+  ctx.fillRect(110, 0, 140, WORLD_H);
+
+  // Bases (healing zones)
+  for (let team = 0; team < 2; team++) {
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = TEAM_COLOR[team];
+    ctx.beginPath();
+    ctx.arc(SPAWN[team].x, SPAWN[team].y, 55, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  if (state !== 'ready') {
+    // Tower range rings
+    for (const t of towers) {
+      if (!t.alive) continue;
+      ctx.strokeStyle = TEAM_COLOR[t.team];
+      ctx.globalAlpha = 0.25;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 6]);
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.range, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+
+    // Units: towers first, then minions, then heroes on top
+    for (const kind of ['tower', 'minion', 'hero']) {
+      for (const u of units) {
+        if (u.alive && u.kind === kind) drawUnit(u);
+      }
+    }
+
+    // Attack lines and skill rings
+    for (const e of effects) {
+      const fade = 1 - e.t / e.life;
+      ctx.globalAlpha = fade;
+      ctx.strokeStyle = e.color;
+      if (e.type === 'line') {
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(e.x1, e.y1);
+        ctx.lineTo(e.x2, e.y2);
+        ctx.stroke();
+      } else {
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius * (0.4 + 0.6 * e.t / e.life), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // Respawn countdown
+    if (state === 'playing' && !player.alive) {
+      drawText('Respawn in ' + Math.ceil(player.respawn), WORLD_W / 2, WORLD_H / 2, 22, 700);
+    }
+  }
+
+  // Start and end screens
+  if (state === 'ready') {
+    shade();
+    drawText('Lane Clash', WORLD_W / 2, WORLD_H / 2 - 40, 30, 700);
+    drawText('Destroy the red tower', WORLD_W / 2, WORLD_H / 2, 16, 500);
+    drawText('Tap to start', WORLD_W / 2, WORLD_H / 2 + 40, 18, 600);
+  } else if (state === 'over') {
+    shade();
+    drawText(resultText, WORLD_W / 2, WORLD_H / 2 - 20, 32, 700);
+    drawText('Tap to play again', WORLD_W / 2, WORLD_H / 2 + 24, 18, 600);
+  }
+}
+
+function shade() {
+  ctx.fillStyle = 'rgba(11,18,32,0.75)';
+  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+}
+
+function drawText(text, x, y, size, weight) {
+  ctx.fillStyle = '#ffffff';
+  ctx.font = weight + ' ' + size + 'px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
+}
+
+function drawUnit(u) {
+  ctx.fillStyle = TEAM_COLOR[u.team];
+  if (u.kind === 'tower') {
+    // Tower: square with a white border
+    ctx.fillRect(u.x - u.r, u.y - u.r, u.r * 2, u.r * 2);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(u.x - u.r, u.y - u.r, u.r * 2, u.r * 2);
+  } else {
+    // Hero or minion: circle (heroes get a white border)
+    ctx.beginPath();
+    ctx.arc(u.x, u.y, u.r, 0, Math.PI * 2);
+    ctx.fill();
+    if (u.kind === 'hero') {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  // Health bar above the unit
+  const w = Math.max(18, u.r * 2.4);
+  const h = u.kind === 'minion' ? 3 : 5;
+  const x = u.x - w / 2;
+  const y = u.y - u.r - 6 - h;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = TEAM_COLOR[u.team];
+  ctx.fillRect(x, y, w * (u.hp / u.maxHp), h);
+}
+
+// Skill buttons show the seconds left while cooling down
+function updateButtons() {
+  setButton(btnBlast, 'Blast', blastCd);
+  setButton(btnHeal, 'Heal', healCd);
+}
+function setButton(btn, label, cd) {
+  const text = cd > 0 ? String(Math.ceil(cd)) : label;
+  if (btn.textContent !== text) btn.textContent = text;
+  btn.classList.toggle('cooling', cd > 0);
+}
+
+// ---------- Fit the battlefield to the screen ----------
+function resize() {
+  dpr = window.devicePixelRatio || 1;            // keep drawing sharp on phone screens
+  screenW = stage.clientWidth;
+  screenH = stage.clientHeight;
+  canvas.width  = Math.round(screenW * dpr);
+  canvas.height = Math.round(screenH * dpr);
+  scale = Math.min(screenW / WORLD_W, screenH / WORLD_H);
+  offX = (screenW - WORLD_W * scale) / 2;
+  offY = (screenH - WORLD_H * scale) / 2;
+}
+
+// ---------- Input: joystick ----------
+const JOY_MAX = 40;              // how far the knob can travel, in pixels
+let joyPointer = null;
+
+function joyMove(e) {
+  const rect = joyEl.getBoundingClientRect();
+  let dx = e.clientX - (rect.left + rect.width / 2);
+  let dy = e.clientY - (rect.top + rect.height / 2);
+  const d = Math.hypot(dx, dy);
+  if (d > JOY_MAX) { dx = dx / d * JOY_MAX; dy = dy / d * JOY_MAX; }
+  joy.x = dx / JOY_MAX;
+  joy.y = dy / JOY_MAX;
+  knobEl.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+}
+function joyRelease(e) {
+  if (e.pointerId !== joyPointer) return;
+  joyPointer = null;
+  joy.x = 0;
+  joy.y = 0;
+  knobEl.style.transform = 'translate(0px,0px)';
+}
+joyEl.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  joyPointer = e.pointerId;
+  joyEl.setPointerCapture(e.pointerId);
+  joyMove(e);
+});
+joyEl.addEventListener('pointermove', (e) => {
+  if (e.pointerId === joyPointer) joyMove(e);
+});
+joyEl.addEventListener('pointerup', joyRelease);
+joyEl.addEventListener('pointercancel', joyRelease);
+
+// ---------- Input: skill buttons and start tap ----------
+btnBlast.addEventListener('pointerdown', (e) => { e.preventDefault(); playerBlast(); });
+btnHeal.addEventListener('pointerdown',  (e) => { e.preventDefault(); playerHeal(); });
+canvas.addEventListener('pointerdown', () => {
+  if (state !== 'playing') startGame();
+});
+
+// ---------- Input: keyboard (for testing on a laptop) ----------
+window.addEventListener('keydown', (e) => {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  keys[k] = true;
+  if (k === 'j') playerBlast();
+  if (k === 'k') playerHeal();
+  if (k === ' ' && state !== 'playing') startGame();
+  if (k.startsWith('Arrow') || k === ' ') e.preventDefault();
+});
+window.addEventListener('keyup', (e) => {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  keys[k] = false;
+});
+
+// ---------- Main loop ----------
+let lastTime = 0;
+function loop(time) {
+  // dt = seconds since last frame, capped so a paused tab does not jump the game
+  const dt = Math.min((time - lastTime) / 1000, 0.033);
+  lastTime = time;
+  update(dt);
+  draw();
+  updateButtons();
+  requestAnimationFrame(loop);
+}
+
+// ---------- Start ----------
+window.addEventListener('resize', resize);
+resize();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

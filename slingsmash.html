@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Sling Smash</title>
+<style>
+  /* Full-screen canvas, no scrolling or zooming */
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b1220;
+    overflow: hidden;
+    font-family: system-ui, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    touch-action: none;
+  }
+  #restart {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    height: 40px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 10px;
+    background: #1c2742;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  #restart:active { background: #2c3a60; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<button id="restart" aria-label="Restart level">Restart</button>
+
+<!-- Physics library (free, open source). Needs internet to load. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+
+<script>
+// =====================================================
+// SLING SMASH - slingshot physics game
+// Drag the red ball back, release to launch, knock out every green target.
+// Best played with the phone turned sideways (landscape).
+// =====================================================
+
+// ---------- Settings (change these to experiment) ----------
+const WORLD_W = 800, WORLD_H = 450;   // game area in game units
+const GROUND_Y = 400;                 // top of the ground
+const ANCHOR = { x: 130, y: 300 };    // where the ball sits on the slingshot
+const BALL_R = 14;
+const TARGET_R = 14;
+const MAX_PULL = 90;                  // how far back the ball can be dragged
+const POWER = 0.22;                   // launch speed per unit of pull (higher = stronger)
+const KILL_SPEED = 2.5;               // a target pops when hit faster than this
+const BALL_KILL_SPEED = 1;            // the ball pops targets more easily
+const TARGET_POINTS = 500;
+const SPARE_SHOT_POINTS = 1000;       // bonus for each unused shot
+
+// ---------- Levels ----------
+// blocks: [centre x, centre y, width, height]   targets: [centre x, centre y]
+// The ground top is at y = 400, so a block of height 80 standing on it has centre y = 360.
+const LEVELS = [
+  {
+    shots: 3,
+    blocks: [
+      [600, 360, 20, 80], [680, 360, 20, 80],     // two pillars
+      [640, 312, 120, 16]                         // plank across the top
+    ],
+    targets: [[640, 386], [640, 290]]
+  },
+  {
+    shots: 4,
+    blocks: [
+      [530, 365, 20, 70], [590, 365, 20, 70], [560, 323, 100, 14],    // left tower
+      [670, 365, 20, 70], [730, 365, 20, 70], [700, 323, 100, 14],    // right tower
+      [700, 296, 40, 40]                                              // box on the right tower
+    ],
+    targets: [[560, 386], [560, 302], [700, 386], [700, 262]]
+  },
+  {
+    shots: 5,
+    blocks: [
+      [500, 340, 24, 120],                                            // shield wall
+      [610, 360, 20, 80], [670, 360, 20, 80], [730, 360, 20, 80],     // three pillars
+      [670, 313, 160, 14],                                            // long plank
+      [640, 281, 20, 50], [700, 281, 20, 50],                         // upper pillars
+      [670, 249, 90, 14]                                              // top plank
+    ],
+    targets: [[640, 386], [700, 386], [670, 228]]
+  }
+];
+
+// ---------- Page elements ----------
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const physicsLoaded = typeof Matter !== 'undefined';
+
+// ---------- Game state ----------
+const STEP = 1000 / 60;               // physics runs in fixed 1/60 second steps
+const GRAVITY_PER_STEP = 0.001 * STEP * STEP;   // used for the aiming dots
+const BALL_AIR = 0.005;               // air drag on the ball
+
+let screen = 'title';                 // 'title' | 'play' | 'clear' | 'lost' | 'done'
+let phase = 'aim';                    // while playing: 'aim' | 'flying' | 'settle'
+let engine = null;
+let level = 0;
+let score = 0, levelStartScore = 0;
+let shotsLeft = 0;
+let ball = null;                      // the flying ball (null while aiming)
+let targets = [];
+let effects = [];                     // pop rings and score text
+let pull = { x: 0, y: 0 };            // how far the ball is dragged from the anchor
+let dragging = false;
+let flyTime = 0, slowTime = 0, settleTime = 0, clearTimer = 0, levelTime = 0;
+let accumulator = 0;
+
+// Screen fitting
+let dpr = 1, scale = 1, offX = 0, offY = 0, screenW = 0, screenH = 0;
+
+// ---------- Build a level ----------
+function buildLevel(n) {
+  const { Engine, Bodies, Composite, Events } = Matter;
+  const def = LEVELS[n];
+
+  engine = Engine.create();
+  engine.positionIterations = 8;      // extra accuracy keeps stacks steady
+  engine.velocityIterations = 6;
+
+  const bodies = [];
+  // Ground (wide so things can roll off-screen without falling forever)
+  bodies.push(Bodies.rectangle(WORLD_W / 2, GROUND_Y + 30, WORLD_W * 3, 60,
+    { isStatic: true, label: 'ground', friction: 0.8 }));
+
+  for (const [x, y, w, h] of def.blocks) {
+    bodies.push(Bodies.rectangle(x, y, w, h, { label: 'block', friction: 0.6, density: 0.0012 }));
+  }
+
+  targets = [];
+  for (const [x, y] of def.targets) {
+    const t = Bodies.circle(x, y, TARGET_R, { label: 'target', friction: 0.5, density: 0.001, restitution: 0.1 });
+    targets.push(t);
+    bodies.push(t);
+  }
+
+  Composite.add(engine.world, bodies);
+  Events.on(engine, 'collisionStart', onCollision);
+
+  level = n;
+  shotsLeft = def.shots;
+  levelStartScore = score;
+  ball = null;
+  effects = [];
+  pull = { x: 0, y: 0 };
+  dragging = false;
+  phase = 'aim';
+  clearTimer = 0;
+  levelTime = 0;
+  accumulator = 0;
+  screen = 'play';
+}
+
+// ---------- Collisions: decide when a target pops ----------
+function onCollision(event) {
+  if (levelTime < 0.5) return;        // ignore tiny bumps while the level settles
+  for (const pair of event.pairs) {
+    checkTargetHit(pair.bodyA, pair.bodyB);
+    checkTargetHit(pair.bodyB, pair.bodyA);
+  }
+}
+
+function checkTargetHit(target, other) {
+  if (target.label !== 'target' || target.dead) return;
+  // How fast the two bodies are moving toward each other
+  const impact = Math.hypot(target.velocity.x - other.velocity.x, target.velocity.y - other.velocity.y);
+  const limit = other.label === 'ball' ? BALL_KILL_SPEED : KILL_SPEED;
+  if (impact > limit) target.dead = true;   // removed after the physics step
+}
+
+// ---------- Launch ----------
+function launch() {
+  const { Bodies, Body, Composite } = Matter;
+  ball = Bodies.circle(ANCHOR.x + pull.x, ANCHOR.y + pull.y, BALL_R,
+    { label: 'ball', density: 0.004, restitution: 0.3, friction: 0.5, frictionAir: BALL_AIR });
+  Body.setVelocity(ball, { x: -pull.x * POWER, y: -pull.y * POWER });
+  Composite.add(engine.world, ball);
+
+  shotsLeft--;
+  pull = { x: 0, y: 0 };
+  phase = 'flying';
+  flyTime = 0;
+  slowTime = 0;
+}
+
+// ---------- Update ----------
+function update(dt) {
+  for (const e of effects) e.t += dt;
+  effects = effects.filter(e => e.t < e.life);
+
+  if (!engine || screen === 'title') return;
+
+  // Run physics in fixed steps so it behaves the same on every phone
+  levelTime += dt;
+  accumulator += dt * 1000;
+  while (accumulator >= STEP) {
+    Matter.Engine.update(engine, STEP);
+    accumulator -= STEP;
+    afterPhysicsStep();
+  }
+
+  if (screen !== 'play') return;
+
+  // All targets gone: short pause, then level clear
+  if (targets.length === 0) {
+    clearTimer += dt;
+    if (clearTimer > 1) levelClear();
+    return;
+  }
+
+  if (phase === 'flying') {
+    flyTime += dt;
+    slowTime = ball.speed < 0.35 ? slowTime + dt : 0;
+    const p = ball.position;
+    const outside = p.x > WORLD_W + 60 || p.x < -60 || p.y > WORLD_H + 60;
+    // The shot ends when the ball leaves the screen, stops, or takes too long
+    if (outside || slowTime > 0.8 || flyTime > 7) {
+      Matter.Composite.remove(engine.world, ball);
+      ball = null;
+      phase = 'settle';
+      settleTime = 0;
+    }
+  } else if (phase === 'settle') {
+    settleTime += dt;
+    if (shotsLeft > 0) {
+      if (settleTime > 0.4) phase = 'aim';
+    } else if (settleTime > 2.5) {
+      screen = 'lost';                // no shots left and targets still standing
+    }
+  }
+}
+
+// Remove popped targets and anything that left the game area
+function afterPhysicsStep() {
+  for (const t of targets) {
+    const p = t.position;
+    if (p.x > WORLD_W + 50 || p.x < -50 || p.y > WORLD_H + 50) t.dead = true;
+    if (t.dead) {
+      Matter.Composite.remove(engine.world, t);
+      score += TARGET_POINTS;
+      effects.push({ x: p.x, y: p.y, t: 0, life: 0.7, text: '+' + TARGET_POINTS });
+    }
+  }
+  targets = targets.filter(t => !t.dead);
+}
+
+function levelClear() {
+  score += shotsLeft * SPARE_SHOT_POINTS;
+  screen = level === LEVELS.length - 1 ? 'done' : 'clear';
+}
+
+// ---------- Drawing ----------
+function draw() {
+  // Clear the whole canvas
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(0, 0, screenW, screenH);
+
+  // Hint when the phone is upright
+  if (screenH > screenW) {
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = '500 14px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Turn your phone sideways for a bigger view', screenW / 2, offY + WORLD_H * scale + 16);
+  }
+
+  // From here on, draw in game units (scaled and centred on screen)
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
+
+  // Sky and ground
+  ctx.fillStyle = '#12203a';
+  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+  ctx.fillStyle = '#1b2d4f';
+  ctx.fillRect(0, GROUND_Y, WORLD_W, WORLD_H - GROUND_Y);
+
+  if (!physicsLoaded) {
+    drawText('Could not load the physics library', WORLD_W / 2, WORLD_H / 2 - 14, 20, 700);
+    drawText('Check your internet connection and reload', WORLD_W / 2, WORLD_H / 2 + 16, 15, 500);
+    return;
+  }
+
+  drawSling();
+
+  if (engine) {
+    for (const body of Matter.Composite.allBodies(engine.world)) {
+      if (body.label === 'block') drawBlock(body);
+      else if (body.label === 'target') drawTarget(body);
+      else if (body.label === 'ball') drawBall(body.position.x, body.position.y);
+    }
+  }
+
+  // Ball waiting on the slingshot, with aiming dots while dragging
+  if (screen === 'play' && phase === 'aim') {
+    if (dragging) drawAimDots();
+    drawBall(ANCHOR.x + pull.x, ANCHOR.y + pull.y);
+  }
+
+  // Pop effects
+  for (const e of effects) {
+    const k = e.t / e.life;
+    ctx.globalAlpha = 1 - k;
+    ctx.strokeStyle = '#4dd4ac';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, TARGET_R + 22 * k, 0, Math.PI * 2);
+    ctx.stroke();
+    drawText(e.text, e.x, e.y - 20 - 24 * k, 15, 700);
+    ctx.globalAlpha = 1;
+  }
+
+  // Score, level and shots left
+  if (screen !== 'title') {
+    ctx.textAlign = 'left';
+    drawText('Level ' + (level + 1) + '/' + LEVELS.length, 14, 20, 15, 600, 'left');
+    drawText('Score ' + score, 14, 42, 15, 600, 'left');
+    for (let i = 0; i < shotsLeft - (phase === 'aim' ? 1 : 0); i++) {
+      ctx.fillStyle = '#ff6b6b';
+      ctx.beginPath();
+      ctx.arc(24 + i * 22, GROUND_Y + 25, 8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Start, clear, lost and finished screens
+  if (screen === 'title') {
+    shade();
+    drawText('Sling Smash', WORLD_W / 2, WORLD_H / 2 - 50, 34, 700);
+    drawText('Drag the red ball back and release', WORLD_W / 2, WORLD_H / 2 - 6, 16, 500);
+    drawText('Knock out every green target', WORLD_W / 2, WORLD_H / 2 + 18, 16, 500);
+    drawText('Tap to start', WORLD_W / 2, WORLD_H / 2 + 60, 19, 600);
+  } else if (screen === 'clear') {
+    shade();
+    drawText('Level clear!', WORLD_W / 2, WORLD_H / 2 - 24, 30, 700);
+    drawText('Tap for the next level', WORLD_W / 2, WORLD_H / 2 + 20, 18, 600);
+  } else if (screen === 'lost') {
+    shade();
+    drawText('Out of shots', WORLD_W / 2, WORLD_H / 2 - 24, 30, 700);
+    drawText('Tap to try again', WORLD_W / 2, WORLD_H / 2 + 20, 18, 600);
+  } else if (screen === 'done') {
+    shade();
+    drawText('All levels complete!', WORLD_W / 2, WORLD_H / 2 - 40, 30, 700);
+    drawText('Final score ' + score, WORLD_W / 2, WORLD_H / 2 + 2, 20, 600);
+    drawText('Tap to play again', WORLD_W / 2, WORLD_H / 2 + 44, 18, 600);
+  }
+}
+
+function shade() {
+  ctx.fillStyle = 'rgba(11,18,32,0.75)';
+  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+}
+
+// Text that stays readable even when the game area is small
+function drawText(text, x, y, size, weight, align) {
+  const px = Math.max(size, 12 / scale);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = weight + ' ' + px + 'px system-ui, sans-serif';
+  ctx.textAlign = align || 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
+}
+
+function drawSling() {
+  // Wooden post and fork
+  ctx.strokeStyle = '#8a5a3c';
+  ctx.lineWidth = 8;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(ANCHOR.x, GROUND_Y);
+  ctx.lineTo(ANCHOR.x, ANCHOR.y + 14);
+  ctx.moveTo(ANCHOR.x, ANCHOR.y + 14);
+  ctx.lineTo(ANCHOR.x - 12, ANCHOR.y - 8);
+  ctx.moveTo(ANCHOR.x, ANCHOR.y + 14);
+  ctx.lineTo(ANCHOR.x + 12, ANCHOR.y - 8);
+  ctx.stroke();
+
+  // Elastic bands to the ball while aiming
+  if (screen === 'play' && phase === 'aim') {
+    ctx.strokeStyle = '#f4d35e';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(ANCHOR.x - 12, ANCHOR.y - 8);
+    ctx.lineTo(ANCHOR.x + pull.x, ANCHOR.y + pull.y);
+    ctx.lineTo(ANCHOR.x + 12, ANCHOR.y - 8);
+    ctx.stroke();
+  }
+  ctx.lineCap = 'butt';
+}
+
+function drawBlock(body) {
+  const v = body.vertices;
+  ctx.beginPath();
+  ctx.moveTo(v[0].x, v[0].y);
+  for (let i = 1; i < v.length; i++) ctx.lineTo(v[i].x, v[i].y);
+  ctx.closePath();
+  ctx.fillStyle = '#f79d65';
+  ctx.fill();
+  ctx.strokeStyle = '#c9743f';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function drawTarget(body) {
+  ctx.save();
+  ctx.translate(body.position.x, body.position.y);
+  ctx.rotate(body.angle);
+  ctx.fillStyle = '#4dd4ac';
+  ctx.beginPath();
+  ctx.arc(0, 0, TARGET_R, 0, Math.PI * 2);
+  ctx.fill();
+  // Two eyes so you can see it roll
+  ctx.fillStyle = '#0b1220';
+  ctx.beginPath();
+  ctx.arc(-5, -3, 2.5, 0, Math.PI * 2);
+  ctx.arc(5, -3, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawBall(x, y) {
+  ctx.fillStyle = '#ff6b6b';
+  ctx.beginPath();
+  ctx.arc(x, y, BALL_R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+// Dots showing the first part of the ball's path
+function drawAimDots() {
+  let x = ANCHOR.x + pull.x, y = ANCHOR.y + pull.y;
+  let vx = -pull.x * POWER, vy = -pull.y * POWER;
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  for (let i = 1; i <= 42; i++) {
+    vx *= 1 - BALL_AIR;
+    vy = vy * (1 - BALL_AIR) + GRAVITY_PER_STEP;
+    x += vx;
+    y += vy;
+    if (y > GROUND_Y) break;
+    if (i % 3 === 0) {
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+// ---------- Fit the game area to the screen ----------
+function resize() {
+  dpr = window.devicePixelRatio || 1;            // keep drawing sharp on phone screens
+  screenW = window.innerWidth;
+  screenH = window.innerHeight;
+  canvas.width  = Math.round(screenW * dpr);
+  canvas.height = Math.round(screenH * dpr);
+  scale = Math.min(screenW / WORLD_W, screenH / WORLD_H);
+  offX = (screenW - WORLD_W * scale) / 2;
+  offY = (screenH - WORLD_H * scale) / 2;
+}
+
+// ---------- Input ----------
+// Convert a touch position on screen to a position in the game area
+function toWorld(e) {
+  return { x: (e.clientX - offX) / scale, y: (e.clientY - offY) / scale };
+}
+
+function setPull(p) {
+  let dx = p.x - ANCHOR.x, dy = p.y - ANCHOR.y;
+  const d = Math.hypot(dx, dy);
+  if (d > MAX_PULL) { dx = dx / d * MAX_PULL; dy = dy / d * MAX_PULL; }
+  // Do not let the ball be dragged into the ground
+  dy = Math.min(dy, GROUND_Y - BALL_R - ANCHOR.y);
+  pull = { x: dx, y: dy };
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (!physicsLoaded) return;
+  if (screen === 'title' || screen === 'done') { score = 0; buildLevel(0); return; }
+  if (screen === 'clear') { buildLevel(level + 1); return; }
+  if (screen === 'lost')  { score = levelStartScore; buildLevel(level); return; }
+
+  // Start dragging only when the touch begins near the slingshot
+  if (phase === 'aim') {
+    const p = toWorld(e);
+    if (Math.hypot(p.x - ANCHOR.x, p.y - ANCHOR.y) < 110) {
+      dragging = true;
+      canvas.setPointerCapture(e.pointerId);
+      setPull(p);
+    }
+  }
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  if (dragging) setPull(toWorld(e));
+});
+
+function endDrag() {
+  if (!dragging) return;
+  dragging = false;
+  // A very small pull is treated as a cancel
+  if (Math.hypot(pull.x, pull.y) < 12) pull = { x: 0, y: 0 };
+  else launch();
+}
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', () => { dragging = false; pull = { x: 0, y: 0 }; });
+
+document.getElementById('restart').addEventListener('click', () => {
+  if (!physicsLoaded || screen === 'title') return;
+  if (screen === 'done') { score = 0; buildLevel(0); return; }
+  score = levelStartScore;
+  buildLevel(level);
+});
+
+// ---------- Main loop ----------
+let lastTime = 0;
+function loop(time) {
+  // dt = seconds since last frame, capped so a paused tab does not jump the game
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+  if (physicsLoaded) update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ---------- Start ----------
+window.addEventListener('resize', resize);
+resize();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
