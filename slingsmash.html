@@ -69,8 +69,9 @@ const SPARE_SHOT_POINTS = 1000;       // bonus for each unused shot
 // ---------- Levels ----------
 // blocks: [centre x, centre y, width, height]   targets: [centre x, centre y]
 // The ground top is at y = 400, so a block of height 80 standing on it has centre y = 360.
+// To add a level, add one more block to this list.
 const LEVELS = [
-  {
+  { // 1: simple gate
     shots: 3,
     blocks: [
       [600, 360, 20, 80], [680, 360, 20, 80],     // two pillars
@@ -78,7 +79,7 @@ const LEVELS = [
     ],
     targets: [[640, 386], [640, 290]]
   },
-  {
+  { // 2: twin towers
     shots: 4,
     blocks: [
       [530, 365, 20, 70], [590, 365, 20, 70], [560, 323, 100, 14],    // left tower
@@ -87,7 +88,7 @@ const LEVELS = [
     ],
     targets: [[560, 386], [560, 302], [700, 386], [700, 262]]
   },
-  {
+  { // 3: shield wall and two-storey frame
     shots: 5,
     blocks: [
       [500, 340, 24, 120],                                            // shield wall
@@ -97,6 +98,71 @@ const LEVELS = [
       [670, 249, 90, 14]                                              // top plank
     ],
     targets: [[640, 386], [700, 386], [670, 228]]
+  },
+  { // 4: staircase
+    shots: 4,
+    blocks: [
+      [520, 380, 40, 40], [600, 360, 40, 80], [680, 340, 40, 120]     // three steps
+    ],
+    targets: [[520, 346], [600, 306], [680, 266]]
+  },
+  { // 5: two-storey house
+    shots: 4,
+    blocks: [
+      [580, 360, 20, 80], [700, 360, 20, 80],     // ground pillars
+      [640, 313, 160, 14],                        // floor
+      [600, 271, 20, 70], [680, 271, 20, 70],     // upper pillars
+      [640, 229, 120, 14]                         // roof
+    ],
+    targets: [[640, 386], [640, 292], [640, 208]]
+  },
+  { // 6: dominoes
+    shots: 4,
+    blocks: [
+      [470, 340, 16, 120], [525, 340, 16, 120], [580, 340, 16, 120], [635, 340, 16, 120]
+    ],
+    targets: [[680, 386], [720, 386]]
+  },
+  { // 7: bunker behind a wall
+    shots: 5,
+    blocks: [
+      [540, 350, 24, 100],                        // wall
+      [620, 370, 20, 60], [720, 370, 20, 60],     // bunker pillars
+      [670, 333, 140, 14],                        // bunker roof
+      [670, 306, 40, 40]                          // box on the roof
+    ],
+    targets: [[655, 386], [690, 386], [670, 272]]
+  },
+  { // 8: three towers, each taller than the last
+    shots: 7,
+    blocks: [
+      [492, 375, 16, 50],  [548, 375, 16, 50],  [520, 343, 80, 14],
+      [592, 355, 16, 90],  [648, 355, 16, 90],  [620, 303, 80, 14],
+      [692, 335, 16, 130], [748, 335, 16, 130], [720, 263, 80, 14]
+    ],
+    targets: [[520, 386], [520, 322], [620, 386], [620, 282], [720, 386], [720, 242]]
+  },
+  { // 9: pyramid of boxes
+    shots: 5,
+    blocks: [
+      [580, 380, 40, 40], [622, 380, 40, 40], [664, 380, 40, 40], [706, 380, 40, 40],
+      [601, 340, 40, 40], [643, 340, 40, 40], [685, 340, 40, 40],
+      [622, 300, 40, 40], [664, 300, 40, 40],
+      [643, 260, 40, 40]
+    ],
+    targets: [[643, 226], [540, 386], [750, 386]]
+  },
+  { // 10: fortress
+    shots: 7,
+    blocks: [
+      [480, 355, 24, 90],                                             // shield wall
+      [560, 360, 20, 80], [640, 360, 20, 80], [720, 360, 20, 80],     // ground pillars
+      [640, 313, 190, 14],                                            // floor
+      [600, 276, 20, 60], [680, 276, 20, 60],                         // upper pillars
+      [640, 239, 120, 14],                                            // roof
+      [640, 212, 40, 40]                                              // box on the roof
+    ],
+    targets: [[600, 386], [680, 386], [640, 292], [640, 178]]
   }
 ];
 
