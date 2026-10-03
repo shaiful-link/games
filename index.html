@@ -4,12 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Games</title>
+
+<!-- These lines let phones install the site like an app, with its own icon -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b1220">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Games">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+
 <style>
   /* Menu page: one card per game, stacked on phones, two columns on wider screens */
   * { box-sizing: border-box; }
   html, body {
     margin: 0;
-    min-height: 100%;
+    height: 100%;
     background: #0b1220;
     color: #ffffff;
     font-family: system-ui, sans-serif;
@@ -24,10 +35,38 @@
     font-size: 30px;
   }
   .sub {
-    margin: 0 0 24px;
+    margin: 0 0 20px;
     color: rgba(255,255,255,0.6);
     font-size: 15px;
   }
+
+  /* Install button (Android) and "how to add" hint (iPhone). Hidden until needed. */
+  #install, #iosHint {
+    display: none;
+    width: 100%;
+    margin: 0 0 18px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-family: inherit;
+    text-align: left;
+  }
+  #install {
+    border: 0;
+    background: #2a6f5c;
+    color: #ffffff;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  #install:active { background: #348a72; }
+  #iosHint {
+    background: #111a2e;
+    border: 1px solid #2c3a60;
+    color: rgba(255,255,255,0.85);
+    line-height: 1.45;
+  }
+  #install.show, #iosHint.show { display: block; }
+
   .grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -71,6 +110,48 @@
     color: rgba(255,255,255,0.45);
     text-align: center;
   }
+
+  /* Game screen: a thin bar with a Menu button, and the game underneath.
+     The bar is the way back to the menu when the site runs as an app with no browser buttons. */
+  #player {
+    display: none;
+    position: fixed;
+    inset: 0;
+    flex-direction: column;
+    background: #0b1220;
+  }
+  body.playing #player { display: flex; }
+  body.playing main { display: none; }
+  body.playing { overflow: hidden; }
+  #bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 40px;
+    padding: 0 8px;
+    background: #0e1730;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  #back {
+    height: 30px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 8px;
+    background: #1c2742;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+  }
+  #back:active { background: #2c3a60; }
+  #gameTitle { font-size: 14px; color: rgba(255,255,255,0.7); }
+  #frame {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    border: 0;
+    background: #0b1220;
+  }
 </style>
 </head>
 <body>
@@ -78,51 +159,54 @@
   <h1>Games</h1>
   <p class="sub">Tap a game to play.</p>
 
-  <!-- To add a game: copy one card, change the file name, title and text -->
+  <button id="install">Install as an app on this phone</button>
+  <div id="iosHint">To add this to your home screen: tap the <b>Share</b> button, then <b>Add to Home Screen</b>.</div>
+
+  <!-- To add a game: copy one card, change the file name after the #, the title and the text -->
   <div class="grid">
-    <a class="card" href="pong.html" style="--accent:#4dd4ac">
+    <a class="card" href="#pong.html" style="--accent:#4dd4ac">
       <h2>Pong</h2>
-      <p>Drag to move your paddle. First to 7 wins.</p>
+      <p>Slide to move your paddle. First to 7 wins.</p>
       <span>Hold phone upright</span>
     </a>
 
-    <a class="card" href="blockdrop.html" style="--accent:#b388eb">
+    <a class="card" href="#blockdrop.html" style="--accent:#b388eb">
       <h2>Block Drop</h2>
       <p>Stack the falling blocks and clear full lines.</p>
       <span>Hold phone upright</span>
     </a>
 
-    <a class="card" href="laneclash.html" style="--accent:#ff6b6b">
+    <a class="card" href="#laneclash.html" style="--accent:#ff6b6b">
       <h2>Lane Clash</h2>
       <p>Lead your minions and destroy the red tower.</p>
       <span>Hold phone upright</span>
     </a>
 
-    <a class="card" href="slingsmash.html" style="--accent:#f4d35e">
+    <a class="card" href="#slingsmash.html" style="--accent:#f4d35e">
       <h2>Sling Smash</h2>
       <p>Launch the ball and knock out every target.</p>
       <span>Turn phone sideways</span>
     </a>
 
-    <a class="card" href="mazemuncher.html" style="--accent:#4dd4e6">
+    <a class="card" href="#mazemuncher.html" style="--accent:#4dd4e6">
       <h2>Maze Muncher</h2>
       <p>Eat every dot in the maze and avoid the chasers.</p>
       <span>Hold phone upright</span>
     </a>
 
-    <a class="card" href="memorymatch.html" style="--accent:#f79d65">
+    <a class="card" href="#memorymatch.html" style="--accent:#f79d65">
       <h2>Memory Match</h2>
       <p>Turn over the cards and find every matching pair.</p>
       <span>Hold phone upright</span>
     </a>
 
-    <a class="card" href="jigsaw.html" style="--accent:#5b8def">
+    <a class="card" href="#jigsaw.html" style="--accent:#5b8def">
       <h2>Jigsaw</h2>
       <p>Drag the pieces into place. Use your own photo too.</p>
       <span>Hold phone upright</span>
     </a>
 
-    <a class="card" href="fruitcatch.html" style="--accent:#ff8fab">
+    <a class="card" href="#fruitcatch.html" style="--accent:#ff8fab">
       <h2>Fruit Catch</h2>
       <p>Move the basket to catch the fruit. Avoid the bombs.</p>
       <span>Hold phone upright</span>
@@ -131,5 +215,85 @@
 
   <footer>Made by Shaiful</footer>
 </main>
+
+<!-- Game screen (hidden until a game is chosen) -->
+<div id="player">
+  <div id="bar">
+    <button id="back" aria-label="Back to the menu">&#8249; Menu</button>
+    <span id="gameTitle"></span>
+  </div>
+  <iframe id="frame" title="Game"></iframe>
+</div>
+
+<script>
+// =====================================================
+// GAMES MENU
+// 1. Opens the chosen game inside this page, under a small "Menu" bar.
+// 2. Shows an Install button on Android, and a "how to add" hint on iPhone.
+// 3. Starts the offline helper (sw.js).
+// =====================================================
+
+const frame     = document.getElementById('frame');
+const gameTitle = document.getElementById('gameTitle');
+const btnBack   = document.getElementById('back');
+const btnInstall = document.getElementById('install');
+const iosHint    = document.getElementById('iosHint');
+
+// ---------- Opening and closing games ----------
+// Build the list of games from the cards: { 'pong.html': 'Pong', ... }
+const games = {};
+for (const card of document.querySelectorAll('.card')) {
+  games[card.getAttribute('href').slice(1)] = card.querySelector('h2').textContent;
+}
+
+// The part of the address after # says which game is open (nothing = menu).
+// Using the address means the phone's Back button also returns to the menu.
+function showFromAddress() {
+  const file = location.hash.slice(1);
+  if (games[file]) {
+    gameTitle.textContent = games[file];
+    if (frame.getAttribute('src') !== file) frame.setAttribute('src', file);
+    document.body.classList.add('playing');
+    frame.focus();
+  } else {
+    document.body.classList.remove('playing');
+    frame.removeAttribute('src');                 // stops the game that was running
+  }
+}
+window.addEventListener('hashchange', showFromAddress);
+btnBack.addEventListener('click', () => { location.hash = ''; });
+showFromAddress();
+
+// ---------- Install button (Android / Chrome) ----------
+// Chrome sends this event when the site can be installed. We keep it and show our own button.
+let installEvent = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installEvent = e;
+  btnInstall.classList.add('show');
+});
+btnInstall.addEventListener('click', async () => {
+  if (!installEvent) return;
+  installEvent.prompt();                          // shows Chrome's own "Install app?" box
+  await installEvent.userChoice;
+  installEvent = null;
+  btnInstall.classList.remove('show');
+});
+window.addEventListener('appinstalled', () => btnInstall.classList.remove('show'));
+
+// ---------- Hint for iPhone and iPad ----------
+// Apple does not allow an install button, so show the steps instead.
+// The hint is hidden when the site is already opened from the home screen.
+const isApple = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);   // newer iPads
+const isInstalled = window.navigator.standalone === true ||
+                    window.matchMedia('(display-mode: standalone)').matches;
+if (isApple && !isInstalled) iosHint.classList.add('show');
+
+// ---------- Offline helper ----------
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => { /* the site still works without it */ });
+}
+</script>
 </body>
 </html>
