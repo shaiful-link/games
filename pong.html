@@ -16,6 +16,7 @@
     display: block;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
     touch-action: none;      /* stop the browser from scrolling while dragging */
     user-select: none;
     -webkit-user-select: none;
@@ -28,8 +29,9 @@
 <script>
 // =====================================================
 // PONG - portrait layout for phones
-// You = bottom paddle (drag finger left/right)
-// Computer = top paddle
+// You = bottom paddle, Computer = top paddle
+// Slide your finger in the strip at the bottom of the screen.
+// The paddle sits above the strip, so your finger never covers the game.
 // =====================================================
 
 // ---------- Settings (change these to experiment) ----------
@@ -37,21 +39,26 @@ const WIN_SCORE     = 7;      // first to this score wins
 const PADDLE_RATIO  = 0.24;   // paddle width as a share of screen width
 const PADDLE_HEIGHT = 14;
 const BALL_RADIUS   = 9;
-const START_SPEED   = 0.55;   // ball speed as a share of screen height per second
+const START_SPEED   = 0.55;   // ball speed as a share of field height per second
 const SPEED_UP      = 1.05;   // ball gets 5% faster on every paddle hit
-const MAX_SPEED     = 1.6;    // speed cap (share of screen height per second)
+const MAX_SPEED     = 1.6;    // speed cap (share of field height per second)
 const AI_SPEED      = 0.85;   // computer paddle speed (share of screen width per second)
                               // lower = easier, higher = harder
+const CONTROL_ZONE  = 120;    // height of the finger strip at the bottom, in pixels
+                              // bigger = more room for your finger, smaller = bigger playing field
 
 // ---------- Canvas setup ----------
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 let W = 0, H = 0;             // screen size in CSS pixels
+let fieldH = 0;               // height of the playing field (screen minus the finger strip)
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;   // keep drawing sharp on phone screens
   W = window.innerWidth;
   H = window.innerHeight;
+  // On very short screens, shrink the strip so the field keeps most of the space
+  fieldH = H - Math.min(CONTROL_ZONE, H * 0.25);
   canvas.width  = Math.round(W * dpr);
   canvas.height = Math.round(H * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -70,26 +77,26 @@ let message = 'Tap to start';
 // Position paddles for the current screen size
 function layout() {
   player.w = ai.w = W * PADDLE_RATIO;
-  player.y = H - 60;
+  player.y = fieldH - 34;     // just above the finger strip
   ai.y = 46;
   if (state !== 'playing') {
     player.x = ai.x = W / 2;
     ball.x = W / 2;
-    ball.y = H / 2;
+    ball.y = fieldH / 2;
   }
 }
 
 // Put the ball in the centre and wait for a tap
 function resetBall() {
   ball.x = W / 2;
-  ball.y = H / 2;
+  ball.y = fieldH / 2;
   ball.vx = 0;
   ball.vy = 0;
 }
 
 // Launch the ball at a random slight angle
 function serve() {
-  const speed = H * START_SPEED;
+  const speed = fieldH * START_SPEED;
   const angle = (Math.random() * 0.8 - 0.4);          // about -23 to +23 degrees
   ball.vx = speed * Math.sin(angle);
   ball.vy = speed * Math.cos(angle) * serveDirection;
@@ -103,7 +110,9 @@ function newGame() {
   resetBall();
 }
 
-// ---------- Input: drag to move, tap to start ----------
+// ---------- Input: slide to move, tap to start ----------
+// The paddle follows your finger left and right, wherever on the screen you touch.
+// Keeping the finger in the bottom strip leaves the whole field visible.
 function movePlayer(clientX) {
   const half = player.w / 2;
   player.x = Math.max(half, Math.min(W - half, clientX));
@@ -152,11 +161,11 @@ function update(dt) {
   if (ball.vy > 0 && hitsPaddle(player)) bounce(player, -1);
   if (ball.vy < 0 && hitsPaddle(ai))     bounce(ai, 1);
 
-  // Scoring: ball left the screen
+  // Scoring: ball left the playing field
   if (ball.y < -BALL_RADIUS * 2) {
     player.score++;
     pointScored(1);       // next serve goes toward you
-  } else if (ball.y > H + BALL_RADIUS * 2) {
+  } else if (ball.y > fieldH + BALL_RADIUS * 2) {
     ai.score++;
     pointScored(-1);      // next serve goes toward computer
   }
@@ -176,7 +185,7 @@ function bounce(p, directionY) {
   const clamped = Math.max(-1, Math.min(1, offset));
   const angle = clamped * 1.0;                         // up to about 57 degrees
   let speed = Math.hypot(ball.vx, ball.vy) * SPEED_UP;
-  speed = Math.min(speed, H * MAX_SPEED);
+  speed = Math.min(speed, fieldH * MAX_SPEED);
 
   ball.vx = speed * Math.sin(angle);
   ball.vy = speed * Math.cos(angle) * directionY;
@@ -211,8 +220,8 @@ function draw() {
   ctx.lineWidth = 2;
   ctx.setLineDash([10, 12]);
   ctx.beginPath();
-  ctx.moveTo(0, H / 2);
-  ctx.lineTo(W, H / 2);
+  ctx.moveTo(0, fieldH / 2);
+  ctx.lineTo(W, fieldH / 2);
   ctx.stroke();
   ctx.setLineDash([]);
 
@@ -221,8 +230,8 @@ function draw() {
   ctx.font = 'bold 56px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(ai.score, W / 2, H / 2 - 70);
-  ctx.fillText(player.score, W / 2, H / 2 + 70);
+  ctx.fillText(ai.score, W / 2, fieldH / 2 - 70);
+  ctx.fillText(player.score, W / 2, fieldH / 2 + 70);
 
   // Paddles
   ctx.fillStyle = '#ff6b6b';
@@ -240,8 +249,31 @@ function draw() {
   if (state !== 'playing') {
     ctx.fillStyle = '#ffffff';
     ctx.font = '600 20px system-ui, sans-serif';
-    ctx.fillText(message, W / 2, H / 2 + 150);
+    ctx.fillText(message, W / 2, fieldH / 2 + 150);
   }
+
+  drawControlZone();
+}
+
+// The finger strip at the bottom (drawn last so the ball disappears behind it)
+function drawControlZone() {
+  ctx.fillStyle = '#0e1730';
+  ctx.fillRect(0, fieldH, W, H - fieldH);
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillRect(0, fieldH, W, 1);
+
+  // Small marker showing where the paddle is
+  const cy = fieldH + (H - fieldH) / 2;
+  ctx.fillStyle = 'rgba(77,212,172,0.35)';
+  ctx.beginPath();
+  ctx.arc(player.x, cy, 22, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.font = '500 13px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('◀  slide here  ▶', W / 2, H - 16);
 }
 
 function drawPaddle(p) {
