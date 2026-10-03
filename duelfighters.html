@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Duel Fighters</title>
+<style>
+  /* Page fills the phone screen: arena on top, buttons at the bottom */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b1220;
+    color: #ffffff;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+  }
+  #stage { flex: 1; min-height: 0; }
+  #game { display: block; width: 100%; height: 100%; }
+
+  /* Buttons: movement on the left, actions on the right */
+  #controls {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px 12px;
+    background: #0e1730;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  .pad {
+    display: grid;
+    grid-template-columns: 70px 70px;
+    grid-template-rows: 46px 46px;
+    gap: 6px;
+  }
+  #controls button {
+    border: 0;
+    border-radius: 12px;
+    background: #1c2742;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: inherit;
+    touch-action: none;
+  }
+  #controls button.down { background: #34467a; }
+  #btnJump  { grid-column: 1 / 3; }
+  #btnPunch { background: #2a6f5c; }
+  #btnKick  { background: #2a6f5c; }
+  #btnFire  { background: #8a5a1f; }
+  #btnFire.wait { opacity: 0.45; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage"><canvas id="game"></canvas></div>
+  <div id="controls">
+    <div class="pad">
+      <button id="btnJump"  aria-label="Jump">&#9650; Jump</button>
+      <button id="btnLeft"  aria-label="Move left">&#9664;</button>
+      <button id="btnRight" aria-label="Move right">&#9654;</button>
+    </div>
+    <div class="pad">
+      <button id="btnPunch" aria-label="Punch">Punch</button>
+      <button id="btnKick"  aria-label="Kick">Kick</button>
+      <button id="btnBlock" aria-label="Block">Block</button>
+      <button id="btnFire"  aria-label="Fireball">Fire</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================
+// DUEL FIGHTERS - simple one-on-one fighting game, with 10 opponents
+// You are the green fighter on the left.
+// Buttons: move left/right, Jump, Punch (fast, short), Kick (slower, longer, stronger),
+//          Block (hold it: you take very little damage), Fire (a fireball, then it needs to recharge).
+// Win 2 rounds to beat an opponent. Beat all 10 to win the game.
+// Turn the phone sideways for a bigger view.
+// Keyboard (for laptop testing): A/D or arrows move, W or Up = jump,
+//          J = punch, K = kick, L = block, I = fire, Space = start
+// =====================================================
+
+// ---------- Settings (change these to experiment) ----------
+const WORLD_W = 640, WORLD_H = 300;   // arena size in game units
+const GROUND = 250;                   // height of the floor
+const ROUND_TIME = 60;                // seconds per round
+const ROUNDS_TO_WIN = 2;
+const PLAYER = { hp: 100, power: 1.0, speed: 170 };
+const JUMP_SPEED = 520, GRAVITY = 1500;
+const BLOCK_SHARE = 0.2;              // share of damage that gets through a block
+const STUN_TIME = 0.3;                // seconds a fighter is stunned after being hit, or after being blocked
+const FIRE_RECHARGE = 3;              // seconds before Fire can be used again
+
+// Each attack: how long it takes, when it can hit, how far it reaches, how much it hurts
+const ATTACKS = {
+  punch: { time: 0.26, from: 0.07, to: 0.15, reach: 62, damage: 6,  push: 30 },
+  kick:  { time: 0.40, from: 0.13, to: 0.25, reach: 84, damage: 10, push: 55 },
+  fire:  { time: 0.45, from: 0.18, damage: 14, push: 45, speed: 400 }
+};
+
+// ---------- Opponents (one per level) ----------
+// hp    = health          power = damage multiplier       speed = walking speed
+// think = seconds between decisions (lower = quicker reactions)
+// aggro = how often it attacks (0 to 1)    block = how often it blocks    fire = how often it uses fireballs
+// To add an opponent, add one more line to this list.
+const LEVELS = [
+  { name: 'Rookie',   color: '#ff6b6b', hp: 80,  power: 0.70, speed: 120, think: 0.55, aggro: 0.45, block: 0.10, fire: 0.20 },   // 1
+  { name: 'Brawler',  color: '#f79d65', hp: 90,  power: 0.80, speed: 130, think: 0.50, aggro: 0.50, block: 0.15, fire: 0.25 },   // 2
+  { name: 'Kicker',   color: '#f4d35e', hp: 100, power: 0.85, speed: 140, think: 0.45, aggro: 0.55, block: 0.20, fire: 0.30 },   // 3
+  { name: 'Guard',    color: '#5b8def', hp: 110, power: 0.90, speed: 140, think: 0.42, aggro: 0.55, block: 0.35, fire: 0.30 },   // 4
+  { name: 'Striker',  color: '#b388eb', hp: 110, power: 1.00, speed: 150, think: 0.38, aggro: 0.60, block: 0.30, fire: 0.40 },   // 5
+  { name: 'Shadow',   color: '#8a94ad', hp: 120, power: 1.00, speed: 165, think: 0.34, aggro: 0.65, block: 0.35, fire: 0.40 },   // 6
+  { name: 'Tank',     color: '#c9a66b', hp: 150, power: 1.10, speed: 130, think: 0.32, aggro: 0.65, block: 0.40, fire: 0.35 },   // 7
+  { name: 'Viper',    color: '#9be564', hp: 120, power: 1.05, speed: 180, think: 0.28, aggro: 0.70, block: 0.35, fire: 0.50 },   // 8
+  { name: 'Master',   color: '#ff8fab', hp: 130, power: 1.10, speed: 170, think: 0.26, aggro: 0.72, block: 0.40, fire: 0.50 },   // 9
+  { name: 'Champion', color: '#e8ecf5', hp: 140, power: 1.20, speed: 180, think: 0.24, aggro: 0.75, block: 0.45, fire: 0.55 }    // 10
+];
+
+// ---------- Page elements ----------
+const stage  = document.getElementById('stage');
+const canvas = document.getElementById('game');
+const ctx    = canvas.getContext('2d');
+const btnFire = document.getElementById('btnFire');
+
+// ---------- Game state ----------
+let screen = 'title';            // 'title' | 'fight' | 'clear' | 'over' | 'won'
+let phase = 'intro';             // inside a fight: 'intro' | 'fight' | 'roundEnd'
+let phaseTimer = 0;
+let level = 1, score = 0, levelStartScore = 0;
+let me = null, foe = null;       // the two fighters
+let fireballs = [];              // { x, h, dir, owner, damage }
+let sparks = [];                 // hit flashes
+let roundNo = 1, myWins = 0, foeWins = 0;
+let timeLeft = ROUND_TIME;
+let roundText = '';
+let clock = 0;
+
+// What each fighter is trying to do.
+// Held: left, right, block (true or false).
+// Pressed: jump, punch, kick, fire. These hold a short countdown in seconds, so a press made
+// a moment too early (for example while a kick is finishing) still counts.
+const PRESS_MEMORY = 0.25;
+const PRESSES = ['jump', 'punch', 'kick', 'fire'];
+const myInput  = { left: false, right: false, block: false, jump: 0, punch: 0, kick: 0, fire: 0 };
+const foeInput = { left: false, right: false, block: false, jump: 0, punch: 0, kick: 0, fire: 0 };
+function press(inp, key) { inp[key] = PRESS_MEMORY; }
+function clearPresses(inp) { for (const k of PRESSES) inp[k] = 0; }
+let foeThink = 0;                // time until the computer makes its next decision
+
+// Screen fitting
+let dpr = 1, scale = 1, offX = 0, offY = 0, screenW = 0, screenH = 0;
+
+// ---------- Fighters ----------
+function makeFighter(x, facing, stats, color, name) {
+  return {
+    x, h: 0, vy: 0,              // h = height above the floor
+    facing,                      // 1 = facing right, -1 = facing left
+    hp: stats.hp, maxHp: stats.hp, power: stats.power, speed: stats.speed,
+    color, name,
+    state: 'idle',               // 'idle' | 'walk' | 'jump' | 'punch' | 'kick' | 'fire' | 'block' | 'hit' | 'ko'
+    timer: 0,                    // time spent in the current attack or hit
+    landed: false,               // has the current attack already hit?
+    recharge: 0,                 // seconds until Fire is ready again
+    slide: 0                     // being pushed back after a hit
+  };
+}
+
+function startRound() {
+  const def = LEVELS[level - 1];
+  me  = makeFighter(200, 1, PLAYER, '#4dd4ac', 'You');
+  foe = makeFighter(WORLD_W - 200, -1, def, def.color, def.name);
+  fireballs = [];
+  sparks = [];
+  timeLeft = ROUND_TIME;
+  phase = 'intro';
+  phaseTimer = 1.4;
+  roundText = 'Round ' + roundNo;
+  foeThink = 0.5;
+  foeInput.left = foeInput.right = foeInput.block = false;
+  clearPresses(foeInput);
+  clearPresses(myInput);
+}
+
+function startLevel(n) {
+  level = n;
+  levelStartScore = score;
+  roundNo = 1;
+  myWins = 0;
+  foeWins = 0;
+  screen = 'fight';
+  startRound();
+}
+
+// Tap or Space: what happens depends on the current screen
+function advance() {
+  if (screen === 'title' || screen === 'won') { score = 0; startLevel(1); }
+  else if (screen === 'clear') startLevel(level + 1);
+  else if (screen === 'over') { score = levelStartScore; startLevel(level); }   // retry same opponent
+}
+
+// Move one fighter forward by dt seconds, following its input
+function updateFighter(f, inp, other, dt) {
+  f.recharge = Math.max(0, f.recharge - dt);
+
+  // Being pushed back after a hit
+  if (f.slide !== 0) {
+    f.x += f.slide * dt;
+    f.slide *= Math.pow(0.002, dt);                // slows down quickly
+    if (Math.abs(f.slide) < 8) f.slide = 0;
+  }
+
+  if (f.state === 'ko') {
+    f.timer += dt;
+  } else if (f.state === 'punch' || f.state === 'kick' || f.state === 'fire') {
+    // In the middle of an attack
+    const a = ATTACKS[f.state];
+    f.timer += dt;
+    if (f.state === 'fire') {
+      if (!f.landed && f.timer >= a.from) {
+        f.landed = true;
+        fireballs.push({ x: f.x + f.facing * 30, h: 62, dir: f.facing, owner: f, damage: a.damage * f.power });
+      }
+    } else if (!f.landed && f.timer >= a.from && f.timer <= a.to) {
+      // Does the attack reach the other fighter? (it misses if they have jumped high)
+      const ahead = (other.x - f.x) * f.facing;
+      if (ahead > 0 && ahead < a.reach && other.h < 50 && other.state !== 'ko') {
+        f.landed = true;
+        const blocked = other.state === 'block';
+        strike(f, other, a.damage * f.power, a.push);
+        // A blocked punch or kick bounces off: the attacker is stunned for a moment,
+        // which gives the blocker time to hit back
+        if (blocked) { f.state = 'hit'; f.timer = 0; f.slide = -f.facing * 60; return; }
+      }
+    }
+    if (f.timer >= a.time) f.state = 'idle';
+  } else if (f.state === 'hit') {
+    f.timer += dt;
+    if (f.timer >= STUN_TIME) f.state = 'idle';
+  } else {
+    // Free to act
+    f.facing = other.x >= f.x ? 1 : -1;
+    const onFloor = f.h === 0;
+
+    if (inp.block && onFloor) {
+      f.state = 'block';
+    } else {
+      const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
+      f.x += dir * f.speed * dt;
+      if (onFloor) f.state = dir !== 0 ? 'walk' : 'idle';
+
+      // A press is used up as soon as it turns into an action
+      if (onFloor && inp.jump > 0) { f.vy = JUMP_SPEED; f.state = 'jump'; inp.jump = 0; }
+      else if (onFloor && inp.punch > 0) { beginAttack(f, 'punch'); clearPresses(inp); }
+      else if (onFloor && inp.kick > 0) { beginAttack(f, 'kick'); clearPresses(inp); }
+      else if (onFloor && inp.fire > 0 && f.recharge === 0) { beginAttack(f, 'fire'); f.recharge = FIRE_RECHARGE; clearPresses(inp); }
+    }
+  }
+  // Presses that were not used fade away after a moment
+  for (const k of PRESSES) if (inp[k] > 0) inp[k] = Math.max(0, inp[k] - dt);
+
+  // Jumping and falling
+  if (f.h > 0 || f.vy > 0) {
+    f.h += f.vy * dt;
+    f.vy -= GRAVITY * dt;
+    if (f.h <= 0) {
+      f.h = 0;
+      f.vy = 0;
+      if (f.state === 'jump') f.state = 'idle';
+    }
+  }
+  f.x = Math.max(30, Math.min(WORLD_W - 30, f.x));
+}
+
+function beginAttack(f, kind) {
+  f.state = kind;
+  f.timer = 0;
+  f.landed = false;
+}
+
+// An attack or fireball reaches "target"
+function strike(attacker, target, damage, push) {
+  const dir = target.x >= attacker.x ? 1 : -1;
+  const blocked = target.state === 'block';
+  const dealt = blocked ? damage * BLOCK_SHARE : damage;
+  target.hp = Math.max(0, target.hp - dealt);
+  target.slide = dir * push * (blocked ? 2 : 5);
+  if (!blocked) { target.state = 'hit'; target.timer = 0; }
+  sparks.push({ x: target.x - dir * 14, y: GROUND - 62 - target.h, t: 0, life: 0.25, color: blocked ? '#8fd0ff' : '#f4d35e' });
+  if (attacker === me) score += Math.round(dealt * 10);
+  if (target.hp <= 0) { target.state = 'ko'; target.timer = 0; }
+}
+
+// ---------- Computer opponent ----------
+function think() {
+  const def = LEVELS[level - 1];
+  const inp = foeInput;
+  inp.left = inp.right = inp.block = false;
+  const dist = Math.abs(me.x - foe.x);
+  const toward = me.x > foe.x ? 'right' : 'left';
+  const away   = me.x > foe.x ? 'left' : 'right';
+  const r = Math.random;
+
+  // A fireball coming this way: jump over it or block it
+  const incoming = fireballs.some(b => b.owner === me && (foe.x - b.x) * b.dir > 0 && Math.abs(foe.x - b.x) < 190);
+  if (incoming && r() < def.block + 0.25) {
+    if (r() < 0.5) press(inp, 'jump'); else inp.block = true;
+    return;
+  }
+  // You are attacking up close: maybe block
+  const youAttack = me.state === 'punch' || me.state === 'kick';
+  if (youAttack && dist < 95 && r() < def.block) { inp.block = true; return; }
+
+  // Your attack has missed or been blocked and you are still recovering: hit back
+  const recovering = (youAttack && me.timer > ATTACKS[me.state].to) || (me.state === 'hit' && me.hp > 0);
+  if (recovering && dist < 84 && r() < def.aggro + 0.2) {
+    press(inp, dist < 60 ? 'punch' : 'kick');
+    return;
+  }
+
+  if (dist > 95) {
+    // Far apart: throw a fireball, walk in, or wait
+    if (foe.recharge === 0 && dist > 170 && r() < def.fire) press(inp, 'fire');
+    else if (r() < def.aggro + 0.2) inp[toward] = true;
+    else if (r() < 0.3) inp[away] = true;
+  } else {
+    // Close: attack, step back, or block
+    if (r() < def.aggro) {
+      if (dist < 60 && r() < 0.6) press(inp, 'punch'); else press(inp, 'kick');
+    } else if (r() < 0.3) inp[away] = true;
+    else if (r() < def.block) inp.block = true;
+  }
+}
+
+// ---------- Update: move the whole game forward by dt seconds ----------
+function update(dt) {
+  clock += dt;
+  for (const s of sparks) s.t += dt;
+  sparks = sparks.filter(s => s.t < s.life);
+
+  if (screen !== 'fight') return;
+
+  if (phase === 'intro') {
+    phaseTimer -= dt;
+    if (phaseTimer < 0.5) roundText = 'Fight!';
+    if (phaseTimer <= 0) phase = 'fight';
+    return;
+  }
+
+  if (phase === 'roundEnd') {
+    // Let the fall finish, then go to the next round or the result
+    const still = { left: false, right: false, block: false, jump: 0, punch: 0, kick: 0, fire: 0 };
+    updateFighter(me, still, foe, dt);
+    updateFighter(foe, still, me, dt);
+    phaseTimer -= dt;
+    if (phaseTimer <= 0) afterRound();
+    return;
+  }
+
+  // Fighting
+  timeLeft = Math.max(0, timeLeft - dt);
+  foeThink -= dt;
+  if (foeThink <= 0) { think(); foeThink = LEVELS[level - 1].think; }
+
+  const wasAttacking = me.state === 'punch' || me.state === 'kick';
+  const wasBlocked = me.state === 'hit';
+  updateFighter(me, myInput, foe, dt);
+
+  // The computer reacts the moment you start an attack: better opponents block more often
+  const nowAttacking = me.state === 'punch' || me.state === 'kick';
+  if (nowAttacking && !wasAttacking && Math.abs(me.x - foe.x) < 95 && Math.random() < LEVELS[level - 1].block) {
+    foeInput.left = foeInput.right = false;
+    foeInput.block = true;
+    foeThink = Math.max(foeThink, ATTACKS[me.state].to);
+  }
+  updateFighter(foe, foeInput, me, dt);
+  // You were just blocked: the computer decides at once whether to hit back
+  if (me.state === 'hit' && !wasBlocked && foe.state === 'block') foeThink = 0;
+
+  // Fighters cannot walk through each other
+  if (me.h < 40 && foe.h < 40 && Math.abs(me.x - foe.x) < 36) {
+    const mid = (me.x + foe.x) / 2, dir = me.x <= foe.x ? -1 : 1;
+    me.x = mid + dir * 18;
+    foe.x = mid - dir * 18;
+  }
+
+  // Fireballs
+  for (const b of fireballs) {
+    b.x += b.dir * ATTACKS.fire.speed * dt;
+    const target = b.owner === me ? foe : me;
+    if (Math.abs(b.x - target.x) < 22 && target.h < 70 && target.state !== 'ko') {
+      b.gone = true;
+      strike(b.owner, target, b.damage, ATTACKS.fire.push);
+    }
+    if (b.x < -20 || b.x > WORLD_W + 20) b.gone = true;
+  }
+  // Two fireballs that meet cancel each other out
+  for (const a of fireballs) for (const b of fireballs) {
+    if (a !== b && a.owner !== b.owner && Math.abs(a.x - b.x) < 18) { a.gone = b.gone = true; }
+  }
+  fireballs = fireballs.filter(b => !b.gone);
+
+  // End of the round: someone is knocked out, or the time is up
+  if (me.hp <= 0 || foe.hp <= 0 || timeLeft <= 0) {
+    let winner;
+    if (me.hp <= 0 && foe.hp <= 0) winner = null;
+    else if (foe.hp <= 0) winner = me;
+    else if (me.hp <= 0) winner = foe;
+    else winner = me.hp / me.maxHp > foe.hp / foe.maxHp ? me : (foe.hp / foe.maxHp > me.hp / me.maxHp ? foe : null);
+
+    if (winner === me) myWins++;
+    else if (winner === foe) foeWins++;
+    roundText = (me.hp <= 0 || foe.hp <= 0) ? 'K.O.' : 'Time up';
+    if (winner === null) roundText = 'Draw';
+    phase = 'roundEnd';
+    phaseTimer = 2;
+    fireballs = [];
+  }
+}
+
+function afterRound() {
+  if (myWins >= ROUNDS_TO_WIN) {
+    score += 500 * level;
+    screen = level === LEVELS.length ? 'won' : 'clear';
+  } else if (foeWins >= ROUNDS_TO_WIN) {
+    screen = 'over';
+  } else {
+    roundNo++;
+    startRound();
+  }
+}
+
+// ---------- Drawing ----------
+// One fighter as a simple figure. Everything is drawn facing right, then flipped if needed.
+function drawFighter(f) {
+  const floor = GROUND - f.h;
+  ctx.save();
+  ctx.translate(f.x, floor);
+
+  // Shadow on the floor
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(0, f.h, 26, 6, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.scale(f.facing, 1);
+  if (f.state === 'ko') {
+    // Lying on the floor
+    const fall = Math.min(1, f.timer / 0.35);
+    ctx.rotate(-fall * Math.PI / 2);
+    ctx.translate(0, -fall * 8);
+  } else if (f.state === 'hit') {
+    ctx.rotate(-0.18);
+  }
+
+  // Body points (x to the front, y up is negative)
+  const hip = [0, -46], neck = [0, -84];
+  let handF = [16, -70], handB = [8, -66];        // front and back hand
+  let footF = [12, 0], footB = [-12, 0];          // front and back foot
+  const swing = Math.sin(clock * 12) * 10;
+
+  if (f.state === 'walk') { footF = [12 + swing, 0]; footB = [-12 - swing, 0]; }
+  else if (f.state === 'jump' || f.h > 0) { footF = [12, -16]; footB = [-10, -10]; }
+  else if (f.state === 'punch') { handF = [50, -76]; }
+  else if (f.state === 'kick') { footF = [72, -52]; handF = [10, -74]; handB = [-10, -64]; }
+  else if (f.state === 'fire') { handF = [40, -66]; handB = [36, -58]; }
+  else if (f.state === 'block') { handF = [14, -88]; handB = [10, -80]; }
+  else if (f.state === 'hit') { handF = [-6, -60]; handB = [-14, -58]; }
+
+  ctx.strokeStyle = f.color;
+  ctx.lineWidth = 9;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const limb = (a, mid, b) => { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(mid[0], mid[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); };
+  const half = (a, b, bend) => [(a[0] + b[0]) / 2 + bend[0], (a[1] + b[1]) / 2 + bend[1]];   // elbow or knee
+
+  limb(hip, half(hip, footB, [-4, -6]), footB);                 // back leg
+  limb(neck, half(neck, handB, [-6, 8]), handB);                // back arm
+  ctx.lineWidth = 12;
+  ctx.beginPath(); ctx.moveTo(hip[0], hip[1]); ctx.lineTo(neck[0], neck[1]); ctx.stroke();   // body
+  ctx.lineWidth = 9;
+  limb(hip, half(hip, footF, [6, -8]), footF);                  // front leg
+  limb(neck, half(neck, handF, [2, 10]), handF);                // front arm
+
+  // Head with a headband
+  ctx.fillStyle = f.color;
+  ctx.beginPath(); ctx.arc(2, -98, 13, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(-11, -104, 26, 5);
+  ctx.beginPath(); ctx.arc(8, -96, 2, 0, Math.PI * 2); ctx.fill();   // eye
+
+  // Shield glow while blocking
+  if (f.state === 'block') {
+    ctx.strokeStyle = 'rgba(143,208,255,0.8)';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(8, -62, 46, -1.1, 1.1); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawBars() {
+  const barW = 240, barH = 14, y = 16;
+  // Your health on the left (empties toward the middle), opponent's on the right
+  for (const [f, x, fromRight] of [[me, 20, false], [foe, WORLD_W - 20 - barW, true]]) {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(x, y, barW, barH);
+    const w = barW * (f.hp / f.maxHp);
+    ctx.fillStyle = f.hp / f.maxHp > 0.3 ? '#4dd4ac' : '#ff6b6b';
+    ctx.fillRect(fromRight ? x + barW - w : x, y, w, barH);
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x, y, barW, barH);
+  }
+  ctx.fillStyle = '#ffffff';
+  ctx.textBaseline = 'middle';
+  ctx.font = '600 13px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(me.name, 20, y + 26);
+  ctx.textAlign = 'right';
+  ctx.fillText(foe.name + '  (' + level + '/' + LEVELS.length + ')', WORLD_W - 20, y + 26);
+
+  // Timer in the middle
+  ctx.textAlign = 'center';
+  ctx.font = '700 22px system-ui, sans-serif';
+  ctx.fillText(Math.ceil(timeLeft), WORLD_W / 2, y + 8);
+
+  // Round wins: small dots under the bars
+  for (let i = 0; i < ROUNDS_TO_WIN; i++) {
+    ctx.fillStyle = i < myWins ? '#f4d35e' : 'rgba(255,255,255,0.25)';
+    ctx.beginPath(); ctx.arc(110 + i * 16, y + 26, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = i < foeWins ? '#f4d35e' : 'rgba(255,255,255,0.25)';
+    ctx.beginPath(); ctx.arc(WORLD_W - 190 - i * 16, y + 26, 5, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function draw() {
+  // Clear the whole canvas
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(0, 0, screenW, screenH);
+
+  // From here on, draw in game units (scaled and centred on screen)
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, WORLD_W, WORLD_H);
+  ctx.clip();
+
+  // Arena: evening sky, far hills, floor
+  const sky = ctx.createLinearGradient(0, 0, 0, GROUND);
+  sky.addColorStop(0, '#2a2350');
+  sky.addColorStop(1, '#c96a5a');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, WORLD_W, GROUND);
+  ctx.fillStyle = '#ffd9a0';
+  ctx.beginPath(); ctx.arc(480, 150, 34, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#3a2b55';
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND); ctx.lineTo(0, 190); ctx.lineTo(120, 150); ctx.lineTo(260, 200);
+  ctx.lineTo(400, 160); ctx.lineTo(540, 205); ctx.lineTo(640, 170); ctx.lineTo(640, GROUND);
+  ctx.fill();
+  ctx.fillStyle = '#4a3a2e';
+  ctx.fillRect(0, GROUND, WORLD_W, WORLD_H - GROUND);
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  for (let x = 0; x < WORLD_W; x += 64) ctx.fillRect(x, GROUND, 2, WORLD_H - GROUND);
+
+  if (me) {
+    drawFighter(foe);
+    drawFighter(me);
+
+    // Fireballs
+    for (const b of fireballs) {
+      const y = GROUND - b.h;
+      ctx.fillStyle = 'rgba(255,160,60,0.45)';
+      ctx.beginPath(); ctx.arc(b.x - b.dir * 10, y, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffb347';
+      ctx.beginPath(); ctx.arc(b.x, y, 11, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff3c4';
+      ctx.beginPath(); ctx.arc(b.x, y, 5, 0, Math.PI * 2); ctx.fill();
+    }
+    // Hit flashes
+    for (const s of sparks) {
+      const k = s.t / s.life;
+      ctx.globalAlpha = 1 - k;
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(s.x, s.y, 6 + 22 * k, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    drawBars();
+  }
+
+  // Round messages ("Round 1", "Fight!", "K.O.")
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (screen === 'fight' && phase !== 'fight') {
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 40px system-ui, sans-serif';
+    ctx.fillText(roundText, WORLD_W / 2, 120);
+  }
+
+  // Start and result screens
+  let text = null;
+  if (screen === 'title')      text = ['Duel Fighters', 'Win 2 rounds to beat each of the 10 opponents', 'Tap to start'];
+  else if (screen === 'clear') text = ['You beat ' + LEVELS[level - 1].name + '!', 'Next: ' + LEVELS[level].name, 'Tap to continue'];
+  else if (screen === 'won')   text = ['You are the champion!', 'Score ' + score, 'Tap to play again'];
+  else if (screen === 'over')  text = [LEVELS[level - 1].name + ' wins', 'Tap to try again'];
+  if (text) {
+    ctx.fillStyle = 'rgba(11,18,32,0.8)';
+    ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+    ctx.fillStyle = '#ffffff';
+    const gap = 34;
+    const top = WORLD_H / 2 - (text.length - 1) * gap / 2;
+    for (let i = 0; i < text.length; i++) {
+      ctx.font = i === 0 ? '700 30px system-ui, sans-serif' : '500 17px system-ui, sans-serif';
+      ctx.fillText(text[i], WORLD_W / 2, top + i * gap);
+    }
+  }
+  ctx.restore();
+
+  // Hint when the phone is upright
+  if (screenH > screenW * 1.2) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.font = '500 14px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Turn your phone sideways for a bigger view', screenW / 2, offY + WORLD_H * scale + 14);
+  }
+
+  // Fire button looks faded while recharging
+  if (me) btnFire.classList.toggle('wait', me.recharge > 0);
+}
+
+// ---------- Fit the arena to the screen ----------
+function resize() {
+  dpr = window.devicePixelRatio || 1;            // keep drawing sharp on phone screens
+  screenW = stage.clientWidth;
+  screenH = stage.clientHeight;
+  canvas.width  = Math.round(screenW * dpr);
+  canvas.height = Math.round(screenH * dpr);
+  scale = Math.min(screenW / WORLD_W, screenH / WORLD_H);
+  offX = (screenW - WORLD_W * scale) / 2;
+  offY = (screenH - WORLD_H * scale) / 2;
+}
+
+// ---------- Input: buttons (several can be held at once) ----------
+// held = true: the action lasts while the button is held (move, block)
+// held = false: the action happens once per press (jump, punch, kick, fire)
+function bindButton(id, key, held) {
+  const el = document.getElementById(id);
+  const onDown = (e) => {
+    e.preventDefault();
+    if (screen !== 'fight') { advance(); return; }
+    if (held) myInput[key] = true; else press(myInput, key);
+    el.classList.add('down');
+  };
+  const onUp = () => {
+    if (held) myInput[key] = false;
+    el.classList.remove('down');
+  };
+  el.addEventListener('pointerdown', onDown);
+  el.addEventListener('pointerup', onUp);
+  el.addEventListener('pointercancel', onUp);
+  el.addEventListener('pointerleave', onUp);
+  el.addEventListener('contextmenu', (e) => e.preventDefault());   // no long-press menu
+}
+bindButton('btnLeft', 'left', true);
+bindButton('btnRight', 'right', true);
+bindButton('btnBlock', 'block', true);
+bindButton('btnJump', 'jump', false);
+bindButton('btnPunch', 'punch', false);
+bindButton('btnKick', 'kick', false);
+bindButton('btnFire', 'fire', false);
+
+canvas.addEventListener('pointerdown', () => { if (screen !== 'fight') advance(); });
+
+// ---------- Input: keyboard (for testing on a laptop) ----------
+const KEY_HELD  = { a: 'left', ArrowLeft: 'left', d: 'right', ArrowRight: 'right', l: 'block' };
+const KEY_PRESS = { w: 'jump', ArrowUp: 'jump', j: 'punch', k: 'kick', i: 'fire' };
+window.addEventListener('keydown', (e) => {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (k === ' ') { if (screen !== 'fight') advance(); e.preventDefault(); return; }
+  if (KEY_HELD[k]) myInput[KEY_HELD[k]] = true;
+  else if (KEY_PRESS[k] && !e.repeat) press(myInput, KEY_PRESS[k]);
+  else return;
+  e.preventDefault();
+});
+window.addEventListener('keyup', (e) => {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (KEY_HELD[k]) myInput[KEY_HELD[k]] = false;
+});
+
+// ---------- Main loop ----------
+let lastTime = 0;
+function loop(time) {
+  // dt = seconds since last frame, capped so a paused tab does not jump the game
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ---------- Start ----------
+window.addEventListener('resize', resize);
+resize();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

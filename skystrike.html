@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Sky Strike</title>
+<style>
+  /* Page fills the phone screen: stats on top, game below */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b1220;
+    color: #ffffff;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  /* Top bar: score, level, power, lives */
+  #top {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 8px 10px;
+  }
+  .stat { text-align: center; min-width: 60px; }
+  .stat span {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+  }
+  .stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stat b.low { color: #ff6b6b; }               /* last life */
+
+  #stage { flex: 1; min-height: 0; }
+  #game { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div class="stat"><span>Score</span><b id="score">0</b></div>
+    <div class="stat"><span>Level</span><b id="level">1/10</b></div>
+    <div class="stat"><span>Power</span><b id="power">1</b></div>
+    <div class="stat"><span>Lives</span><b id="lives">3</b></div>
+  </div>
+  <div id="stage"><canvas id="game"></canvas></div>
+</div>
+
+<script>
+// =====================================================
+// SKY STRIKE - plane shooting game, with 10 levels
+// Slide your finger in the strip at the bottom to move your plane.
+// Your plane shoots by itself. Shoot the enemy planes and dodge their bullets.
+// Each level ends with a big boss plane.
+// P = stronger guns (up to power 3). Heart = extra life.
+// Keyboard (for laptop testing): arrows or A/D move, Space = start
+// =====================================================
+
+// ---------- Settings (change these to experiment) ----------
+const WORLD_W = 360, WORLD_H = 640;   // game area in game units
+const CONTROL_ZONE = 100;             // height of the finger strip at the bottom
+const FIELD_H = WORLD_H - CONTROL_ZONE;
+const PLAYER_Y = FIELD_H - 70;        // where your plane flies
+const MOVE_SPEED = 620;               // how fast your plane moves sideways (units per second)
+const FIRE_GAP = 0.18;                // seconds between your shots
+const SHOT_SPEED = 540;
+const START_LIVES = 3;                // lives are topped back up to this at each new level
+const MAX_POWER = 3;                  // 1 = single shot, 2 = double, 3 = triple spread
+const SAFE_TIME = 2;                  // seconds you cannot be hit again after losing a life
+const POWER_DROP = 0.12;              // chance that a destroyed plane drops a power-up
+const LIFE_DROP = 0.03;               // chance of a heart (only when a life is missing)
+const LEVEL_BONUS = 1000;             // bonus for finishing a level (multiplied by the level number)
+
+// How tough each kind of enemy is, and what it is worth
+const ENEMY = {
+  small:   { hp: 1, points: 100, size: 1.0 },   // flies straight down, weaving
+  zig:     { hp: 2, points: 150, size: 1.1 },   // sweeps from side to side
+  shooter: { hp: 4, points: 300, size: 1.3 },   // stops, hovers and shoots at you
+  boss:    { hp: 0, points: 2000, size: 3.2 }   // hp comes from the level table
+};
+
+// ---------- Levels ----------
+// waves   = groups of enemy planes before the boss arrives
+// gap     = seconds between groups
+// speed   = how fast enemy planes fly (game units per second)
+// bullets = how fast enemy bullets fly
+// boss    = hits needed to destroy the boss
+// To add a level, add one more line to this list.
+const LEVELS = [
+  { waves: 8,  gap: 2.6, speed: 110, bullets: 150, boss: 50  },   // 1
+  { waves: 9,  gap: 2.5, speed: 120, bullets: 160, boss: 65  },   // 2
+  { waves: 10, gap: 2.4, speed: 130, bullets: 170, boss: 80  },   // 3
+  { waves: 11, gap: 2.3, speed: 140, bullets: 180, boss: 95  },   // 4
+  { waves: 12, gap: 2.2, speed: 150, bullets: 190, boss: 110 },   // 5
+  { waves: 13, gap: 2.1, speed: 160, bullets: 200, boss: 125 },   // 6
+  { waves: 14, gap: 2.0, speed: 170, bullets: 210, boss: 140 },   // 7
+  { waves: 15, gap: 1.9, speed: 180, bullets: 220, boss: 155 },   // 8
+  { waves: 16, gap: 1.8, speed: 190, bullets: 230, boss: 170 },   // 9
+  { waves: 18, gap: 1.7, speed: 200, bullets: 240, boss: 200 }    // 10
+];
+
+// ---------- Page elements ----------
+const stage  = document.getElementById('stage');
+const canvas = document.getElementById('game');
+const ctx    = canvas.getContext('2d');
+const elScore = document.getElementById('score');
+const elLevel = document.getElementById('level');
+const elPower = document.getElementById('power');
+const elLives = document.getElementById('lives');
+
+// ---------- Game state ----------
+let screen = 'title';            // 'title' | 'play' | 'clear' | 'over' | 'won'
+let level = 1, score = 0, levelStartScore = 0;
+let lives = START_LIVES, power = 1;
+let planeX = WORLD_W / 2;        // centre of your plane
+let targetX = WORLD_W / 2;       // where your finger wants the plane to be
+let shots = [];                  // your bullets: { x, y, vx, vy }
+let enemyShots = [];             // enemy bullets
+let enemies = [];
+let drops = [];                  // falling power-ups: { kind, x, y }
+let sparks = [];                 // explosion pieces
+let effects = [];                // floating text
+let fireTimer = 0, safeTimer = 0;
+let wavesLeft = 0, waveTimer = 0;
+let bossState = 'none';          // 'none' | 'warning' | 'fighting'
+let bossTimer = 0;
+let seaScroll = 0, clock = 0;
+const keys = {};
+
+// Screen fitting
+let dpr = 1, scale = 1, offX = 0, offY = 0, screenW = 0, screenH = 0;
+
+// Islands in the sea (same every time, so the view is steady)
+const ISLANDS = [
+  { x: 60, y: 80, r: 34 }, { x: 290, y: 260, r: 46 }, { x: 120, y: 470, r: 28 },
+  { x: 250, y: 640, r: 38 }, { x: 40, y: 800, r: 30 }
+];
+const SEA_LOOP = 900;            // the sea picture repeats after this many units
+
+// ---------- Helpers ----------
+function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// ---------- Start a level ----------
+function startLevel(n) {
+  level = n;
+  levelStartScore = score;
+  shots = []; enemyShots = []; enemies = []; drops = []; sparks = []; effects = [];
+  wavesLeft = LEVELS[n - 1].waves;
+  waveTimer = 1.2;               // short calm before the first planes
+  bossState = 'none';
+  fireTimer = 0;
+  safeTimer = 0;
+  screen = 'play';
+  updateHud();
+}
+
+// Tap or Space: what happens depends on the current screen
+function advance() {
+  if (screen === 'title' || screen === 'won') { score = 0; lives = START_LIVES; power = 1; startLevel(1); }
+  else if (screen === 'clear') { lives = Math.max(lives, START_LIVES); startLevel(level + 1); }
+  else if (screen === 'over') { score = levelStartScore; lives = START_LIVES; power = 1; startLevel(level); }   // retry same level
+}
+
+function updateHud() {
+  elScore.textContent = score;
+  elLevel.textContent = level + '/' + LEVELS.length;
+  elPower.textContent = power;
+  elLives.textContent = lives;
+  elLives.classList.toggle('low', lives <= 1);
+}
+
+// ---------- Enemy planes ----------
+function addEnemy(kind, x, y, extra) {
+  const base = ENEMY[kind];
+  enemies.push(Object.assign({
+    kind, x, y, baseX: x, hp: base.hp, t: 0,
+    dir: Math.random() < 0.5 ? -1 : 1,
+    fireAt: -1,                 // small planes: the height at which they fire once (-1 = never)
+    fireTimer: rand(0.6, 1.4)   // shooters and the boss: time until the next shot
+  }, extra || {}));
+}
+
+// Send in one group of planes. Later levels unlock more kinds of group.
+function spawnWave() {
+  const kinds = ['line', 'column'];
+  if (level >= 2) kinds.push('vee');
+  if (level >= 3) kinds.push('zig');
+  if (level >= 4) kinds.push('shooter');
+  const kind = kinds[Math.floor(Math.random() * kinds.length)];
+  const fireChance = Math.min(0.5, 0.08 * level);
+  const maybeFire = () => (Math.random() < fireChance ? rand(60, 240) : -1);
+
+  if (kind === 'line') {
+    // Four planes side by side
+    const start = rand(50, 110);
+    for (let i = 0; i < 4; i++) addEnemy('small', start + i * 66, -30, { amp: 0, fireAt: maybeFire() });
+  } else if (kind === 'column') {
+    // Five planes one behind the other, weaving
+    const x = rand(80, WORLD_W - 80);
+    for (let i = 0; i < 5; i++) addEnemy('small', x, -30 - i * 48, { amp: 46, phase: i * 0.5, fireAt: maybeFire() });
+  } else if (kind === 'vee') {
+    // Five planes in a V shape
+    const x = rand(110, WORLD_W - 110);
+    for (let i = -2; i <= 2; i++) addEnemy('small', x + i * 42, -30 - Math.abs(i) * 34, { amp: 0, fireAt: maybeFire() });
+  } else if (kind === 'zig') {
+    for (let i = 0; i < 3; i++) addEnemy('zig', rand(50, WORLD_W - 50), -30 - i * 70);
+  } else {
+    const count = level >= 7 ? 2 : 1;
+    for (let i = 0; i < count; i++) addEnemy('shooter', rand(70, WORLD_W - 70), -40 - i * 60, { hoverY: rand(90, 190), hover: 0 });
+  }
+}
+
+function spawnBoss() {
+  addEnemy('boss', WORLD_W / 2, -80, { hp: LEVELS[level - 1].boss, maxHp: LEVELS[level - 1].boss, fireTimer: 1.5, pattern: 0 });
+  bossState = 'fighting';
+}
+
+// Fire one enemy bullet from (x, y) at an angle. 0 = straight down, positive = to the right.
+function enemyFire(x, y, angle) {
+  const speed = LEVELS[level - 1].bullets;
+  enemyShots.push({ x, y, vx: Math.sin(angle) * speed, vy: Math.cos(angle) * speed });
+}
+// Angle from (x, y) toward your plane
+function aimAt(x, y) { return Math.atan2(planeX - x, PLAYER_Y - y); }
+
+function updateEnemy(e, dt) {
+  const def = LEVELS[level - 1];
+  e.t += dt;
+
+  if (e.kind === 'small') {
+    const before = e.y;
+    e.y += def.speed * dt;
+    e.x = e.baseX + Math.sin(e.t * 2.2 + (e.phase || 0)) * (e.amp || 0);
+    // Fire once when passing its firing height
+    if (e.fireAt >= 0 && before < e.fireAt && e.y >= e.fireAt) enemyFire(e.x, e.y + 10, aimAt(e.x, e.y));
+  } else if (e.kind === 'zig') {
+    e.y += def.speed * 0.75 * dt;
+    e.x += e.dir * def.speed * 1.1 * dt;
+    if (e.x < 30) { e.x = 30; e.dir = 1; }
+    if (e.x > WORLD_W - 30) { e.x = WORLD_W - 30; e.dir = -1; }
+  } else if (e.kind === 'shooter') {
+    if (e.y < e.hoverY && e.hover < 5) {
+      e.y += def.speed * dt;                       // flying in
+    } else if (e.hover < 5) {
+      // Hovering: drift sideways and shoot at you
+      e.hover += dt;
+      e.x += e.dir * 55 * dt;
+      if (e.x < 40) { e.x = 40; e.dir = 1; }
+      if (e.x > WORLD_W - 40) { e.x = WORLD_W - 40; e.dir = -1; }
+      e.fireTimer -= dt;
+      if (e.fireTimer <= 0) {
+        enemyFire(e.x, e.y + 14, aimAt(e.x, e.y));
+        e.fireTimer = Math.max(0.8, 1.9 - level * 0.08);
+      }
+    } else {
+      e.y += def.speed * 1.2 * dt;                 // leaving
+    }
+  } else {
+    // Boss: fly in, then sweep side to side and fire patterns
+    if (e.y < 95) { e.y += 70 * dt; e.t = 0; return; }
+    e.x = WORLD_W / 2 + Math.sin(e.t * 0.8) * 105;
+    e.fireTimer -= dt;
+    if (e.fireTimer <= 0) {
+      if (e.pattern % 2 === 0) {
+        // Three bullets aimed at you
+        const a = aimAt(e.x, e.y + 30);
+        for (const off of [-0.22, 0, 0.22]) enemyFire(e.x, e.y + 30, a + off);
+      } else {
+        // A fan of five bullets
+        for (let i = -2; i <= 2; i++) enemyFire(e.x, e.y + 30, i * 0.32);
+      }
+      e.pattern++;
+      e.fireTimer = Math.max(0.9, 1.9 - level * 0.09);
+    }
+  }
+}
+
+// How close a shot must be to hit each kind of plane
+function hitRadius(e) { return e.kind === 'boss' ? 46 : 15 * ENEMY[e.kind].size; }
+
+function destroyEnemy(e) {
+  e.dead = true;
+  score += ENEMY[e.kind].points * (e.kind === 'boss' ? level : 1);
+  explode(e.x, e.y, e.kind === 'boss' ? 40 : 10, e.kind === 'boss' ? '#f79d65' : '#f4d35e');
+
+  if (e.kind === 'boss') return;
+  // Sometimes leave a power-up behind
+  const roll = Math.random();
+  if (roll < LIFE_DROP && lives < START_LIVES) drops.push({ kind: 'life', x: e.x, y: e.y });
+  else if (roll < LIFE_DROP + (e.kind === 'shooter' ? 0.4 : POWER_DROP)) drops.push({ kind: 'power', x: e.x, y: e.y });
+}
+
+function explode(x, y, count, color) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2, s = rand(40, 190);
+    sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: 0, life: rand(0.3, 0.7), color });
+  }
+}
+
+function floatText(text, x, y, color) {
+  effects.push({ text, x, y, color, t: 0, life: 0.9 });
+}
+
+// Your plane was hit
+function playerHit() {
+  lives--;
+  power = Math.max(1, power - 1);
+  safeTimer = SAFE_TIME;
+  enemyShots = [];                               // clear the bullets to give you a fresh start
+  explode(planeX, PLAYER_Y, 14, '#4dd4ac');
+  if (lives <= 0) { lives = 0; screen = 'over'; }
+}
+
+// ---------- Update: move the whole game forward by dt seconds ----------
+function update(dt) {
+  clock += dt;
+  for (const s of sparks) { s.t += dt; s.x += s.vx * dt; s.y += s.vy * dt; }
+  sparks = sparks.filter(s => s.t < s.life);
+  for (const e of effects) e.t += dt;
+  effects = effects.filter(e => e.t < e.life);
+
+  if (screen !== 'play') return;
+  const def = LEVELS[level - 1];
+  seaScroll = (seaScroll + 60 * dt) % SEA_LOOP;
+
+  // Move your plane toward your finger
+  if (keys['ArrowLeft']  || keys['a']) targetX = planeX - 60;
+  if (keys['ArrowRight'] || keys['d']) targetX = planeX + 60;
+  targetX = clamp(targetX, 22, WORLD_W - 22);
+  const step = MOVE_SPEED * dt;
+  planeX += clamp(targetX - planeX, -step, step);
+  safeTimer = Math.max(0, safeTimer - dt);
+
+  // Your guns fire by themselves
+  fireTimer -= dt;
+  if (fireTimer <= 0) {
+    fireTimer = FIRE_GAP;
+    const y = PLAYER_Y - 16;
+    if (power === 1) shots.push({ x: planeX, y, vx: 0, vy: -SHOT_SPEED });
+    else if (power === 2) {
+      shots.push({ x: planeX - 8, y, vx: 0, vy: -SHOT_SPEED });
+      shots.push({ x: planeX + 8, y, vx: 0, vy: -SHOT_SPEED });
+    } else {
+      shots.push({ x: planeX, y, vx: 0, vy: -SHOT_SPEED });
+      shots.push({ x: planeX - 8, y, vx: -SHOT_SPEED * 0.2, vy: -SHOT_SPEED });
+      shots.push({ x: planeX + 8, y, vx: SHOT_SPEED * 0.2, vy: -SHOT_SPEED });
+    }
+  }
+
+  // New groups of planes, then the boss
+  if (wavesLeft > 0) {
+    waveTimer -= dt;
+    if (waveTimer <= 0) { spawnWave(); wavesLeft--; waveTimer = def.gap; }
+  } else if (bossState === 'none' && enemies.length === 0) {
+    bossState = 'warning';
+    bossTimer = 2;
+  } else if (bossState === 'warning') {
+    bossTimer -= dt;
+    if (bossTimer <= 0) spawnBoss();
+  }
+
+  // Move everything
+  for (const s of shots) { s.x += s.vx * dt; s.y += s.vy * dt; }
+  for (const s of enemyShots) { s.x += s.vx * dt; s.y += s.vy * dt; }
+  for (const d of drops) d.y += 110 * dt;
+  for (const e of enemies) updateEnemy(e, dt);
+
+  // Your shots hitting enemy planes
+  for (const s of shots) {
+    for (const e of enemies) {
+      if (e.dead || s.used) continue;
+      if (Math.abs(s.x - e.x) < hitRadius(e) && Math.abs(s.y - e.y) < hitRadius(e)) {
+        s.used = true;
+        e.hp--;
+        e.flash = 0.08;
+        if (e.hp <= 0) destroyEnemy(e);
+      }
+    }
+  }
+  for (const e of enemies) if (e.flash) e.flash = Math.max(0, e.flash - dt);
+
+  // Things hitting your plane (the hit area is smaller than the plane, to be forgiving)
+  if (safeTimer === 0) {
+    let hit = false;
+    for (const s of enemyShots) {
+      if (Math.abs(s.x - planeX) < 9 && Math.abs(s.y - PLAYER_Y) < 12) { hit = true; break; }
+    }
+    for (const e of enemies) {
+      if (e.dead) continue;
+      const r = hitRadius(e) * 0.8 + 8;
+      if (Math.abs(e.x - planeX) < r && Math.abs(e.y - PLAYER_Y) < r) {
+        hit = true;
+        if (e.kind !== 'boss') { e.dead = true; explode(e.x, e.y, 10, '#f4d35e'); }
+        break;
+      }
+    }
+    if (hit) playerHit();
+  }
+
+  // Power-ups
+  for (const d of drops) {
+    if (Math.abs(d.x - planeX) < 26 && Math.abs(d.y - PLAYER_Y) < 26) {
+      d.taken = true;
+      if (d.kind === 'life') { lives = Math.min(START_LIVES, lives + 1); floatText('+1 life', d.x, d.y, '#ff8fab'); }
+      else if (power < MAX_POWER) { power++; floatText('Power up!', d.x, d.y, '#f4d35e'); }
+      else { score += 250; floatText('+250', d.x, d.y, '#f4d35e'); }
+    }
+  }
+
+  // Tidy up anything used or off the screen
+  const bossWasAlive = bossState === 'fighting';
+  shots = shots.filter(s => !s.used && s.y > -20 && s.x > -20 && s.x < WORLD_W + 20);
+  enemyShots = enemyShots.filter(s => s.y < FIELD_H + 20 && s.y > -40 && s.x > -20 && s.x < WORLD_W + 20);
+  enemies = enemies.filter(e => !e.dead && e.y < FIELD_H + 60);
+  drops = drops.filter(d => !d.taken && d.y < FIELD_H + 20);
+
+  // Boss destroyed: level finished
+  if (screen === 'play' && bossWasAlive && !enemies.some(e => e.kind === 'boss')) {
+    score += LEVEL_BONUS * level;
+    enemyShots = [];
+    screen = level === LEVELS.length ? 'won' : 'clear';
+  }
+  updateHud();
+}
+
+// ---------- Drawing ----------
+// A plane seen from above. "down" = flying toward the bottom of the screen.
+function drawPlane(x, y, size, color, down) {
+  ctx.save();
+  ctx.translate(x, y);
+  if (down) ctx.rotate(Math.PI);
+  ctx.scale(size, size);
+  ctx.fillStyle = color;
+  // Wings
+  ctx.beginPath();
+  ctx.moveTo(-17, 4); ctx.lineTo(17, 4); ctx.lineTo(11, -4); ctx.lineTo(-11, -4);
+  ctx.closePath(); ctx.fill();
+  // Tail
+  ctx.beginPath();
+  ctx.moveTo(-8, 14); ctx.lineTo(8, 14); ctx.lineTo(4, 9); ctx.lineTo(-4, 9);
+  ctx.closePath(); ctx.fill();
+  // Body
+  ctx.beginPath(); ctx.ellipse(0, 0, 4.5, 15, 0, 0, Math.PI * 2); ctx.fill();
+  // Cockpit
+  ctx.fillStyle = 'rgba(11,18,32,0.7)';
+  ctx.beginPath(); ctx.ellipse(0, -4, 2.2, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function draw() {
+  // Clear the whole canvas
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(0, 0, screenW, screenH);
+
+  // From here on, draw in game units (scaled and centred on screen)
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
+
+  // Keep all drawing inside the game area
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, WORLD_W, WORLD_H);
+  ctx.clip();
+
+  // Sea with islands and wave marks scrolling past
+  ctx.fillStyle = '#1b6ca8';
+  ctx.fillRect(0, 0, WORLD_W, FIELD_H);
+  for (const isl of ISLANDS) {
+    const y = ((isl.y + seaScroll) % SEA_LOOP) - 120;
+    ctx.fillStyle = '#e6d6a0';
+    ctx.beginPath(); ctx.ellipse(isl.x, y, isl.r + 6, isl.r * 0.75 + 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3f8f4f';
+    ctx.beginPath(); ctx.ellipse(isl.x, y, isl.r, isl.r * 0.75, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  for (let i = 0; i < 26; i++) {
+    const x = (i * 97) % WORLD_W, y = ((i * 61 + seaScroll * 1.4) % (FIELD_H + 20)) - 10;
+    ctx.fillRect(x, y, 16, 2);
+  }
+
+  // Power-ups
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const d of drops) {
+    ctx.fillStyle = d.kind === 'life' ? '#ff8fab' : '#f4d35e';
+    ctx.beginPath(); ctx.arc(d.x, d.y, 12, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#0b1220';
+    ctx.font = '700 14px system-ui, sans-serif';
+    ctx.fillText(d.kind === 'life' ? '♥' : 'P', d.x, d.y + 1);
+  }
+
+  // Enemy planes (they flash white when hit)
+  for (const e of enemies) {
+    const color = e.flash ? '#ffffff'
+      : e.kind === 'boss' ? '#8c3b3b' : e.kind === 'shooter' ? '#b388eb' : e.kind === 'zig' ? '#f79d65' : '#ff6b6b';
+    drawPlane(e.x, e.y, ENEMY[e.kind].size, color, true);
+    if (e.kind === 'boss') {
+      // Boss health bar
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(60, 10, WORLD_W - 120, 8);
+      ctx.fillStyle = '#ff6b6b';
+      ctx.fillRect(60, 10, (WORLD_W - 120) * Math.max(0, e.hp / e.maxHp), 8);
+    }
+  }
+
+  // Bullets
+  ctx.fillStyle = '#fff6b0';
+  for (const s of shots) ctx.fillRect(s.x - 2, s.y - 7, 4, 12);
+  for (const s of enemyShots) {
+    ctx.fillStyle = '#ff3b3b';
+    ctx.beginPath(); ctx.arc(s.x, s.y, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffd0d0';
+    ctx.beginPath(); ctx.arc(s.x, s.y, 2, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Your plane (it blinks while protected after a hit)
+  if (screen !== 'title' && screen !== 'over') {
+    const blink = safeTimer > 0 && Math.floor(safeTimer * 10) % 2 === 0;
+    if (!blink) drawPlane(planeX, PLAYER_Y, 1.25, '#4dd4ac', false);
+  }
+
+  // Explosions
+  for (const s of sparks) {
+    ctx.globalAlpha = 1 - s.t / s.life;
+    ctx.fillStyle = s.color;
+    ctx.beginPath(); ctx.arc(s.x, s.y, 3, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Boss warning
+  if (screen === 'play' && bossState === 'warning' && Math.floor(clock * 4) % 2 === 0) {
+    ctx.fillStyle = '#ff6b6b';
+    ctx.font = '700 26px system-ui, sans-serif';
+    ctx.fillText('BOSS INCOMING', WORLD_W / 2, FIELD_H / 2 - 60);
+  }
+
+  drawControlZone();
+
+  // Floating text
+  for (const e of effects) {
+    ctx.globalAlpha = 1 - e.t / e.life;
+    ctx.fillStyle = e.color;
+    ctx.font = '700 16px system-ui, sans-serif';
+    ctx.fillText(e.text, e.x, e.y - 30 * (e.t / e.life));
+    ctx.globalAlpha = 1;
+  }
+
+  // Messages
+  let text = null;
+  if (screen === 'title')      text = ['Sky Strike', 'Slide in the bottom strip to fly', 'Your plane shoots by itself', 'Tap to start'];
+  else if (screen === 'clear') text = ['Level ' + level + ' clear!', 'Tap for level ' + (level + 1)];
+  else if (screen === 'won')   text = ['You win!', 'Score ' + score, 'Tap to play again'];
+  else if (screen === 'over')  text = ['Game over', 'Tap to retry level ' + level];
+  if (text) {
+    ctx.fillStyle = 'rgba(11,18,32,0.78)';
+    ctx.fillRect(0, 0, WORLD_W, FIELD_H);
+    ctx.fillStyle = '#ffffff';
+    const gap = 32;
+    const top = FIELD_H / 2 - (text.length - 1) * gap / 2;
+    for (let i = 0; i < text.length; i++) {
+      ctx.font = i === 0 ? '700 28px system-ui, sans-serif' : '500 17px system-ui, sans-serif';
+      ctx.fillText(text[i], WORLD_W / 2, top + i * gap);
+    }
+  }
+  ctx.restore();
+}
+
+// The finger strip at the bottom
+function drawControlZone() {
+  ctx.fillStyle = '#0e1730';
+  ctx.fillRect(0, FIELD_H, WORLD_W, CONTROL_ZONE);
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillRect(0, FIELD_H, WORLD_W, 1);
+
+  // Small marker showing where your plane is
+  ctx.fillStyle = 'rgba(77,212,172,0.35)';
+  ctx.beginPath();
+  ctx.arc(planeX, FIELD_H + CONTROL_ZONE / 2 - 6, 20, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.font = '500 13px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('◀  slide here  ▶', WORLD_W / 2, WORLD_H - 14);
+}
+
+// ---------- Fit the game area to the screen ----------
+function resize() {
+  dpr = window.devicePixelRatio || 1;            // keep drawing sharp on phone screens
+  screenW = stage.clientWidth;
+  screenH = stage.clientHeight;
+  canvas.width  = Math.round(screenW * dpr);
+  canvas.height = Math.round(screenH * dpr);
+  scale = Math.min(screenW / WORLD_W, screenH / WORLD_H);
+  offX = (screenW - WORLD_W * scale) / 2;
+  offY = (screenH - WORLD_H * scale) / 2;
+}
+
+// ---------- Input: slide to move ----------
+let dragging = false;
+function steer(e) {
+  const rect = canvas.getBoundingClientRect();
+  targetX = (e.clientX - rect.left - offX) / scale;
+}
+canvas.addEventListener('pointerdown', (e) => {
+  if (screen !== 'play') { advance(); return; }
+  dragging = true;
+  canvas.setPointerCapture(e.pointerId);
+  steer(e);
+});
+canvas.addEventListener('pointermove', (e) => {
+  // With a mouse the plane follows without holding the button; with a finger it follows the slide
+  if (screen === 'play' && (dragging || e.pointerType === 'mouse')) steer(e);
+});
+canvas.addEventListener('pointerup', () => { dragging = false; });
+canvas.addEventListener('pointercancel', () => { dragging = false; });
+
+// ---------- Input: keyboard (for testing on a laptop) ----------
+window.addEventListener('keydown', (e) => {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  keys[k] = true;
+  if (k === ' ' && screen !== 'play') advance();
+  if (k.startsWith('Arrow') || k === ' ') e.preventDefault();
+});
+window.addEventListener('keyup', (e) => {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  keys[k] = false;
+  if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'a' || k === 'd') targetX = planeX;
+});
+
+// ---------- Main loop ----------
+let lastTime = 0;
+function loop(time) {
+  // dt = seconds since last frame, capped so a paused tab does not jump the game
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ---------- Start ----------
+window.addEventListener('resize', resize);
+resize();
+updateHud();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
