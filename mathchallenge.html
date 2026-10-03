@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Math Challenge</title>
+<style>
+  /* Page fills the phone screen: stats on top, question in the middle, answers at the bottom */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b1220;
+    color: #ffffff;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+  #app {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 10px 14px 16px;
+    gap: 12px;
+  }
+
+  /* Top bar: score, level, question number, lives */
+  #top {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+  }
+  .stat { text-align: center; min-width: 60px; }
+  .stat span {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+  }
+  .stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stat b.low { color: #ff6b6b; }               /* last life */
+
+  /* Time bar: shrinks as the time for the question runs out */
+  #timeTrack {
+    height: 10px;
+    border-radius: 5px;
+    background: #1c2742;
+    overflow: hidden;
+  }
+  #timeBar {
+    height: 100%;
+    width: 100%;
+    background: #4dd4ac;
+    border-radius: 5px;
+  }
+  #timeBar.low { background: #ff6b6b; }
+
+  /* The question takes the middle of the screen */
+  #questionWrap {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  #topic {
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.5);
+  }
+  #question {
+    font-size: 52px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+  #feedback { height: 24px; font-size: 18px; font-weight: 600; }
+  #feedback.good { color: #4dd4ac; }
+  #feedback.bad  { color: #ff6b6b; }
+
+  /* Four big answer buttons at the bottom, so your fingers do not cover the question */
+  #answers {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  #answers button {
+    height: 84px;
+    border: 0;
+    border-radius: 14px;
+    background: #1c2742;
+    color: #ffffff;
+    font-size: 30px;
+    font-weight: 700;
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+  }
+  #answers button:active { background: #2c3a60; }
+  #answers button.right { background: #2a6f5c; }
+  #answers button.wrong { background: #a33b3b; }
+
+  /* Message shown between levels */
+  #overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: rgba(11,18,32,0.94);
+    text-align: center;
+    padding: 20px;
+  }
+  #overlay.hidden { display: none; }
+  #overlay h1 { margin: 0; font-size: 28px; }
+  #overlay p  { margin: 0; font-size: 17px; color: rgba(255,255,255,0.8); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div class="stat"><span>Score</span><b id="score">0</b></div>
+    <div class="stat"><span>Level</span><b id="level">1/10</b></div>
+    <div class="stat"><span>Question</span><b id="count">0/10</b></div>
+    <div class="stat"><span>Lives</span><b id="lives">3</b></div>
+  </div>
+
+  <div id="timeTrack"><div id="timeBar"></div></div>
+
+  <div id="questionWrap">
+    <div id="topic"></div>
+    <div id="question"></div>
+    <div id="feedback"></div>
+  </div>
+
+  <div id="answers">
+    <button></button><button></button><button></button><button></button>
+  </div>
+
+  <div id="overlay">
+    <h1 id="msgTitle">Math Challenge</h1>
+    <p id="msgLine1">Pick the right answer before the time runs out</p>
+    <p id="msgLine2">Tap to start</p>
+  </div>
+</div>
+
+<script>
+// =====================================================
+// MATH CHALLENGE - quick maths quiz for phones, with 10 levels
+// Each level has 10 questions. Tap the right answer before the time bar runs out.
+// A wrong answer or running out of time costs a life.
+// Faster answers score more points.
+// =====================================================
+
+// ---------- Settings (change these to experiment) ----------
+const QUESTIONS_PER_LEVEL = 10;
+const START_LIVES   = 3;         // lives are topped back up to this at each new level
+const BASE_POINTS   = 100;       // points for a correct answer (multiplied by the level number)
+const SPEED_POINTS  = 100;       // extra points for a very fast answer (multiplied by the level number)
+const LEVEL_BONUS   = 500;       // bonus for finishing a level (multiplied by the level number)
+const SHOW_ANSWER_MS = 800;      // pause after each answer, so you can see if it was right
+
+// ---------- Levels ----------
+// name  = shown above the question
+// time  = seconds allowed for each question
+// types = kinds of question in this level (one is picked at random each time):
+//   ['add', max]        a + b, answer up to max
+//   ['sub', max]        a - b, numbers up to max, answer never below zero
+//   ['mul', tables]     times tables from the list, multiplied by 2 to 10
+//   ['div', tables]     division with a whole-number answer, dividing by a number from the list
+//   ['two']             two steps, such as 4 + 3 x 5 (multiply first)
+// To add a level, add one more line to this list.
+const ALL_TABLES = [2, 3, 4, 5, 6, 7, 8, 9, 10];
+const LEVELS = [
+  { name: 'Adding to 10',            time: 12, types: [['add', 10]] },                                          // 1
+  { name: 'Add and subtract to 20',  time: 12, types: [['add', 20], ['sub', 20]] },                             // 2
+  { name: 'Add and subtract to 50',  time: 10, types: [['add', 50], ['sub', 50]] },                             // 3
+  { name: 'Times tables 2, 5, 10',   time: 10, types: [['mul', [2, 5, 10]]] },                                  // 4
+  { name: 'All times tables',        time: 10, types: [['mul', ALL_TABLES]] },                                  // 5
+  { name: 'Add, subtract, multiply', time: 9,  types: [['add', 100], ['sub', 100], ['mul', ALL_TABLES]] },      // 6
+  { name: 'Division',                time: 9,  types: [['div', ALL_TABLES]] },                                  // 7
+  { name: 'All four',                time: 8,  types: [['add', 100], ['sub', 100], ['mul', ALL_TABLES], ['div', ALL_TABLES]] },   // 8
+  { name: 'Two steps',               time: 12, types: [['two']] },                                              // 9
+  { name: 'Everything',              time: 8,  types: [['add', 100], ['sub', 100], ['mul', ALL_TABLES], ['div', ALL_TABLES], ['two']] }   // 10
+];
+
+// ---------- Page elements ----------
+const overlay   = document.getElementById('overlay');
+const msgTitle  = document.getElementById('msgTitle');
+const msgLine1  = document.getElementById('msgLine1');
+const msgLine2  = document.getElementById('msgLine2');
+const elScore = document.getElementById('score');
+const elLevel = document.getElementById('level');
+const elCount = document.getElementById('count');
+const elLives = document.getElementById('lives');
+const elTopic = document.getElementById('topic');
+const elQuestion = document.getElementById('question');
+const elFeedback = document.getElementById('feedback');
+const timeBar = document.getElementById('timeBar');
+const buttons = Array.from(document.querySelectorAll('#answers button'));
+
+// ---------- Game state ----------
+let screen = 'title';            // 'title' | 'play' | 'clear' | 'over' | 'won'
+let level = 1, score = 0, levelStartScore = 0, lives = START_LIVES;
+let questionNo = 0;              // which question of the level we are on (1 to 10)
+let current = null;              // { text, answer, choices }
+let timeLeft = 0;                // seconds left for the current question
+let answered = false;            // true during the short pause after an answer
+let nextTimer = null;
+
+// ---------- Helpers ----------
+// Whole random number from lo to hi (both included)
+function rand(lo, hi) { return lo + Math.floor(Math.random() * (hi - lo + 1)); }
+function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
+function shuffle(list) {
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  return list;
+}
+
+// ---------- Making questions ----------
+// Returns { text, answer, near } where "near" are tempting wrong answers
+function makeSum(type) {
+  const kind = type[0];
+  if (kind === 'add') {
+    const max = type[1];
+    const a = rand(1, max - 1), b = rand(1, max - a);
+    return { text: a + ' + ' + b, answer: a + b, near: [a + b + 10, a + b - 10] };
+  }
+  if (kind === 'sub') {
+    const max = type[1];
+    const a = rand(2, max), b = rand(1, a - 1);
+    return { text: a + ' − ' + b, answer: a - b, near: [a - b + 10, a - b - 10, a + b] };
+  }
+  if (kind === 'mul') {
+    const a = pick(type[1]), b = rand(2, 10);
+    const text = Math.random() < 0.5 ? a + ' × ' + b : b + ' × ' + a;
+    return { text, answer: a * b, near: [a * (b + 1), a * (b - 1), (a + 1) * b, a + b] };
+  }
+  if (kind === 'div') {
+    const b = pick(type[1]), q = rand(2, 10);
+    return { text: (b * q) + ' ÷ ' + b, answer: q, near: [q + 1, q - 1, b] };
+  }
+  // Two steps: multiply first, then add or subtract
+  const a = rand(2, 9), b = rand(2, 9), c = rand(1, 9);
+  const form = rand(1, 3);
+  if (form === 1) return { text: c + ' + ' + a + ' × ' + b, answer: c + a * b, near: [(c + a) * b, c + a + b] };
+  if (form === 2) return { text: a + ' × ' + b + ' + ' + c, answer: a * b + c, near: [a * (b + c), a * b - c] };
+  const d = Math.min(c, a * b - 1);               // keep the answer above zero
+  return { text: a + ' × ' + b + ' − ' + d, answer: a * b - d, near: [a * b + d, Math.abs(a * (b - d))] };
+}
+
+// Build a full question: the sum plus four different answers to choose from
+function makeQuestion() {
+  const sum = makeSum(pick(LEVELS[level - 1].types));
+  const choices = [sum.answer];
+
+  // Start with the tempting wrong answers, then add close numbers until there are four
+  const candidates = shuffle(sum.near.slice()).concat(shuffle([
+    sum.answer + 1, sum.answer - 1, sum.answer + 2, sum.answer - 2, sum.answer + 3, sum.answer + 5
+  ]));
+  for (const c of candidates) {
+    if (choices.length === 4) break;
+    if (c >= 0 && !choices.includes(c)) choices.push(c);
+  }
+  return { text: sum.text, answer: sum.answer, choices: shuffle(choices) };
+}
+
+// ---------- Game flow ----------
+function startLevel(n) {
+  level = n;
+  levelStartScore = score;
+  questionNo = 0;
+  screen = 'play';
+  overlay.classList.add('hidden');
+  elTopic.textContent = LEVELS[n - 1].name;
+  nextQuestion();
+}
+
+function nextQuestion() {
+  questionNo++;
+  current = makeQuestion();
+  answered = false;
+  timeLeft = LEVELS[level - 1].time;
+  elQuestion.textContent = current.text + ' = ?';
+  elFeedback.textContent = '';
+  elFeedback.className = '';
+  buttons.forEach((btn, i) => {
+    btn.textContent = current.choices[i];
+    btn.className = '';
+  });
+  updateHud();
+}
+
+// Called when an answer button is tapped (index 0-3), or with -1 when the time runs out
+function answer(index) {
+  if (screen !== 'play' || answered) return;
+  answered = true;
+
+  const chosen = index >= 0 ? current.choices[index] : null;
+  const correctIndex = current.choices.indexOf(current.answer);
+  buttons[correctIndex].classList.add('right');      // always show the right answer
+
+  if (chosen === current.answer) {
+    // Correct: more points for a faster answer
+    const share = Math.max(0, timeLeft / LEVELS[level - 1].time);
+    const points = Math.round((BASE_POINTS + SPEED_POINTS * share) * level);
+    score += points;
+    elFeedback.textContent = 'Correct! +' + points;
+    elFeedback.className = 'good';
+  } else {
+    lives--;
+    if (index >= 0) buttons[index].classList.add('wrong');
+    elFeedback.textContent = index >= 0 ? 'Not quite' : 'Out of time';
+    elFeedback.className = 'bad';
+  }
+  elQuestion.textContent = current.text + ' = ' + current.answer;
+  updateHud();
+
+  // Short pause, then the next question or the end of the level
+  nextTimer = setTimeout(afterAnswer, SHOW_ANSWER_MS);
+}
+
+function afterAnswer() {
+  if (lives <= 0) {
+    screen = 'over';
+    showMessage('Game over', 'You reached question ' + questionNo + ' of ' + QUESTIONS_PER_LEVEL, 'Tap to retry level ' + level);
+  } else if (questionNo >= QUESTIONS_PER_LEVEL) {
+    score += LEVEL_BONUS * level;
+    updateHud();
+    if (level === LEVELS.length) {
+      screen = 'won';
+      showMessage('You win!', 'Score ' + score, 'Tap to play again');
+    } else {
+      screen = 'clear';
+      showMessage('Level ' + level + ' clear!', 'Next: ' + LEVELS[level].name, 'Tap for level ' + (level + 1));
+    }
+  } else {
+    nextQuestion();
+  }
+}
+
+function showMessage(title, line1, line2) {
+  msgTitle.textContent = title;
+  msgLine1.textContent = line1;
+  msgLine2.textContent = line2;
+  overlay.classList.remove('hidden');
+}
+
+// Tap on the message: what happens depends on the current screen
+function advance() {
+  if (screen === 'title' || screen === 'won') { score = 0; lives = START_LIVES; startLevel(1); }
+  else if (screen === 'clear') { lives = Math.max(lives, START_LIVES); startLevel(level + 1); }
+  else if (screen === 'over') { score = levelStartScore; lives = START_LIVES; startLevel(level); }   // retry same level
+}
+
+function updateHud() {
+  elScore.textContent = score;
+  elLevel.textContent = level + '/' + LEVELS.length;
+  elCount.textContent = questionNo + '/' + QUESTIONS_PER_LEVEL;
+  elLives.textContent = Math.max(0, lives);
+  elLives.classList.toggle('low', lives <= 1);
+}
+
+// ---------- Timer ----------
+function update(dt) {
+  if (screen !== 'play' || answered) return;
+  timeLeft -= dt;
+  const share = Math.max(0, timeLeft / LEVELS[level - 1].time);
+  timeBar.style.width = (share * 100) + '%';
+  timeBar.classList.toggle('low', share < 0.3);
+  if (timeLeft <= 0) answer(-1);                  // time ran out
+}
+
+// ---------- Input ----------
+buttons.forEach((btn, i) => btn.addEventListener('click', () => answer(i)));
+overlay.addEventListener('click', advance);
+
+// Keyboard (for testing on a laptop): 1-4 pick an answer, Space or Enter starts
+window.addEventListener('keydown', (e) => {
+  if (screen === 'play' && e.key >= '1' && e.key <= '4') answer(Number(e.key) - 1);
+  else if ((e.key === ' ' || e.key === 'Enter') && screen !== 'play') { advance(); e.preventDefault(); }
+});
+
+// ---------- Main loop ----------
+let lastTime = 0;
+function loop(time) {
+  // dt = seconds since last frame, capped so a paused tab does not use up the question time
+  const dt = Math.min((time - lastTime) / 1000, 0.1);
+  lastTime = time;
+  update(dt);
+  requestAnimationFrame(loop);
+}
+
+// ---------- Start ----------
+updateHud();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
