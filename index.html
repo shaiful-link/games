@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Games</title>
+<style>
+  /* Menu page: one card per game, stacked on phones, two columns on wider screens */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    min-height: 100%;
+    background: #0b1220;
+    color: #ffffff;
+    font-family: system-ui, sans-serif;
+  }
+  main {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 32px 16px 40px;
+  }
+  h1 {
+    margin: 0 0 4px;
+    font-size: 30px;
+  }
+  .sub {
+    margin: 0 0 24px;
+    color: rgba(255,255,255,0.6);
+    font-size: 15px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  @media (min-width: 560px) {
+    .grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  /* Each card is one big link, easy to tap */
+  .card {
+    display: block;
+    padding: 18px 18px 20px;
+    border-radius: 14px;
+    background: #111a2e;
+    border-left: 6px solid var(--accent);
+    color: #ffffff;
+    text-decoration: none;
+  }
+  .card:active, .card:hover { background: #1c2742; }
+  .card h2 {
+    margin: 0 0 6px;
+    font-size: 20px;
+    color: var(--accent);
+  }
+  .card p {
+    margin: 0 0 10px;
+    font-size: 14px;
+    line-height: 1.4;
+    color: rgba(255,255,255,0.75);
+  }
+  .card span {
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.5);
+  }
+  footer {
+    margin-top: 28px;
+    font-size: 13px;
+    color: rgba(255,255,255,0.45);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Games</h1>
+  <p class="sub">Tap a game to play.</p>
+
+  <!-- To add a game: copy one card, change the file name, title and text -->
+  <div class="grid">
+    <a class="card" href="pong.html" style="--accent:#4dd4ac">
+      <h2>Pong</h2>
+      <p>Drag to move your paddle. First to 7 wins.</p>
+      <span>Hold phone upright</span>
+    </a>
+
+    <a class="card" href="blockdrop.html" style="--accent:#b388eb">
+      <h2>Block Drop</h2>
+      <p>Stack the falling blocks and clear full lines.</p>
+      <span>Hold phone upright</span>
+    </a>
+
+    <a class="card" href="laneclash.html" style="--accent:#ff6b6b">
+      <h2>Lane Clash</h2>
+      <p>Lead your minions and destroy the red tower.</p>
+      <span>Hold phone upright</span>
+    </a>
+
+    <a class="card" href="slingsmash.html" style="--accent:#f4d35e">
+      <h2>Sling Smash</h2>
+      <p>Launch the ball and knock out every target.</p>
+      <span>Turn phone sideways</span>
+    </a>
+  </div>
+
+  <footer>Made by Shaiful</footer>
+</main>
+</body>
+</html>
