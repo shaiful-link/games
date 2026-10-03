@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Carrom</title>
+<style>
+  /* Page fills the phone screen: scores on top, board in the middle, buttons at the bottom */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b1220;
+    color: #ffffff;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  #app {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    padding: 10px 10px 12px;
+    gap: 8px;
+  }
+
+  /* Top bar: points for each side, and whose turn it is */
+  #top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .side { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; min-width: 64px; }
+  .side.right { justify-content: flex-end; }
+  .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); }
+  .dot.white { background: #f5f0e6; }
+  .dot.black { background: #2b2b2b; }
+  #status { font-size: 15px; color: rgba(255,255,255,0.85); text-align: center; flex: 1; }
+
+  #stage { flex: 1; min-height: 0; }
+  #game { display: block; width: 100%; height: 100%; }
+
+  #controls { display: flex; gap: 10px; }
+  #controls button, #modes button {
+    flex: 1;
+    height: 46px;
+    border: 0;
+    border-radius: 12px;
+    background: #1c2742;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 600;
+    font-family: inherit;
+  }
+  #controls button:active, #modes button:active { background: #2c3a60; }
+
+  /* Start screen and result screen */
+  #overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: rgba(11,18,32,0.94);
+    text-align: center;
+    padding: 24px;
+  }
+  #overlay.hidden { display: none; }
+  #overlay h1 { margin: 0; font-size: 30px; }
+  #overlay p  { margin: 0 0 6px; font-size: 16px; color: rgba(255,255,255,0.8); max-width: 320px; }
+  #modes { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 300px; }
+  #modes button { flex: none; height: 54px; font-size: 16px; }
+  #modes button.main { background: #2a6f5c; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div class="side"><span class="dot white"></span><span id="scoreW">0</span></div>
+    <div id="status">Carrom</div>
+    <div class="side right"><span id="scoreB">0</span><span class="dot black"></span></div>
+  </div>
+
+  <div id="stage"><canvas id="game"></canvas></div>
+
+  <div id="controls">
+    <button id="btnNew">New game</button>
+    <button id="btnMode">Change mode</button>
+  </div>
+
+  <div id="overlay">
+    <h1 id="msgTitle">Carrom</h1>
+    <p id="msgLine">You are white. Pocket your coins before the other side does.</p>
+    <div id="modes">
+      <button data-mode="easy" class="main">Computer: Easy</button>
+      <button data-mode="medium">Computer: Medium</button>
+      <button data-mode="hard">Computer: Hard</button>
+      <button data-mode="two">2 players, one phone</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================
+// CARROM - flick the striker to pocket your coins
+// You are white and shoot from the bottom line. The other side is black and shoots from the top.
+//
+// How to shoot:
+//   1. Slide in the strip under the board to move the striker along your line.
+//   2. Touch the board, pull your finger BACK (away from where you want to shoot), and let go.
+//      The arrow shows the direction and strength of the shot.
+//
+// Rules used in this version (simplified):
+// - Every coin is worth 1 point to its own colour, whoever pockets it.
+// - The red queen is worth 3 points to the side that pockets it.
+// - Pocket one of your own coins (or the queen) and you shoot again.
+// - If the striker goes into a pocket, that is a foul: one of your coins comes back to the board.
+// - The game ends when all coins of one colour are pocketed. Most points wins.
+// =====================================================
+
+// ---------- Settings (change these to experiment) ----------
+const BOARD = 600;               // size of the playing surface in game units
+const FRAME = 24;                // width of the wooden frame around it
+const STRIP = 110;               // height of the finger strip under the board
+const COIN_R = 13, STRIKER_R = 18, POCKET_R = 27;
+const POCKET_IN = 23;            // how far the pocket centres are from the corner
+const BASE_Y = { W: BOARD - 95, B: 95 };     // the line each side shoots from
+const BASE_X1 = 150, BASE_X2 = 450;          // how far along the line the striker may go
+const MAX_PULL = 150;            // pull length for a full-power shot (game units)
+const MAX_SPEED = 1500;          // striker speed at full power
+const FRICTION = 520;            // how quickly pieces slow down
+const WALL_BOUNCE = 0.75;        // speed kept after hitting the frame
+const COIN_BOUNCE = 0.92;        // speed kept when pieces hit each other
+const STRIKER_MASS = 2;          // the striker is heavier than a coin (coin = 1)
+const QUEEN_POINTS = 3;
+// How accurately the computer aims: smaller = better
+const AI_ERROR = { easy: 0.07, medium: 0.035, hard: 0.012 };
+
+const POCKETS = [
+  { x: POCKET_IN, y: POCKET_IN }, { x: BOARD - POCKET_IN, y: POCKET_IN },
+  { x: POCKET_IN, y: BOARD - POCKET_IN }, { x: BOARD - POCKET_IN, y: BOARD - POCKET_IN }
+];
+
+// ---------- Page elements ----------
+const stage   = document.getElementById('stage');
+const canvas  = document.getElementById('game');
+const ctx     = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const msgTitle = document.getElementById('msgTitle');
+const msgLine  = document.getElementById('msgLine');
+const elStatus = document.getElementById('status');
+const elW = document.getElementById('scoreW');
+const elB = document.getElementById('scoreB');
+
+// ---------- Game state ----------
+let mode = 'easy';               // 'easy' | 'medium' | 'hard' | 'two'
+let coins = [];                  // pieces on the board: { kind: 'W' | 'B' | 'Q', x, y, vx, vy, r, mass }
+let striker = null;              // { x, y, vx, vy, r, mass, on } (on = false after it was pocketed)
+let turn = 'W';                  // whose shot it is: 'W' (white, bottom) or 'B' (black, top)
+let phase = 'aim';               // 'aim' | 'moving' | 'think' | 'over'
+let points = { W: 0, B: 0 };
+let pocketedOwn = { W: 0, B: 0 };  // coins of each colour that are in the pockets
+let shotLog = [];                // what went into the pockets during the current shot
+let note = '';                   // short message shown after a shot
+let pull = null;                 // aiming: { x, y } pull vector in game units
+let pullStart = null;
+let thinkTimer = 0, aiShot = null;
+let playing = false;
+
+// Screen fitting
+let dpr = 1, scale = 1, offX = 0, offY = 0, screenW = 0, screenH = 0;
+const WORLD_W = BOARD + FRAME * 2, WORLD_H = BOARD + FRAME * 2 + STRIP;
+
+// ---------- Setting up ----------
+function makeCoin(kind, x, y) {
+  return { kind, x, y, vx: 0, vy: 0, r: COIN_R, mass: 1 };
+}
+
+function setUpBoard() {
+  coins = [];
+  const c = BOARD / 2;
+  coins.push(makeCoin('Q', c, c));
+  // Inner ring of 6 and outer ring of 12, colours alternating
+  const d1 = COIN_R * 2 + 1;
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 3 * i + Math.PI / 6;
+    coins.push(makeCoin(i % 2 ? 'B' : 'W', c + Math.cos(a) * d1, c + Math.sin(a) * d1));
+  }
+  for (let i = 0; i < 12; i++) {
+    const a = Math.PI / 6 * i + Math.PI / 6;
+    const d = i % 2 ? d1 * 1.75 : d1 * 2;       // the 12 outer coins sit in a hexagon shape
+    coins.push(makeCoin(i % 2 ? 'B' : 'W', c + Math.cos(a) * d, c + Math.sin(a) * d));
+  }
+}
+
+function startGame(newMode) {
+  if (newMode) mode = newMode;
+  setUpBoard();
+  points = { W: 0, B: 0 };
+  pocketedOwn = { W: 0, B: 0 };
+  turn = 'W';
+  note = '';
+  playing = true;
+  overlay.classList.add('hidden');
+  beginTurn();
+}
+
+// Put the striker on the shooter's line, ready to aim
+function beginTurn() {
+  striker = { x: BOARD / 2, y: BASE_Y[turn], vx: 0, vy: 0, r: STRIKER_R, mass: STRIKER_MASS, on: true };
+  nudgeStrikerClear();
+  pull = null;
+  pullStart = null;
+  if (mode !== 'two' && turn === 'B') {
+    phase = 'think';
+    thinkTimer = 0.9;
+    aiShot = null;
+  } else {
+    phase = 'aim';
+  }
+  updateHud();
+}
+
+// True if the striker is not sitting on top of a coin
+function strikerClear(x) {
+  return coins.every(c => Math.hypot(c.x - x, c.y - BASE_Y[turn]) >= c.r + STRIKER_R + 1);
+}
+// If the middle of the line is blocked, start at the nearest free spot
+function nudgeStrikerClear() {
+  if (strikerClear(striker.x)) return;
+  for (let d = 5; d <= 150; d += 5) {
+    for (const x of [BOARD / 2 - d, BOARD / 2 + d]) {
+      if (x >= BASE_X1 && x <= BASE_X2 && strikerClear(x)) { striker.x = x; return; }
+    }
+  }
+}
+
+function countOnBoard(kind) { return coins.filter(c => c.kind === kind).length; }
+
+function updateHud() {
+  elW.textContent = points.W;
+  elB.textContent = points.B;
+  if (!playing) return;
+  let text;
+  if (phase === 'moving') text = '';
+  else if (mode === 'two') text = (turn === 'W' ? 'White' : 'Black') + ' to shoot';
+  else text = turn === 'W' ? 'Your shot' : 'Computer is aiming';
+  elStatus.textContent = note ? note + (text ? ' · ' + text : '') : text;
+}
+
+// ---------- Shooting ----------
+function shoot(dirX, dirY, power) {
+  const len = Math.hypot(dirX, dirY) || 1;
+  striker.vx = dirX / len * MAX_SPEED * power;
+  striker.vy = dirY / len * MAX_SPEED * power;
+  shotLog = [];
+  note = '';
+  phase = 'moving';
+  pull = null;
+  updateHud();
+}
+
+// ---------- Physics ----------
+function allPieces() { return striker && striker.on ? coins.concat(striker) : coins; }
+
+// Move everything forward by a small step
+function step(dt) {
+  const pieces = allPieces();
+
+  for (const p of pieces) {
+    const speed = Math.hypot(p.vx, p.vy);
+    if (speed > 0) {
+      // Friction slows the piece down at a steady rate
+      const slower = Math.max(0, speed - FRICTION * dt);
+      p.vx *= slower / speed;
+      p.vy *= slower / speed;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+  }
+
+  // Pieces hitting each other
+  for (let i = 0; i < pieces.length; i++) {
+    for (let j = i + 1; j < pieces.length; j++) {
+      const a = pieces[i], b = pieces[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy), minDist = a.r + b.r;
+      if (dist >= minDist || dist === 0) continue;
+      const nx = dx / dist, ny = dy / dist;
+      // Push them apart so they do not overlap (the lighter piece moves more)
+      const overlap = minDist - dist, total = a.mass + b.mass;
+      a.x -= nx * overlap * (b.mass / total); a.y -= ny * overlap * (b.mass / total);
+      b.x += nx * overlap * (a.mass / total); b.y += ny * overlap * (a.mass / total);
+      // Exchange speed along the line between their centres
+      const closing = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+      if (closing <= 0) continue;
+      const impulse = (1 + COIN_BOUNCE) * closing / (1 / a.mass + 1 / b.mass);
+      a.vx -= impulse / a.mass * nx; a.vy -= impulse / a.mass * ny;
+      b.vx += impulse / b.mass * nx; b.vy += impulse / b.mass * ny;
+    }
+  }
+
+  for (const p of pieces) {
+    // Into a pocket?
+    for (const pk of POCKETS) {
+      if (Math.hypot(p.x - pk.x, p.y - pk.y) < POCKET_R) { p.pocketed = true; break; }
+    }
+    if (p.pocketed) continue;
+    // Bounce off the frame
+    if (p.x < p.r) { p.x = p.r; p.vx = Math.abs(p.vx) * WALL_BOUNCE; }
+    if (p.x > BOARD - p.r) { p.x = BOARD - p.r; p.vx = -Math.abs(p.vx) * WALL_BOUNCE; }
+    if (p.y < p.r) { p.y = p.r; p.vy = Math.abs(p.vy) * WALL_BOUNCE; }
+    if (p.y > BOARD - p.r) { p.y = BOARD - p.r; p.vy = -Math.abs(p.vy) * WALL_BOUNCE; }
+  }
+
+  // Take pocketed pieces off the board
+  if (striker.on && striker.pocketed) { striker.on = false; shotLog.push('S'); }
+  for (const c of coins) if (c.pocketed) shotLog.push(c.kind);
+  coins = coins.filter(c => !c.pocketed);
+}
+
+function anythingMoving() {
+  return allPieces().some(p => Math.hypot(p.vx, p.vy) > 0);
+}
+
+// ---------- Rules: what happens after a shot ----------
+function endShot() {
+  const me = turn, other = turn === 'W' ? 'B' : 'W';
+  let again = false;
+  const parts = [];
+
+  for (const k of shotLog) {
+    if (k === 'W' || k === 'B') {
+      points[k]++;
+      pocketedOwn[k]++;
+      if (k === me) again = true;
+    } else if (k === 'Q') {
+      points[me] += QUEEN_POINTS;
+      again = true;
+      parts.push('Queen! +' + QUEEN_POINTS);
+    }
+  }
+
+  if (shotLog.includes('S')) {
+    // Foul: the striker went in. One of the shooter's coins comes back, and the turn passes.
+    again = false;
+    if (pocketedOwn[me] > 0) {
+      pocketedOwn[me]--;
+      points[me]--;
+      returnCoin(me);
+      parts.push('Foul: a coin comes back');
+    } else {
+      parts.push('Foul');
+    }
+  }
+  note = parts.join(', ');
+
+  // Game over when one colour is completely pocketed
+  if (countOnBoard('W') === 0 || countOnBoard('B') === 0) { finishGame(); return; }
+
+  if (!again) turn = other;
+  beginTurn();
+}
+
+// Put a coin back near the centre of the board, in a free spot
+function returnCoin(kind) {
+  const c = BOARD / 2;
+  for (let d = 0; d < 200; d += 6) {
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
+      const x = c + Math.cos(a) * d, y = c + Math.sin(a) * d;
+      if (coins.every(o => Math.hypot(o.x - x, o.y - y) >= COIN_R * 2 + 1)) {
+        coins.push(makeCoin(kind, x, y));
+        return;
+      }
+    }
+  }
+}
+
+function finishGame() {
+  playing = false;
+  phase = 'over';
+  // Most points wins; on a tie, the side that cleared its coins wins
+  let winner;
+  if (points.W !== points.B) winner = points.W > points.B ? 'W' : 'B';
+  else winner = countOnBoard('W') === 0 ? 'W' : 'B';
+
+  if (mode === 'two') msgTitle.textContent = (winner === 'W' ? 'White' : 'Black') + ' wins!';
+  else msgTitle.textContent = winner === 'W' ? 'You win!' : 'Computer wins';
+  msgLine.textContent = 'White ' + points.W + '  ·  Black ' + points.B + '.  Play again?';
+  elW.textContent = points.W;
+  elB.textContent = points.B;
+  elStatus.textContent = 'Game over';
+  setTimeout(() => overlay.classList.remove('hidden'), 900);
+}
+
+// ---------- Computer player ----------
+// Shortest distance from point (px, py) to the line from (ax, ay) to (bx, by)
+function distToLine(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy || 1;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+}
+
+// Choose where to put the striker, which way to shoot and how hard
+function planShot(side, error) {
+  const y = BASE_Y[side];
+  let best = null;
+
+  for (const coin of coins) {
+    if (coin.kind !== side && coin.kind !== 'Q') continue;
+    for (const pk of POCKETS) {
+      // Direction the coin must travel to reach the pocket
+      const toPocket = Math.hypot(pk.x - coin.x, pk.y - coin.y);
+      const ux = (pk.x - coin.x) / toPocket, uy = (pk.y - coin.y) / toPocket;
+      // Nothing may be in the coin's way
+      if (coins.some(o => o !== coin && distToLine(o.x, o.y, coin.x, coin.y, pk.x, pk.y) < COIN_R * 2)) continue;
+      // Where the striker's centre must be at the moment it hits the coin
+      const gx = coin.x - ux * (STRIKER_R + COIN_R), gy = coin.y - uy * (STRIKER_R + COIN_R);
+
+      for (let x = BASE_X1; x <= BASE_X2; x += 15) {
+        if (!coins.every(o => Math.hypot(o.x - x, o.y - y) >= o.r + STRIKER_R + 1)) continue;
+        const dx = gx - x, dy = gy - y, dist = Math.hypot(dx, dy);
+        if (dist < 5) continue;
+        const straight = (dx * ux + dy * uy) / dist;        // 1 = a dead-straight shot
+        if (straight < 0.35) continue;
+        // Nothing may be in the striker's way
+        if (coins.some(o => o !== coin && distToLine(o.x, o.y, x, y, gx, gy) < STRIKER_R + COIN_R)) continue;
+
+        const value = straight * 2 - dist / 900 - toPocket / 700 + (coin.kind === 'Q' ? 0.3 : 0);
+        if (!best || value > best.value) {
+          const speed = Math.min(MAX_SPEED, (560 + dist * 0.75 + toPocket * 1.5) / Math.max(0.5, straight));
+          best = { value, x, dx, dy, power: speed / MAX_SPEED };
+        }
+      }
+    }
+  }
+
+  if (!best) {
+    // No clean shot: hit the nearest own coin and hope
+    let target = null, td = Infinity;
+    for (const coin of coins) {
+      if (coin.kind !== side) continue;
+      const d = Math.hypot(coin.x - BOARD / 2, coin.y - y);
+      if (d < td) { td = d; target = coin; }
+    }
+    let x = BOARD / 2;
+    for (let d = 0; d <= 150; d += 15) {
+      const free = [BOARD / 2 - d, BOARD / 2 + d].find(px => coins.every(o => Math.hypot(o.x - px, o.y - y) >= o.r + STRIKER_R + 1));
+      if (free !== undefined) { x = free; break; }
+    }
+    target = target || { x: BOARD / 2, y: BOARD / 2 };
+    best = { x, dx: target.x - x, dy: target.y - y, power: 0.6 };
+  }
+
+  // Add a little aiming error (bigger on easier levels)
+  const wobble = (Math.random() + Math.random() + Math.random() - 1.5) * 2 * error;
+  const ang = Math.atan2(best.dy, best.dx) + wobble;
+  return { x: best.x, dirX: Math.cos(ang), dirY: Math.sin(ang), power: Math.max(0.25, Math.min(1, best.power)) };
+}
+
+// ---------- Update: move the whole game forward by dt seconds ----------
+function update(dt) {
+  if (!playing) return;
+
+  if (phase === 'think') {
+    thinkTimer -= dt;
+    // Halfway through: place the striker and show the aim; at the end: shoot
+    if (!aiShot && thinkTimer < 0.5) {
+      aiShot = planShot('B', AI_ERROR[mode]);
+      striker.x = aiShot.x;
+    }
+    if (thinkTimer <= 0) shoot(aiShot.dirX, aiShot.dirY, aiShot.power);
+    return;
+  }
+
+  if (phase === 'moving') {
+    // Many small steps per frame, so fast pieces cannot jump through each other
+    const steps = Math.max(1, Math.ceil(dt / (1 / 240)));
+    for (let i = 0; i < steps; i++) step(dt / steps);
+    if (!anythingMoving()) endShot();
+  }
+}
+
+// ---------- Drawing ----------
+function drawPiece(p, fill, ring) {
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.arc(p.x + 1.5, p.y + 2.5, p.r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = fill;
+  ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = ring;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 0.62, 0, Math.PI * 2); ctx.stroke();
+}
+
+function draw() {
+  // Clear the whole canvas
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(0, 0, screenW, screenH);
+
+  // From here on, draw in game units; (0, 0) is the top-left corner of the playing surface
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * (offX + FRAME * scale), dpr * (offY + FRAME * scale));
+
+  // Frame and playing surface
+  ctx.fillStyle = '#5a3a22';
+  ctx.fillRect(-FRAME, -FRAME, BOARD + FRAME * 2, BOARD + FRAME * 2);
+  ctx.fillStyle = '#ecd6a4';
+  ctx.fillRect(0, 0, BOARD, BOARD);
+
+  // Markings: centre circles and the two shooting lines
+  ctx.strokeStyle = '#8a5a3c';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(BOARD / 2, BOARD / 2, 78, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(BOARD / 2, BOARD / 2, 16, 0, Math.PI * 2); ctx.stroke();
+  for (const side of ['W', 'B']) {
+    const y = BASE_Y[side];
+    ctx.strokeStyle = '#8a5a3c';
+    ctx.strokeRect(BASE_X1, y - 14, BASE_X2 - BASE_X1, 28);
+    ctx.fillStyle = '#c9503f';
+    ctx.beginPath(); ctx.arc(BASE_X1, y, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(BASE_X2, y, 14, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Pockets
+  ctx.fillStyle = '#1a120b';
+  for (const pk of POCKETS) { ctx.beginPath(); ctx.arc(pk.x, pk.y, POCKET_R, 0, Math.PI * 2); ctx.fill(); }
+
+  // Coins
+  for (const c of coins) {
+    if (c.kind === 'W') drawPiece(c, '#f5f0e6', '#b8ad96');
+    else if (c.kind === 'B') drawPiece(c, '#2b2b2b', '#6a6a6a');
+    else drawPiece(c, '#d6455d', '#f7a8b5');
+  }
+
+  if (striker && striker.on && playing) {
+    const blocked = phase === 'aim' && !strikerClear(striker.x);
+
+    // Aim arrow while pulling back (or while the computer shows its aim)
+    let aim = null;
+    if (phase === 'aim' && pull) {
+      const len = Math.hypot(pull.x, pull.y);
+      if (len > 8) aim = { x: pull.x / len, y: pull.y / len, power: Math.min(1, len / MAX_PULL) };
+    } else if (phase === 'think' && aiShot) {
+      aim = { x: aiShot.dirX, y: aiShot.dirY, power: aiShot.power };
+    }
+    if (aim) {
+      const reach = 60 + 200 * aim.power;
+      ctx.strokeStyle = 'rgba(20,60,120,0.75)';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([10, 8]);
+      ctx.beginPath();
+      ctx.moveTo(striker.x, striker.y);
+      ctx.lineTo(striker.x + aim.x * reach, striker.y + aim.y * reach);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Arrow head
+      const tx = striker.x + aim.x * reach, ty = striker.y + aim.y * reach;
+      ctx.fillStyle = 'rgba(20,60,120,0.85)';
+      ctx.beginPath();
+      ctx.moveTo(tx + aim.x * 14, ty + aim.y * 14);
+      ctx.lineTo(tx - aim.y * 9, ty + aim.x * 9);
+      ctx.lineTo(tx + aim.y * 9, ty - aim.x * 9);
+      ctx.fill();
+    }
+    drawPiece(striker, blocked ? '#ff6b6b' : '#8fd0ff', blocked ? '#a33b3b' : '#2a6aa8');
+  }
+
+  // Finger strip under the board: slide here to move the striker
+  const top = BOARD + FRAME;
+  ctx.fillStyle = '#0e1730';
+  ctx.fillRect(-FRAME, top, BOARD + FRAME * 2, STRIP);
+  ctx.fillStyle = '#1c2742';
+  ctx.fillRect(BASE_X1, top + 36, BASE_X2 - BASE_X1, 10);
+  if (striker && playing && phase === 'aim') {
+    ctx.fillStyle = '#8fd0ff';
+    ctx.beginPath(); ctx.arc(striker.x, top + 41, 22, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.font = '500 20px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('◀  slide here to move the striker  ▶', BOARD / 2, top + 88);
+}
+
+// ---------- Fit the board to the screen ----------
+function resize() {
+  dpr = window.devicePixelRatio || 1;            // keep drawing sharp on phone screens
+  screenW = stage.clientWidth;
+  screenH = stage.clientHeight;
+  canvas.width  = Math.round(screenW * dpr);
+  canvas.height = Math.round(screenH * dpr);
+  scale = Math.min(screenW / WORLD_W, screenH / WORLD_H);
+  offX = (screenW - WORLD_W * scale) / 2;
+  offY = (screenH - WORLD_H * scale) / 2;
+}
+
+// ---------- Input ----------
+// Convert a touch position on screen to a position on the playing surface
+function toBoard(e) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left - offX) / scale - FRAME,
+    y: (e.clientY - rect.top - offY) / scale - FRAME
+  };
+}
+
+let sliding = false;
+function humanTurn() { return playing && phase === 'aim' && (mode === 'two' || turn === 'W'); }
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (!humanTurn()) return;
+  const p = toBoard(e);
+  canvas.setPointerCapture(e.pointerId);
+  if (p.y > BOARD + FRAME) {
+    // In the strip: move the striker along its line
+    sliding = true;
+    striker.x = Math.max(BASE_X1, Math.min(BASE_X2, p.x));
+  } else {
+    // On the board: start pulling back to aim
+    pullStart = p;
+    pull = { x: 0, y: 0 };
+  }
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  if (!humanTurn()) return;
+  const p = toBoard(e);
+  if (sliding) striker.x = Math.max(BASE_X1, Math.min(BASE_X2, p.x));
+  else if (pullStart) pull = { x: pullStart.x - p.x, y: pullStart.y - p.y };   // the shot goes opposite to the pull
+});
+
+function release() {
+  if (sliding) { sliding = false; return; }
+  if (!pullStart || !humanTurn()) { pullStart = null; pull = null; return; }
+  const len = Math.hypot(pull.x, pull.y);
+  const shot = pull;
+  pullStart = null;
+  pull = null;
+  if (len < 18) return;                           // too small: treated as a cancel
+  if (!strikerClear(striker.x)) {
+    note = 'Move the striker off the coin';
+    updateHud();
+    return;
+  }
+  shoot(shot.x, shot.y, Math.min(1, len / MAX_PULL));
+}
+canvas.addEventListener('pointerup', release);
+canvas.addEventListener('pointercancel', () => { sliding = false; pullStart = null; pull = null; });
+
+document.getElementById('btnNew').addEventListener('click', () => startGame());
+document.getElementById('btnMode').addEventListener('click', () => {
+  playing = false;
+  msgTitle.textContent = 'Carrom';
+  msgLine.textContent = 'You are white. Pocket your coins before the other side does.';
+  overlay.classList.remove('hidden');
+});
+for (const btn of document.querySelectorAll('#modes button')) {
+  btn.addEventListener('click', () => startGame(btn.dataset.mode));
+}
+
+// ---------- Main loop ----------
+let lastTime = 0;
+function loop(time) {
+  // dt = seconds since last frame, capped so a paused tab does not jump the game
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ---------- Start ----------
+window.addEventListener('resize', resize);
+resize();
+setUpBoard();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
