@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Jigsaw</title>
+<style>
+  /* Page fills the phone screen: stats and buttons on top, puzzle below */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b1220;
+    color: #ffffff;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  /* Top bar: level, pieces, time, buttons */
+  #top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  .stat { text-align: center; min-width: 48px; }
+  .stat span {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+  }
+  .stat b { font-size: 18px; font-variant-numeric: tabular-nums; }
+  #top button {
+    height: 40px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 10px;
+    background: #1c2742;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  #top button:active { background: #2c3a60; }
+  #top button.on { background: #2a6f5c; }
+  #photoInput { display: none; }
+
+  #stage { flex: 1; min-height: 0; }
+  #game { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div class="stat"><span>Level</span><b id="level">1/10</b></div>
+    <div class="stat"><span>Pieces</span><b id="pieces">0/0</b></div>
+    <div class="stat"><span>Time</span><b id="time">0:00</b></div>
+    <button id="btnHint" aria-label="Show or hide the picture">Hint</button>
+    <button id="btnPhoto" aria-label="Use my own photo">Photo</button>
+    <input id="photoInput" type="file" accept="image/*">
+  </div>
+  <div id="stage"><canvas id="game"></canvas></div>
+</div>
+
+<script>
+// =====================================================
+// JIGSAW - jigsaw puzzle for phones, with 10 levels
+// Drag each piece into the frame. A piece clicks into place when it is close.
+// Hint  = show the finished picture faintly inside the frame.
+// Photo = use a picture from your phone (it stays on your phone, nothing is uploaded).
+// =====================================================
+
+// ---------- Settings (change these to experiment) ----------
+const SNAP = 0.3;                // how close a piece must be to click in (share of piece size)
+const TAB  = 0.22;               // size of the knobs on the pieces (share of piece size)
+
+// ---------- Levels ----------
+// cols x rows = number of pieces. To add a level, add one more line to this list.
+const LEVELS = [
+  { cols: 2, rows: 2 },   // 1:  4 pieces
+  { cols: 3, rows: 2 },   // 2:  6
+  { cols: 3, rows: 3 },   // 3:  9
+  { cols: 4, rows: 3 },   // 4:  12
+  { cols: 4, rows: 4 },   // 5:  16
+  { cols: 5, rows: 4 },   // 6:  20
+  { cols: 5, rows: 5 },   // 7:  25
+  { cols: 6, rows: 5 },   // 8:  30
+  { cols: 6, rows: 6 },   // 9:  36
+  { cols: 7, rows: 6 }    // 10: 42
+];
+
+// ---------- Page elements ----------
+const stage  = document.getElementById('stage');
+const canvas = document.getElementById('game');
+const ctx    = canvas.getContext('2d');
+const elLevel  = document.getElementById('level');
+const elPieces = document.getElementById('pieces');
+const elTime   = document.getElementById('time');
+const btnHint  = document.getElementById('btnHint');
+const btnPhoto = document.getElementById('btnPhoto');
+const photoInput = document.getElementById('photoInput');
+
+// ---------- Game state ----------
+let screen = 'title';            // 'title' | 'play' | 'clear' | 'won'
+let level = 1;
+let pieces = [];                 // each piece: { c, r, x, y, placed, img }  (x, y = top-left of its cell on screen)
+let order = [];                  // loose pieces in drawing order (last = on top)
+let placedCount = 0;
+let levelTime = 0;               // seconds spent on this level
+let hint = false;
+let photo = null;                // the player's own picture, if chosen
+let picture = null;              // offscreen canvas holding the finished picture
+let drag = null;                 // { piece, dx, dy } while a piece is being moved
+let tabsV = [], tabsH = [];      // which way each knob points (+1 or -1)
+
+// Layout (set by resize)
+let dpr = 1, W = 0, H = 0;
+let frame = { x: 0, y: 0, size: 0 };             // where the puzzle is assembled
+let tray  = { x: 0, y: 0, w: 0, h: 0 };          // where loose pieces start
+let cw = 0, ch = 0, pad = 0;                     // piece width, height, and knob margin
+
+// ---------- Small random-number helper ----------
+// Gives the same "random" numbers every time for the same seed,
+// so a picture looks identical each time it is drawn.
+function seeded(seed) {
+  let s = seed;
+  return () => {
+    s = (s * 1664525 + 1013904223) % 4294967296;
+    return s / 4294967296;
+  };
+}
+
+// ---------- Pictures ----------
+// Each function paints one picture on a square of size s.
+const SCENES = [paintHills, paintSea, paintBalloons, paintCity, paintReef];
+
+function skyGradient(c, s, top, bottom) {
+  const g = c.createLinearGradient(0, 0, 0, s);
+  g.addColorStop(0, top);
+  g.addColorStop(1, bottom);
+  c.fillStyle = g;
+  c.fillRect(0, 0, s, s);
+}
+function circle(c, x, y, r, color) {
+  c.fillStyle = color;
+  c.beginPath();
+  c.arc(x, y, r, 0, Math.PI * 2);
+  c.fill();
+}
+function cloud(c, x, y, r) {
+  circle(c, x, y, r, '#ffffff');
+  circle(c, x + r * 1.1, y + r * 0.2, r * 0.8, '#ffffff');
+  circle(c, x - r * 1.1, y + r * 0.25, r * 0.7, '#ffffff');
+}
+
+// 1: house on green hills
+function paintHills(c, s) {
+  skyGradient(c, s, '#5bb8f5', '#d5f0ff');
+  circle(c, s * 0.8, s * 0.18, s * 0.09, '#ffd84d');
+  cloud(c, s * 0.25, s * 0.2, s * 0.06);
+  cloud(c, s * 0.55, s * 0.32, s * 0.045);
+  c.fillStyle = '#6fbf73';
+  c.beginPath(); c.ellipse(s * 0.2, s * 0.95, s * 0.6, s * 0.4, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#4c9f58';
+  c.beginPath(); c.ellipse(s * 0.85, s * 1.0, s * 0.6, s * 0.38, 0, 0, Math.PI * 2); c.fill();
+  // House
+  c.fillStyle = '#f4e3c1'; c.fillRect(s * 0.3, s * 0.52, s * 0.26, s * 0.2);
+  c.fillStyle = '#c9503f';
+  c.beginPath(); c.moveTo(s * 0.26, s * 0.53); c.lineTo(s * 0.43, s * 0.38); c.lineTo(s * 0.6, s * 0.53); c.fill();
+  c.fillStyle = '#7a4a2b'; c.fillRect(s * 0.40, s * 0.61, s * 0.06, s * 0.11);
+  c.fillStyle = '#8fd0ff'; c.fillRect(s * 0.33, s * 0.57, s * 0.05, s * 0.05); c.fillRect(s * 0.48, s * 0.57, s * 0.05, s * 0.05);
+  // Tree
+  c.fillStyle = '#7a4a2b'; c.fillRect(s * 0.74, s * 0.55, s * 0.03, s * 0.14);
+  circle(c, s * 0.755, s * 0.5, s * 0.08, '#2f7d3b');
+  // Flowers
+  const rnd = seeded(7);
+  for (let i = 0; i < 26; i++) {
+    circle(c, rnd() * s, s * (0.78 + rnd() * 0.2), s * 0.012, ['#ff6b6b', '#ffd84d', '#ffffff', '#b388eb'][i % 4]);
+  }
+}
+
+// 2: sailing boat at sunset
+function paintSea(c, s) {
+  skyGradient(c, s, '#ff9a5a', '#ffe0a3');
+  circle(c, s * 0.5, s * 0.5, s * 0.14, '#fff2b8');
+  c.fillStyle = '#1f6fa8'; c.fillRect(0, s * 0.55, s, s * 0.45);
+  const rnd = seeded(11);
+  c.strokeStyle = 'rgba(255,255,255,0.55)'; c.lineWidth = s * 0.006;
+  for (let i = 0; i < 28; i++) {
+    const x = rnd() * s, y = s * (0.58 + rnd() * 0.4), w = s * (0.04 + rnd() * 0.06);
+    c.beginPath(); c.moveTo(x, y); c.lineTo(x + w, y); c.stroke();
+  }
+  // Boat
+  c.fillStyle = '#7a3b2e';
+  c.beginPath(); c.moveTo(s * 0.22, s * 0.66); c.lineTo(s * 0.58, s * 0.66); c.lineTo(s * 0.5, s * 0.74); c.lineTo(s * 0.28, s * 0.74); c.fill();
+  c.fillStyle = '#3b2a22'; c.fillRect(s * 0.39, s * 0.3, s * 0.012, s * 0.36);
+  c.fillStyle = '#ffffff';
+  c.beginPath(); c.moveTo(s * 0.41, s * 0.32); c.lineTo(s * 0.56, s * 0.62); c.lineTo(s * 0.41, s * 0.62); c.fill();
+  c.fillStyle = '#ff6b6b';
+  c.beginPath(); c.moveTo(s * 0.38, s * 0.38); c.lineTo(s * 0.26, s * 0.62); c.lineTo(s * 0.38, s * 0.62); c.fill();
+  // Island and birds
+  c.fillStyle = '#2f5d3a';
+  c.beginPath(); c.ellipse(s * 0.85, s * 0.56, s * 0.13, s * 0.05, 0, Math.PI, 0); c.fill();
+  c.strokeStyle = '#3b2a22'; c.lineWidth = s * 0.006;
+  for (const [bx, by] of [[0.15, 0.2], [0.24, 0.14], [0.75, 0.22], [0.84, 0.3]]) {
+    c.beginPath(); c.arc(s * bx, s * by, s * 0.025, Math.PI * 1.1, Math.PI * 1.9); c.stroke();
+  }
+}
+
+// 3: hot-air balloons over mountains
+function paintBalloons(c, s) {
+  skyGradient(c, s, '#7ac4ff', '#fff3d6');
+  c.fillStyle = '#8d9bb8';
+  c.beginPath(); c.moveTo(0, s); c.lineTo(s * 0.25, s * 0.6); c.lineTo(s * 0.5, s); c.fill();
+  c.fillStyle = '#6f7d9c';
+  c.beginPath(); c.moveTo(s * 0.3, s); c.lineTo(s * 0.65, s * 0.55); c.lineTo(s, s); c.fill();
+  c.fillStyle = '#ffffff';
+  c.beginPath(); c.moveTo(s * 0.65, s * 0.55); c.lineTo(s * 0.59, s * 0.63); c.lineTo(s * 0.71, s * 0.63); c.fill();
+  c.fillStyle = '#5aa85f'; c.fillRect(0, s * 0.92, s, s * 0.08);
+  const balloons = [
+    [0.25, 0.3, 0.13, '#ff6b6b', '#ffd84d'], [0.68, 0.22, 0.1, '#5b8def', '#ffffff'],
+    [0.5, 0.52, 0.07, '#b388eb', '#ffd84d'], [0.86, 0.45, 0.06, '#4dd4ac', '#ffffff']
+  ];
+  for (const [bx, by, br, col1, col2] of balloons) {
+    const x = s * bx, y = s * by, r = s * br;
+    circle(c, x, y, r, col1);
+    c.fillStyle = col2;                                   // stripe
+    c.beginPath(); c.ellipse(x, y, r * 0.4, r, 0, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = '#5a4634'; c.lineWidth = s * 0.004;   // ropes
+    c.beginPath(); c.moveTo(x - r * 0.5, y + r * 0.85); c.lineTo(x - r * 0.2, y + r * 1.5);
+    c.moveTo(x + r * 0.5, y + r * 0.85); c.lineTo(x + r * 0.2, y + r * 1.5); c.stroke();
+    c.fillStyle = '#8a5a3c'; c.fillRect(x - r * 0.25, y + r * 1.5, r * 0.5, r * 0.35);   // basket
+  }
+  cloud(c, s * 0.45, s * 0.12, s * 0.04);
+  cloud(c, s * 0.1, s * 0.6, s * 0.035);
+}
+
+// 4: city at night
+function paintCity(c, s) {
+  skyGradient(c, s, '#0d1b3d', '#3b2a6b');
+  const rnd = seeded(23);
+  for (let i = 0; i < 70; i++) circle(c, rnd() * s, rnd() * s * 0.6, s * (0.002 + rnd() * 0.004), '#ffffff');
+  circle(c, s * 0.78, s * 0.2, s * 0.09, '#fff6cf');
+  circle(c, s * 0.74, s * 0.18, s * 0.085, '#1a2450');    // crescent moon
+  const colors = ['#1d2b55', '#243566', '#19244a', '#2b3d73'];
+  let x = 0, i = 0;
+  while (x < s) {
+    const w = s * (0.09 + rnd() * 0.08), h = s * (0.25 + rnd() * 0.45);
+    c.fillStyle = colors[i++ % colors.length];
+    c.fillRect(x, s - h, w, h);
+    // Windows
+    const cols = Math.max(2, Math.floor(w / (s * 0.035)));
+    for (let wy = s - h + s * 0.03; wy < s - s * 0.04; wy += s * 0.05) {
+      for (let k = 0; k < cols; k++) {
+        if (rnd() < 0.6) {
+          c.fillStyle = rnd() < 0.5 ? '#ffd84d' : '#ffb35a';
+          c.fillRect(x + (k + 0.25) * (w / cols), wy, w / cols * 0.5, s * 0.025);
+        }
+      }
+    }
+    x += w;
+  }
+}
+
+// 5: fish on a coral reef
+function paintReef(c, s) {
+  skyGradient(c, s, '#3fc1e8', '#0b4f8a');
+  const rnd = seeded(41);
+  c.fillStyle = '#e6c98a';
+  c.beginPath(); c.moveTo(0, s); c.lineTo(0, s * 0.88); c.quadraticCurveTo(s * 0.5, s * 0.78, s, s * 0.9); c.lineTo(s, s); c.fill();
+  // Seaweed
+  c.lineWidth = s * 0.018; c.lineCap = 'round';
+  for (let i = 0; i < 9; i++) {
+    const x = s * (0.05 + i * 0.115), h = s * (0.15 + rnd() * 0.2);
+    c.strokeStyle = i % 2 ? '#2f9e5a' : '#1f7d47';
+    c.beginPath(); c.moveTo(x, s * 0.9);
+    c.quadraticCurveTo(x + s * 0.05, s * 0.9 - h * 0.5, x - s * 0.01, s * 0.9 - h); c.stroke();
+  }
+  c.lineCap = 'butt';
+  // Coral
+  for (const [cx, col] of [[0.2, '#ff7a8a'], [0.62, '#ff9a4d'], [0.86, '#d86bd8']]) {
+    for (let k = 0; k < 5; k++) circle(c, s * (cx + (k - 2) * 0.025), s * (0.88 - (k % 2) * 0.03), s * 0.028, col);
+  }
+  // Fish
+  const fish = [
+    [0.25, 0.25, 0.09, '#ff8a3d', 1], [0.7, 0.18, 0.06, '#ffd84d', -1], [0.55, 0.45, 0.11, '#ff6b6b', 1],
+    [0.18, 0.58, 0.06, '#b388eb', -1], [0.82, 0.6, 0.08, '#4dd4ac', -1], [0.42, 0.7, 0.05, '#ffffff', 1]
+  ];
+  for (const [fx, fy, fr, col, d] of fish) {
+    const x = s * fx, y = s * fy, r = s * fr;
+    c.fillStyle = col;
+    c.beginPath(); c.ellipse(x, y, r, r * 0.6, 0, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.moveTo(x - d * r * 0.8, y); c.lineTo(x - d * r * 1.6, y - r * 0.6); c.lineTo(x - d * r * 1.6, y + r * 0.6); c.fill();
+    circle(c, x + d * r * 0.5, y - r * 0.15, r * 0.14, '#ffffff');
+    circle(c, x + d * r * 0.55, y - r * 0.15, r * 0.07, '#0b1220');
+  }
+  // Bubbles
+  c.strokeStyle = 'rgba(255,255,255,0.7)'; c.lineWidth = s * 0.004;
+  for (let i = 0; i < 22; i++) {
+    c.beginPath(); c.arc(rnd() * s, rnd() * s * 0.8, s * (0.006 + rnd() * 0.014), 0, Math.PI * 2); c.stroke();
+  }
+}
+
+// Paint the finished picture for the current level (or the player's photo)
+function makePicture() {
+  const size = Math.round(frame.size * dpr);
+  picture = document.createElement('canvas');
+  picture.width = size;
+  picture.height = size;
+  const c = picture.getContext('2d');
+  if (photo) {
+    // Crop the photo to a centred square
+    const side = Math.min(photo.width, photo.height);
+    c.drawImage(photo, (photo.width - side) / 2, (photo.height - side) / 2, side, side, 0, 0, size, size);
+  } else {
+    SCENES[(level - 1) % SCENES.length](c, size);
+  }
+}
+
+// ---------- Piece shapes ----------
+// Draw one side of a piece from (x0, y0) to (x1, y1).
+// sign: 0 = straight edge, +1 = knob sticks out, -1 = knob goes in.
+// (nx, ny) points away from the piece.
+function edge(c, x0, y0, x1, y1, nx, ny, sign) {
+  if (sign === 0) { c.lineTo(x1, y1); return; }
+  const dx = x1 - x0, dy = y1 - y0;
+  const t = TAB * Math.min(cw, ch) * sign;
+  // Point at "u" along the edge (0 to 1) and "v" knob-heights away from it
+  const P = (u, v) => [x0 + dx * u + nx * t * v, y0 + dy * u + ny * t * v];
+  c.lineTo(...P(0.38, 0));
+  c.bezierCurveTo(...P(0.44, 0.3), ...P(0.30, 1), ...P(0.5, 1));
+  c.bezierCurveTo(...P(0.70, 1), ...P(0.56, 0.3), ...P(0.62, 0));
+  c.lineTo(x1, y1);
+}
+
+// Outline of piece (c, r), with the frame's top-left corner at (0, 0)
+function piecePath(c2, p) {
+  const cols = LEVELS[level - 1].cols, rows = LEVELS[level - 1].rows;
+  const x = p.c * cw, y = p.r * ch;
+  c2.beginPath();
+  c2.moveTo(x, y);
+  edge(c2, x, y, x + cw, y, 0, -1, p.r === 0 ? 0 : -tabsH[p.r - 1][p.c]);              // top
+  edge(c2, x + cw, y, x + cw, y + ch, 1, 0, p.c === cols - 1 ? 0 : tabsV[p.r][p.c]);   // right
+  edge(c2, x + cw, y + ch, x, y + ch, 0, 1, p.r === rows - 1 ? 0 : tabsH[p.r][p.c]);   // bottom
+  edge(c2, x, y + ch, x, y, -1, 0, p.c === 0 ? 0 : -tabsV[p.r][p.c - 1]);              // left
+  c2.closePath();
+}
+
+// Cut the picture into piece images (done once per level, and again if the screen size changes)
+function buildPieceImages() {
+  makePicture();
+  for (const p of pieces) {
+    const img = document.createElement('canvas');
+    img.width  = Math.ceil((cw + pad * 2) * dpr);
+    img.height = Math.ceil((ch + pad * 2) * dpr);
+    const c = img.getContext('2d');
+    c.scale(dpr, dpr);
+    c.translate(pad - p.c * cw, pad - p.r * ch);
+    c.save();
+    piecePath(c, p);
+    c.clip();
+    c.drawImage(picture, 0, 0, frame.size, frame.size);
+    c.restore();
+    // Outline so pieces are easy to see
+    piecePath(c, p);
+    c.lineWidth = 1.5;
+    c.strokeStyle = 'rgba(0,0,0,0.55)';
+    c.stroke();
+    p.img = img;
+  }
+}
+
+// ---------- Start a level ----------
+function startLevel(n) {
+  level = n;
+  const { cols, rows } = LEVELS[n - 1];
+
+  // Decide which way every knob points
+  tabsV = []; tabsH = [];
+  for (let r = 0; r < rows; r++) {
+    tabsV.push(Array.from({ length: cols }, () => (Math.random() < 0.5 ? 1 : -1)));
+    tabsH.push(Array.from({ length: cols }, () => (Math.random() < 0.5 ? 1 : -1)));
+  }
+
+  pieces = [];
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      pieces.push({ c, r, x: 0, y: 0, placed: false, img: null });
+
+  placedCount = 0;
+  levelTime = 0;
+  drag = null;
+  setSizes();
+  buildPieceImages();
+  scatter();
+
+  // Shuffle the drawing order so pieces overlap randomly
+  order = pieces.slice();
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  screen = 'play';
+  updateHud();
+}
+
+// Piece size for the current level and screen
+function setSizes() {
+  const { cols, rows } = LEVELS[level - 1];
+  cw = frame.size / cols;
+  ch = frame.size / rows;
+  pad = Math.ceil(TAB * Math.min(cw, ch)) + 3;
+}
+
+// Where a piece belongs inside the frame
+function homeOf(p) {
+  return { x: frame.x + p.c * cw, y: frame.y + p.r * ch };
+}
+
+// Put every loose piece at a random spot in the tray
+function scatter() {
+  for (const p of pieces) {
+    if (p.placed) {
+      const h = homeOf(p);
+      p.x = h.x; p.y = h.y;
+    } else {
+      p.x = tray.x + Math.random() * Math.max(0, tray.w - cw);
+      p.y = tray.y + Math.random() * Math.max(0, tray.h - ch);
+    }
+  }
+}
+
+// Tap: what happens depends on the current screen
+function advance() {
+  if (screen === 'title' || screen === 'won') startLevel(1);
+  else if (screen === 'clear') startLevel(level + 1);
+}
+
+function formatTime(sec) {
+  const s = Math.floor(sec);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function updateHud() {
+  elLevel.textContent = level + '/' + LEVELS.length;
+  elPieces.textContent = placedCount + '/' + pieces.length;
+  elTime.textContent = formatTime(levelTime);
+}
+
+// ---------- Drawing ----------
+function draw() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(0, 0, W, H);
+
+  // Frame
+  ctx.fillStyle = '#111a2e';
+  ctx.fillRect(frame.x, frame.y, frame.size, frame.size);
+
+  if (screen === 'title') {
+    drawMessage(['Jigsaw', 'Drag the pieces into the frame', 'Tap to start'], frame.y + frame.size / 2);
+    return;
+  }
+
+  // Hint: the finished picture, faint
+  if (hint && screen === 'play' && picture) {
+    ctx.globalAlpha = 0.3;
+    ctx.drawImage(picture, frame.x, frame.y, frame.size, frame.size);
+    ctx.globalAlpha = 1;
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(frame.x + 0.5, frame.y + 0.5, frame.size - 1, frame.size - 1);
+
+  if (screen === 'play') {
+    // Pieces already in place, then loose pieces, then the one being dragged
+    for (const p of pieces) if (p.placed) drawPiece(p);
+    for (const p of order) if (!p.placed && !(drag && drag.piece === p)) drawPiece(p);
+    if (drag) {
+      ctx.shadowColor = 'rgba(0,0,0,0.6)';
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetY = 4;
+      drawPiece(drag.piece);
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+    }
+  } else {
+    // Finished: show the whole picture and a message in the tray
+    ctx.drawImage(picture, frame.x, frame.y, frame.size, frame.size);
+    const lines = screen === 'won'
+      ? ['All puzzles complete!', 'Time ' + formatTime(levelTime), 'Tap to play again']
+      : ['Level ' + level + ' complete!', 'Time ' + formatTime(levelTime), 'Tap for level ' + (level + 1)];
+    drawMessage(lines, tray.y + tray.h / 2);
+  }
+}
+
+function drawPiece(p) {
+  ctx.drawImage(p.img, p.x - pad, p.y - pad, cw + pad * 2, ch + pad * 2);
+}
+
+// Lines of text centred around (centre of screen width, cy); the first line is bigger
+function drawMessage(lines, cy) {
+  const cx = screen === 'title' ? frame.x + frame.size / 2 : tray.x + tray.w / 2;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const gap = 30;
+  const top = cy - (lines.length - 1) * gap / 2;
+  for (let i = 0; i < lines.length; i++) {
+    ctx.font = i === 0 ? '700 24px system-ui, sans-serif' : '500 16px system-ui, sans-serif';
+    ctx.fillText(lines[i], cx, top + i * gap);
+  }
+}
+
+// ---------- Fit everything to the screen ----------
+function resize() {
+  dpr = window.devicePixelRatio || 1;             // keep drawing sharp on phone screens
+  W = stage.clientWidth;
+  H = stage.clientHeight;
+  canvas.width  = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+
+  const m = 10;                                   // margin around the frame
+  if (W > H * 1.15) {
+    // Wide screen: frame on the left, loose pieces on the right
+    frame.size = Math.floor(Math.min(H - m * 2, W * 0.55));
+    frame.x = m; frame.y = Math.floor((H - frame.size) / 2);
+    tray = { x: frame.x + frame.size + m, y: m, w: W - frame.size - m * 3, h: H - m * 2 };
+  } else {
+    // Tall screen (phone): frame on top, loose pieces below
+    frame.size = Math.floor(Math.min(W - m * 2, H * 0.55));
+    frame.x = Math.floor((W - frame.size) / 2); frame.y = m;
+    tray = { x: m, y: frame.y + frame.size + m, w: W - m * 2, h: H - frame.size - m * 3 };
+  }
+
+  // If a puzzle is in progress, rebuild it at the new size
+  if (pieces.length) {
+    setSizes();
+    buildPieceImages();
+    scatter();
+  }
+}
+
+// ---------- Input: drag pieces ----------
+function pointerPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (screen !== 'play') { advance(); return; }
+  const pt = pointerPos(e);
+  // Find the top-most loose piece under the finger
+  for (let i = order.length - 1; i >= 0; i--) {
+    const p = order[i];
+    if (p.placed) continue;
+    if (pt.x >= p.x - pad / 2 && pt.x <= p.x + cw + pad / 2 &&
+        pt.y >= p.y - pad / 2 && pt.y <= p.y + ch + pad / 2) {
+      drag = { piece: p, dx: pt.x - p.x, dy: pt.y - p.y };
+      order.splice(i, 1);
+      order.push(p);                              // bring it to the top
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+  }
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const pt = pointerPos(e);
+  // Keep the piece on the screen
+  drag.piece.x = Math.max(-cw / 2, Math.min(W - cw / 2, pt.x - drag.dx));
+  drag.piece.y = Math.max(-ch / 2, Math.min(H - ch / 2, pt.y - drag.dy));
+});
+
+function endDrag() {
+  if (!drag) return;
+  const p = drag.piece;
+  drag = null;
+  const home = homeOf(p);
+  // Close enough to its place: click in
+  if (Math.hypot(p.x - home.x, p.y - home.y) < SNAP * Math.min(cw, ch)) {
+    p.x = home.x;
+    p.y = home.y;
+    p.placed = true;
+    placedCount++;
+    if (placedCount === pieces.length) screen = level === LEVELS.length ? 'won' : 'clear';
+    updateHud();
+  }
+}
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+
+// ---------- Input: buttons ----------
+btnHint.addEventListener('click', () => {
+  hint = !hint;
+  btnHint.classList.toggle('on', hint);
+});
+
+btnPhoto.addEventListener('click', () => photoInput.click());
+
+// A photo was chosen: load it and restart the current level with it
+photoInput.addEventListener('change', () => {
+  const file = photoInput.files && photoInput.files[0];
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => {
+    photo = img;
+    btnPhoto.classList.add('on');
+    startLevel(screen === 'title' || screen === 'won' ? 1 : level);
+  };
+  img.src = URL.createObjectURL(file);
+  photoInput.value = '';
+});
+
+// Keyboard (for testing on a laptop)
+window.addEventListener('keydown', (e) => {
+  if ((e.key === ' ' || e.key === 'Enter') && screen !== 'play') { advance(); e.preventDefault(); }
+});
+
+// ---------- Main loop ----------
+let lastTime = 0, lastShown = -1;
+function loop(time) {
+  const dt = Math.min((time - lastTime) / 1000, 0.1);
+  lastTime = time;
+  if (screen === 'play') {
+    levelTime += dt;
+    if (Math.floor(levelTime) !== lastShown) { lastShown = Math.floor(levelTime); updateHud(); }
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ---------- Start ----------
+window.addEventListener('resize', resize);
+resize();
+updateHud();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
