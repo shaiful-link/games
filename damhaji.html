@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Dam Haji</title>
+<style>
+  /* Page fills the phone screen: status on top, board in the middle, buttons at the bottom */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b1220;
+    color: #ffffff;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+  #app {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    padding: 10px 12px 14px;
+    gap: 10px;
+  }
+
+  /* Top bar: pieces left for each side, and whose turn it is */
+  #top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .side { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; }
+  .dot { width: 18px; height: 18px; border-radius: 50%; }
+  .dot.red   { background: #ff6b6b; }
+  .dot.green { background: #4dd4ac; }
+  #status { font-size: 15px; color: rgba(255,255,255,0.85); text-align: center; flex: 1; }
+
+  /* Board area takes all remaining space; canvas is centred inside */
+  #boardWrap {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #board { border-radius: 6px; }
+
+  #controls { display: flex; gap: 10px; }
+  #controls button, #modes button {
+    flex: 1;
+    height: 50px;
+    border: 0;
+    border-radius: 12px;
+    background: #1c2742;
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 600;
+    font-family: inherit;
+  }
+  #controls button:active, #modes button:active { background: #2c3a60; }
+
+  /* Start screen and result screen */
+  #overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: rgba(11,18,32,0.94);
+    text-align: center;
+    padding: 24px;
+  }
+  #overlay.hidden { display: none; }
+  #overlay h1 { margin: 0; font-size: 30px; }
+  #overlay p  { margin: 0 0 6px; font-size: 16px; color: rgba(255,255,255,0.8); }
+  #modes { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 300px; }
+  #modes button { flex: none; height: 54px; }
+  #modes button.main { background: #2a6f5c; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div class="side"><span class="dot red"></span><span id="countRed">12</span></div>
+    <div id="status">Dam Haji</div>
+    <div class="side"><span id="countGreen">12</span><span class="dot green"></span></div>
+  </div>
+
+  <div id="boardWrap"><canvas id="board"></canvas></div>
+
+  <div id="controls">
+    <button id="btnNew">New game</button>
+    <button id="btnMode">Change mode</button>
+  </div>
+
+  <div id="overlay">
+    <h1 id="msgTitle">Dam Haji</h1>
+    <p id="msgLine">Choose how to play</p>
+    <div id="modes">
+      <button data-mode="easy" class="main">Computer: Easy</button>
+      <button data-mode="medium">Computer: Medium</button>
+      <button data-mode="hard">Computer: Hard</button>
+      <button data-mode="two">2 players, one phone</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================
+// DAM HAJI - Malaysian draughts for phones
+// You are green and move up the board. Tap a piece, then tap where it should go.
+//
+// Rules used in this version (house rules differ, so the main ones are settings below):
+// - A piece moves one square diagonally forward.
+// - It captures ("makan") by jumping over an enemy piece next to it, and keeps
+//   jumping in the same move while it can.
+// - If you can capture, you must.
+// - A piece that reaches the far side becomes a Haji (marked with a ring).
+//   A Haji moves and captures any distance along a diagonal, forward or backward.
+// - You win when the other side has no pieces left, or cannot move.
+// =====================================================
+
+// ---------- Settings (change these to match your own house rules) ----------
+const MUST_CAPTURE         = true;    // true = you must capture when you can
+const MEN_CAPTURE_BACKWARD = false;   // true = ordinary pieces may also capture backward
+const FLYING_HAJI          = true;    // true = a Haji moves any distance; false = one square at a time
+const DRAW_AFTER           = 60;      // moves in a row with no capture and no new Haji = draw
+const AI_DEPTH = { easy: 2, medium: 3, hard: 5 };   // how many moves ahead the computer thinks
+const EASY_RANDOM = 0.25;             // on Easy, chance that the computer plays a random move
+
+// ---------- Board basics ----------
+// The board is 8 x 8. Each square holds a number:
+//    0 = empty
+//    1 = green piece     2 = green Haji      (green starts at the bottom and moves up)
+//   -1 = red piece      -2 = red Haji        (red starts at the top and moves down)
+const SIZE = 8;
+const GREEN = 1, RED = -1;
+const DIAGONALS = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+
+function inside(r, c) { return r >= 0 && r < SIZE && c >= 0 && c < SIZE; }
+function copyBoard(b) { return b.map(row => row.slice()); }
+
+function newBoard() {
+  const b = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if ((r + c) % 2 === 0) continue;            // pieces only use the dark squares
+      if (r < 3) b[r][c] = RED;
+      else if (r > 4) b[r][c] = GREEN;
+    }
+  }
+  return b;
+}
+
+// ---------- Rules: finding legal moves ----------
+// A move looks like { fr, fc, tr, tc, caps: [[r, c], ...] }
+//   (fr, fc) = from, (tr, tc) = to, caps = enemy pieces captured on the way
+
+// Find every capture a piece can make from (r, c), including multi-jumps.
+// "b" is the board with the moving piece already lifted off its square.
+// "taken" lists the enemy pieces already jumped in this move (they cannot be jumped twice).
+function findCaptures(b, r, c, piece, taken, out) {
+  const side = Math.sign(piece);
+  const isHaji = Math.abs(piece) === 2;
+  const far = isHaji && FLYING_HAJI;              // can it slide many squares?
+  const dirs = (isHaji || MEN_CAPTURE_BACKWARD) ? DIAGONALS : [[-side, -1], [-side, 1]];
+  let found = false;
+
+  for (const [dr, dc] of dirs) {
+    // Look along the diagonal for an enemy piece to jump
+    let mr = r + dr, mc = c + dc;
+    if (far) while (inside(mr, mc) && b[mr][mc] === 0) { mr += dr; mc += dc; }
+    if (!inside(mr, mc)) continue;
+    const mid = b[mr][mc];
+    if (mid === 0 || Math.sign(mid) === side) continue;
+    if (taken.some(t => t[0] === mr && t[1] === mc)) continue;
+
+    // Landing squares behind it (a Haji may land on any empty square further along)
+    let lr = mr + dr, lc = mc + dc;
+    while (inside(lr, lc) && b[lr][lc] === 0) {
+      found = true;
+      findCaptures(b, lr, lc, piece, taken.concat([[mr, mc]]), out);
+      if (!far) break;
+      lr += dr; lc += dc;
+    }
+  }
+  // No further jump possible: this is the end of the move
+  if (!found && taken.length) out.push({ tr: r, tc: c, caps: taken });
+}
+
+// All legal moves for one side
+function allMoves(b, side) {
+  const captures = [], steps = [];
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const piece = b[r][c];
+      if (piece === 0 || Math.sign(piece) !== side) continue;
+      const isHaji = Math.abs(piece) === 2;
+
+      // Captures
+      const lifted = copyBoard(b);
+      lifted[r][c] = 0;
+      const found = [];
+      findCaptures(lifted, r, c, piece, [], found);
+      for (const m of found) captures.push({ fr: r, fc: c, tr: m.tr, tc: m.tc, caps: m.caps });
+
+      // Ordinary moves
+      const dirs = isHaji ? DIAGONALS : [[-side, -1], [-side, 1]];
+      for (const [dr, dc] of dirs) {
+        let nr = r + dr, nc = c + dc;
+        while (inside(nr, nc) && b[nr][nc] === 0) {
+          steps.push({ fr: r, fc: c, tr: nr, tc: nc, caps: [] });
+          if (!(isHaji && FLYING_HAJI)) break;
+          nr += dr; nc += dc;
+        }
+      }
+    }
+  }
+  if (captures.length && MUST_CAPTURE) return captures;
+  return captures.concat(steps);
+}
+
+// Return a new board with the move played
+function applyMove(b, m) {
+  const nb = copyBoard(b);
+  let piece = nb[m.fr][m.fc];
+  nb[m.fr][m.fc] = 0;
+  for (const [r, c] of m.caps) nb[r][c] = 0;
+  // Reaching the far side makes a Haji
+  if (piece === GREEN && m.tr === 0) piece = 2;
+  if (piece === RED && m.tr === SIZE - 1) piece = -2;
+  nb[m.tr][m.tc] = piece;
+  return nb;
+}
+
+function countPieces(b, side) {
+  let n = 0;
+  for (const row of b) for (const v of row) if (v !== 0 && Math.sign(v) === side) n++;
+  return n;
+}
+
+// ---------- Computer player ----------
+// How good the board is for "side": pieces are worth 100, a Haji 300,
+// with a small bonus for pieces that are closer to becoming a Haji.
+function evaluate(b, side) {
+  let total = 0;
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const v = b[r][c];
+      if (v === 0) continue;
+      const s = Math.sign(v);
+      let worth = Math.abs(v) === 2 ? 300 : 100 + (s === GREEN ? (7 - r) : r) * 4;
+      total += s === side ? worth : -worth;
+    }
+  }
+  return total;
+}
+
+// Look "depth" moves ahead and return the best score "side" can reach
+function search(b, side, depth, alpha, beta) {
+  const moves = allMoves(b, side);
+  if (moves.length === 0) return -100000 - depth;         // no moves = lost
+  if (depth === 0) return evaluate(b, side);
+  moves.sort((x, y) => y.caps.length - x.caps.length);     // try captures first
+  let best = -Infinity;
+  for (const m of moves) {
+    const score = -search(applyMove(b, m), -side, depth - 1, -beta, -alpha);
+    if (score > best) best = score;
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) break;                              // the other side would never allow this
+  }
+  return best;
+}
+
+function chooseMove(b, side, difficulty) {
+  const moves = allMoves(b, side);
+  if (moves.length === 0) return null;
+  if (difficulty === 'easy' && Math.random() < EASY_RANDOM) {
+    return moves[Math.floor(Math.random() * moves.length)];
+  }
+  const depth = AI_DEPTH[difficulty];
+  let bestScore = -Infinity, bestMoves = [];
+  for (const m of moves) {
+    const score = -search(applyMove(b, m), -side, depth - 1, -Infinity, Infinity);
+    if (score > bestScore) { bestScore = score; bestMoves = [m]; }
+    else if (score === bestScore) bestMoves.push(m);
+  }
+  return bestMoves[Math.floor(Math.random() * bestMoves.length)];   // pick among equally good moves
+}
+
+// ---------- Page elements ----------
+const canvas    = document.getElementById('board');
+const boardWrap = document.getElementById('boardWrap');
+const ctx       = canvas.getContext('2d');
+const overlay   = document.getElementById('overlay');
+const msgTitle  = document.getElementById('msgTitle');
+const msgLine   = document.getElementById('msgLine');
+const elStatus  = document.getElementById('status');
+const elRed     = document.getElementById('countRed');
+const elGreen   = document.getElementById('countGreen');
+
+// ---------- Game state ----------
+let board = newBoard();
+let mode = 'easy';               // 'easy' | 'medium' | 'hard' | 'two'
+let turn = GREEN;                // whose move it is
+let legal = [];                  // legal moves for the side to move
+let selected = null;             // the square of the piece you tapped: { r, c }
+let lastMove = null;             // highlighted on the board
+let quietMoves = 0;              // moves since the last capture or new Haji
+let playing = false;
+let thinking = false;            // true while the computer is choosing
+let cell = 40;                   // size of one square in CSS pixels (set by resize)
+let aiTimer = null;
+
+function startGame(newMode) {
+  if (newMode) mode = newMode;
+  clearTimeout(aiTimer);
+  board = newBoard();
+  turn = GREEN;                  // green always starts
+  selected = null;
+  lastMove = null;
+  quietMoves = 0;
+  thinking = false;
+  playing = true;
+  overlay.classList.add('hidden');
+  beginTurn();
+}
+
+// Work out the legal moves for the side to move, and check whether the game is over
+function beginTurn() {
+  legal = allMoves(board, turn);
+  selected = null;
+  updateHud();
+
+  if (legal.length === 0) { endGame(-turn); return; }      // side to move has lost
+  if (quietMoves >= DRAW_AFTER) { endGame(0); return; }
+
+  if (mode !== 'two' && turn === RED) {
+    // Computer's move: wait a moment so the screen can update first
+    thinking = true;
+    updateHud();
+    aiTimer = setTimeout(() => {
+      const m = chooseMove(board, RED, mode);
+      thinking = false;
+      if (m) play(m);
+    }, 350);
+  }
+  draw();
+}
+
+function play(m) {
+  const wasHaji = Math.abs(board[m.fr][m.fc]) === 2;
+  board = applyMove(board, m);
+  const nowHaji = Math.abs(board[m.tr][m.tc]) === 2;
+  quietMoves = (m.caps.length || (nowHaji && !wasHaji)) ? 0 : quietMoves + 1;
+  lastMove = m;
+  turn = -turn;
+  beginTurn();
+}
+
+function endGame(winner) {
+  playing = false;
+  let title;
+  if (winner === 0) title = 'Draw';
+  else if (mode === 'two') title = (winner === GREEN ? 'Green' : 'Red') + ' wins!';
+  else title = winner === GREEN ? 'You win!' : 'Computer wins';
+  msgTitle.textContent = title;
+  msgLine.textContent = 'Play again?';
+  updateHud();
+  draw();
+  setTimeout(() => overlay.classList.remove('hidden'), 900);   // let the final position be seen
+}
+
+function updateHud() {
+  elRed.textContent = countPieces(board, RED);
+  elGreen.textContent = countPieces(board, GREEN);
+  if (!playing) return;
+  let text;
+  if (mode === 'two') text = (turn === GREEN ? 'Green' : 'Red') + ' to move';
+  else text = thinking ? 'Computer is thinking' : 'Your move';
+  if (!thinking && MUST_CAPTURE && legal.length && legal[0].caps.length) text += ' (must capture)';
+  elStatus.textContent = text;
+}
+
+// ---------- Drawing ----------
+function draw() {
+  const size = SIZE * cell;
+  ctx.clearRect(0, 0, size, size);
+
+  // Squares
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      ctx.fillStyle = (r + c) % 2 === 0 ? '#d8c9a8' : '#5a4634';
+      ctx.fillRect(c * cell, r * cell, cell, cell);
+    }
+  }
+
+  // Last move: tint the squares it went from and to
+  if (lastMove) {
+    ctx.fillStyle = 'rgba(244,211,94,0.35)';
+    ctx.fillRect(lastMove.fc * cell, lastMove.fr * cell, cell, cell);
+    ctx.fillRect(lastMove.tc * cell, lastMove.tr * cell, cell, cell);
+  }
+
+  const humanTurn = playing && !thinking && (mode === 'two' || turn === GREEN);
+
+  // Selected piece
+  if (selected) {
+    ctx.fillStyle = 'rgba(77,212,172,0.45)';
+    ctx.fillRect(selected.c * cell, selected.r * cell, cell, cell);
+  }
+
+  // Pieces
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const v = board[r][c];
+      if (v === 0) continue;
+      const x = c * cell + cell / 2, y = r * cell + cell / 2, rad = cell * 0.38;
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';                    // shadow
+      ctx.beginPath(); ctx.arc(x, y + cell * 0.04, rad, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = v > 0 ? '#4dd4ac' : '#ff6b6b';
+      ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = v > 0 ? '#2a8f72' : '#b84444';       // rim
+      ctx.lineWidth = Math.max(2, cell * 0.05);
+      ctx.beginPath(); ctx.arc(x, y, rad * 0.78, 0, Math.PI * 2); ctx.stroke();
+      if (Math.abs(v) === 2) {
+        // Haji: white ring and the letter H
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = Math.max(2, cell * 0.07);
+        ctx.beginPath(); ctx.arc(x, y, rad * 0.55, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '700 ' + Math.round(cell * 0.34) + 'px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('H', x, y + 1);
+      }
+    }
+  }
+
+  if (humanTurn) {
+    if (selected) {
+      // Dots on the squares the selected piece can go to
+      for (const m of legal) {
+        if (m.fr !== selected.r || m.fc !== selected.c) continue;
+        ctx.fillStyle = m.caps.length ? 'rgba(255,107,107,0.9)' : 'rgba(255,255,255,0.8)';
+        ctx.beginPath();
+        ctx.arc(m.tc * cell + cell / 2, m.tr * cell + cell / 2, cell * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      // White outline on every piece that can move (helps when you must capture)
+      const seen = {};
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = Math.max(2, cell * 0.05);
+      for (const m of legal) {
+        const key = m.fr + ',' + m.fc;
+        if (seen[key]) continue;
+        seen[key] = true;
+        ctx.beginPath();
+        ctx.arc(m.fc * cell + cell / 2, m.fr * cell + cell / 2, cell * 0.43, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+// ---------- Fit the board to the screen ----------
+function resize() {
+  const dpr = window.devicePixelRatio || 1;       // keep drawing sharp on phone screens
+  cell = Math.floor(Math.min(boardWrap.clientWidth, boardWrap.clientHeight) / SIZE);
+  cell = Math.max(cell, 20);
+  canvas.style.width  = SIZE * cell + 'px';
+  canvas.style.height = SIZE * cell + 'px';
+  canvas.width  = Math.round(SIZE * cell * dpr);
+  canvas.height = Math.round(SIZE * cell * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+
+// ---------- Input: tap a piece, then tap a square ----------
+canvas.addEventListener('click', (e) => {
+  if (!playing || thinking) return;
+  if (mode !== 'two' && turn !== GREEN) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const c = Math.floor((e.clientX - rect.left) / cell);
+  const r = Math.floor((e.clientY - rect.top) / cell);
+  if (!inside(r, c)) return;
+
+  // Tapped a square the selected piece can go to: play that move.
+  // If two captures end on the same square, take the one that captures more.
+  if (selected) {
+    const options = legal.filter(m => m.fr === selected.r && m.fc === selected.c && m.tr === r && m.tc === c);
+    if (options.length) {
+      options.sort((a, b) => b.caps.length - a.caps.length);
+      play(options[0]);
+      return;
+    }
+  }
+  // Tapped one of your pieces that can move: select it. Anything else clears the selection.
+  selected = legal.some(m => m.fr === r && m.fc === c) ? { r, c } : null;
+  draw();
+});
+
+// ---------- Input: buttons ----------
+document.getElementById('btnNew').addEventListener('click', () => startGame());
+document.getElementById('btnMode').addEventListener('click', () => {
+  clearTimeout(aiTimer);
+  playing = false;
+  msgTitle.textContent = 'Dam Haji';
+  msgLine.textContent = 'Choose how to play';
+  overlay.classList.remove('hidden');
+});
+for (const btn of document.querySelectorAll('#modes button')) {
+  btn.addEventListener('click', () => startGame(btn.dataset.mode));
+}
+
+// ---------- Start ----------
+window.addEventListener('resize', resize);
+resize();
+updateHud();
+</script>
+</body>
+</html>
