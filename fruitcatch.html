@@ -61,7 +61,8 @@
 <script>
 // =====================================================
 // FRUIT CATCH - catch the falling fruit, with 10 levels
-// Drag left and right to move the basket.
+// Slide your finger in the strip at the bottom to move the basket.
+// The basket sits above the strip, so your finger never covers the game.
 // Catch fruit to reach the level target. Missing a fruit costs a life.
 // Do not catch a bomb: that also costs a life.
 // Star = bonus points. Heart = one extra life.
@@ -73,7 +74,10 @@ const WORLD_W = 360, WORLD_H = 640;   // game area in game units
 const START_LIVES   = 5;              // lives are topped back up to this at each new level
 const BASKET_W      = 76;
 const BASKET_H      = 34;
-const BASKET_Y      = WORLD_H - 70;   // top of the basket
+const CONTROL_ZONE  = 100;            // height of the finger strip at the bottom
+                                      // bigger = more room for your finger, smaller = bigger playing field
+const FIELD_H       = WORLD_H - CONTROL_ZONE;   // height of the playing field above the strip
+const BASKET_Y      = FIELD_H - 70;   // top of the basket
 const ITEM_SIZE     = 34;             // size of the falling pictures
 const FRUIT_POINTS  = 10;             // multiplied by the level number
 const STAR_POINTS   = 50;             // multiplied by the level number
@@ -230,10 +234,10 @@ function update(dt) {
     if (overBasket && before <= BASKET_Y + 14 && it.y >= BASKET_Y - 6) {
       it.done = true;
       catchItem(it);
-    } else if (it.y > WORLD_H + ITEM_SIZE) {
-      // Fell off the bottom: only a missed fruit costs a life
+    } else if (it.y > FIELD_H + ITEM_SIZE) {
+      // Fell past the ground: only a missed fruit costs a life
       it.done = true;
-      if (it.kind === 'fruit') loseLife(it.x, WORLD_H - 30);
+      if (it.kind === 'fruit') loseLife(it.x, FIELD_H - 30);
     }
     if (screen !== 'play') break;
   }
@@ -265,7 +269,7 @@ function draw() {
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, WORLD_W, WORLD_H);
   ctx.fillStyle = '#2f5d3a';
-  ctx.fillRect(0, WORLD_H - 30, WORLD_W, 30);
+  ctx.fillRect(0, FIELD_H - 30, WORLD_W, 30);
 
   // Falling items
   ctx.textAlign = 'center';
@@ -275,6 +279,7 @@ function draw() {
   for (const it of items) ctx.fillText(it.symbol, it.x, it.y);
 
   drawBasket();
+  drawControlZone();
 
   // Floating text
   for (const e of effects) {
@@ -287,21 +292,39 @@ function draw() {
 
   // Messages
   let text = null;
-  if (screen === 'title')      text = ['Fruit Catch', 'Drag to move the basket', 'Catch the fruit, avoid the bombs', 'Tap to start'];
+  if (screen === 'title')      text = ['Fruit Catch', 'Slide in the bottom strip to move', 'Catch the fruit, avoid the bombs', 'Tap to start'];
   else if (screen === 'clear') text = ['Level ' + level + ' clear!', 'Tap for level ' + (level + 1)];
   else if (screen === 'won')   text = ['You win!', 'Score ' + score, 'Tap to play again'];
   else if (screen === 'over')  text = ['Game over', 'Tap to retry level ' + level];
   if (text) {
     ctx.fillStyle = 'rgba(11,18,32,0.78)';
-    ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+    ctx.fillRect(0, 0, WORLD_W, FIELD_H);
     ctx.fillStyle = '#ffffff';
     const gap = 32;
-    const top = WORLD_H / 2 - (text.length - 1) * gap / 2;
+    const top = FIELD_H / 2 - (text.length - 1) * gap / 2;
     for (let i = 0; i < text.length; i++) {
       ctx.font = i === 0 ? '700 28px system-ui, sans-serif' : '500 17px system-ui, sans-serif';
       ctx.fillText(text[i], WORLD_W / 2, top + i * gap);
     }
   }
+}
+
+// The finger strip at the bottom (drawn over the items so they disappear behind it)
+function drawControlZone() {
+  ctx.fillStyle = '#0e1730';
+  ctx.fillRect(0, FIELD_H, WORLD_W, CONTROL_ZONE);
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillRect(0, FIELD_H, WORLD_W, 1);
+
+  // Small marker showing where the basket is
+  ctx.fillStyle = 'rgba(224,169,109,0.4)';
+  ctx.beginPath();
+  ctx.arc(basketX, FIELD_H + CONTROL_ZONE / 2 - 6, 20, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.font = '500 13px system-ui, sans-serif';
+  ctx.fillText('\u25C0  slide here  \u25B6', WORLD_W / 2, WORLD_H - 14);
 }
 
 function drawBasket() {
