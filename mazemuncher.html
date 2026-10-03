@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Maze Muncher</title>
+<style>
+  /* Page fills the phone screen: stats on top, maze in the middle, arrow buttons at the bottom */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b1220;
+    color: #ffffff;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    padding: 10px 12px 14px;
+    gap: 8px;
+  }
+
+  /* Top bar: score, level, lives */
+  #top {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+  }
+  .stat { text-align: center; min-width: 70px; }
+  .stat span {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+  }
+  .stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
+
+  /* Maze area takes all remaining space; canvas is centred inside */
+  #boardWrap {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #board { background: #0b1220; border-radius: 6px; }
+
+  /* Arrow buttons (you can also swipe anywhere on the screen) */
+  #controls {
+    display: grid;
+    grid-template-columns: repeat(3, 72px);
+    grid-template-rows: repeat(2, 52px);
+    gap: 6px;
+    justify-content: center;
+  }
+  #controls button {
+    border: 0;
+    border-radius: 12px;
+    background: #1c2742;
+    color: #ffffff;
+    font-size: 22px;
+    touch-action: none;
+  }
+  #controls button:active { background: #2c3a60; }
+  #btnUp    { grid-column: 2; grid-row: 1; }
+  #btnLeft  { grid-column: 1; grid-row: 2; }
+  #btnDown  { grid-column: 2; grid-row: 2; }
+  #btnRight { grid-column: 3; grid-row: 2; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div class="stat"><span>Score</span><b id="score">0</b></div>
+    <div class="stat"><span>Level</span><b id="level">1/10</b></div>
+    <div class="stat"><span>Lives</span><b id="lives">3</b></div>
+  </div>
+
+  <div id="boardWrap"><canvas id="board"></canvas></div>
+
+  <div id="controls">
+    <button id="btnUp"    aria-label="Up">&#9650;</button>
+    <button id="btnLeft"  aria-label="Left">&#9664;</button>
+    <button id="btnDown"  aria-label="Down">&#9660;</button>
+    <button id="btnRight" aria-label="Right">&#9654;</button>
+  </div>
+</div>
+
+<script>
+// =====================================================
+// MAZE MUNCHER - maze chase game for phones, with 10 levels
+// Eat every dot to finish a level. Avoid the chasers.
+// A big dot makes the chasers blue for a few seconds: then you can eat them.
+// Controls: swipe anywhere, or use the arrow buttons.
+// Keyboard (for laptop testing): arrows or WASD, Space = start, P = pause
+// =====================================================
+
+// ---------- Settings (change these to experiment) ----------
+const PLAYER_SPEED  = 6.5;       // tiles per second
+const FRIGHT_SPEED  = 3.2;       // chaser speed while blue
+const START_LIVES   = 3;         // lives are topped back up to this at each new level
+const DOT_POINTS    = 10;
+const POWER_POINTS  = 50;
+const CHASER_POINTS = 200;       // doubles for each chaser eaten on the same big dot
+const LEVEL_BONUS   = 500;       // bonus for finishing a level (multiplied by the level number)
+const RELEASE_GAP   = 2.5;       // seconds between each chaser leaving the centre
+const SCATTER_TIME  = 6;         // seconds chasers wander to their corners
+const CHASE_TIME    = 14;        // seconds chasers hunt you
+
+// ---------- Levels ----------
+// speed   = chaser speed in tiles per second (you move at PLAYER_SPEED)
+// fright  = seconds the chasers stay blue after a big dot
+// chasers = how many chasers are in the maze (1 to 4)
+// To add a level, add one more line to this list.
+const LEVELS = [
+  { speed: 3.2, fright: 7.0, chasers: 2 },   // 1
+  { speed: 3.4, fright: 6.5, chasers: 2 },   // 2
+  { speed: 3.6, fright: 6.0, chasers: 2 },   // 3
+  { speed: 3.6, fright: 6.0, chasers: 3 },   // 4
+  { speed: 3.8, fright: 5.5, chasers: 3 },   // 5
+  { speed: 4.0, fright: 5.0, chasers: 3 },   // 6
+  { speed: 4.2, fright: 4.5, chasers: 3 },   // 7
+  { speed: 4.2, fright: 4.5, chasers: 4 },   // 8
+  { speed: 4.5, fright: 4.0, chasers: 4 },   // 9
+  { speed: 4.8, fright: 3.5, chasers: 4 }    // 10
+];
+
+// ---------- Maze ----------
+// Only the left half is written here; the right half is a mirror copy.
+// # = wall   . = dot   o = big dot   space = empty path
+// G = chaser start   P = your start
+// Row 8 is a tunnel: leaving one side brings you back on the other.
+const MAZE_HALF = [
+  '########',
+  '#o.....#',
+  '#.##.#.#',
+  '#.......',
+  '#.##.#.#',
+  '#....#..',
+  '####.#.#',
+  '####.  G',
+  '    . G#',
+  '####.  G',
+  '####.#.#',
+  '#....#..',
+  '#.##.#.#',
+  '#o.#...P',
+  '##.#.#.#',
+  '#....#..',
+  '#.####.#',
+  '#.......',
+  '########'
+];
+// Full row = left half + mirror of its first 7 characters
+const MAZE = MAZE_HALF.map(h => h + h.slice(0, 7).split('').reverse().join(''));
+const COLS = MAZE[0].length;     // 15
+const ROWS = MAZE.length;        // 19
+
+const CHASER_COLORS = ['#ff6b6b', '#f79d65', '#b388eb', '#4dd4e6'];
+const LEFT  = { x: -1, y: 0 }, RIGHT = { x: 1, y: 0 };
+const UP    = { x: 0, y: -1 }, DOWN  = { x: 0, y: 1 };
+const ALL_DIRS = [UP, LEFT, DOWN, RIGHT];
+
+// ---------- Page elements ----------
+const app       = document.getElementById('app');
+const canvas    = document.getElementById('board');
+const boardWrap = document.getElementById('boardWrap');
+const ctx       = canvas.getContext('2d');
+const elScore = document.getElementById('score');
+const elLevel = document.getElementById('level');
+const elLives = document.getElementById('lives');
+
+// ---------- Game state ----------
+let grid = [];                   // current maze: rows of characters (dots get removed when eaten)
+let dotsLeft = 0;
+let player = null;               // { x, y, dir, t, speed }  t = progress (0-1) toward the next tile
+let chasers = [];
+let wanted = null;               // direction the player asked for
+let playerStart = { x: 7, y: 13 };
+let chaserStarts = [];
+let screen = 'title';            // 'title' | 'ready' | 'play' | 'paused' | 'clear' | 'over' | 'won'
+let level = 1, score = 0, levelStartScore = 0, lives = START_LIVES;
+let readyTimer = 0;              // short pause before play starts
+let frightTimer = 0;             // seconds of blue time left
+let eatChain = 0;                // chasers eaten on the current big dot
+let modeTimer = 0;               // position in the scatter/chase cycle
+let clock = 0;                   // total time, used for animation
+let tile = 20;                   // size of one tile in CSS pixels (set by resize)
+
+// ---------- Maze helpers ----------
+function wrapX(x) { return (x + COLS) % COLS; }
+
+// True if a tile can be walked on
+function isOpen(x, y) {
+  if (y < 0 || y >= ROWS) return false;
+  return grid[y][wrapX(x)] !== '#';
+}
+
+// Copy the maze into the grid and find the start positions
+function loadMaze() {
+  grid = MAZE.map(row => row.split(''));
+  dotsLeft = 0;
+  chaserStarts = [];
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      const c = grid[y][x];
+      if (c === '.' || c === 'o') dotsLeft++;
+      else if (c === 'P') { playerStart = { x, y }; grid[y][x] = ' '; }
+      else if (c === 'G') { chaserStarts.push({ x, y }); grid[y][x] = ' '; }
+    }
+  }
+}
+
+// ---------- Start a level / reset after losing a life ----------
+function startLevel(n) {
+  level = n;
+  levelStartScore = score;
+  loadMaze();
+  resetPositions();
+  updateHud();
+}
+
+// Put the player and chasers back on their start tiles
+function resetPositions() {
+  player = { x: playerStart.x, y: playerStart.y, dir: null, t: 0, speed: PLAYER_SPEED };
+  wanted = null;
+  chasers = chaserStarts.slice(0, LEVELS[level - 1].chasers).map((s, i) => ({
+    x: s.x, y: s.y, dir: null, t: 0, speed: LEVELS[level - 1].speed,
+    home: s, kind: i, color: CHASER_COLORS[i % CHASER_COLORS.length],
+    wait: i * RELEASE_GAP,       // seconds before this chaser starts moving
+    scared: false
+  }));
+  frightTimer = 0;
+  eatChain = 0;
+  modeTimer = 0;
+  readyTimer = 1.5;
+  screen = 'ready';
+}
+
+// Tap or Space: what happens depends on the current screen
+function advance() {
+  if (screen === 'title' || screen === 'won') { score = 0; lives = START_LIVES; startLevel(1); }
+  else if (screen === 'clear') { lives = Math.max(lives, START_LIVES); startLevel(level + 1); }   // lives refill to 3
+  else if (screen === 'over') { score = levelStartScore; lives = START_LIVES; startLevel(level); }   // retry same level
+  else if (screen === 'paused') screen = 'play';
+}
+
+function togglePause() {
+  if (screen === 'play') screen = 'paused';
+  else if (screen === 'paused') screen = 'play';
+}
+
+function updateHud() {
+  elScore.textContent = score;
+  elLevel.textContent = level + '/' + LEVELS.length;
+  elLives.textContent = lives;
+}
+
+// ---------- Movement ----------
+// Exact position of something that is part-way between two tiles
+function posOf(e) {
+  return {
+    x: e.x + (e.dir ? e.dir.x * e.t : 0),
+    y: e.y + (e.dir ? e.dir.y * e.t : 0)
+  };
+}
+
+// Move e forward by its speed. Each time it reaches a tile centre, onArrive runs
+// and chooseDir picks where to go next.
+function moveEntity(e, dt, chooseDir, onArrive) {
+  let budget = e.speed * dt;     // distance to travel this frame, in tiles
+  for (let guard = 0; guard < 8 && budget > 0; guard++) {
+    if (!e.dir) {
+      chooseDir(e);
+      if (!e.dir) return;        // nowhere to go: stand still
+    }
+    const need = 1 - e.t;
+    if (budget < need) { e.t += budget; return; }
+    budget -= need;
+    e.x = wrapX(e.x + e.dir.x);
+    e.y += e.dir.y;
+    e.t = 0;
+    if (onArrive) onArrive(e);
+    chooseDir(e);
+  }
+}
+
+// Turn around in the middle of a corridor
+function reverse(e) {
+  if (!e.dir) return;
+  e.x = wrapX(e.x + e.dir.x);
+  e.y += e.dir.y;
+  e.dir = { x: -e.dir.x, y: -e.dir.y };
+  e.t = 1 - e.t;
+}
+
+// ---------- Player ----------
+function choosePlayerDir(p) {
+  if (wanted && isOpen(p.x + wanted.x, p.y + wanted.y)) p.dir = wanted;       // turn if possible
+  else if (p.dir && isOpen(p.x + p.dir.x, p.y + p.dir.y)) { /* keep going */ }
+  else p.dir = null;                                                           // hit a wall
+}
+
+function playerArrive(p) {
+  const c = grid[p.y][p.x];
+  if (c === '.') {
+    grid[p.y][p.x] = ' ';
+    dotsLeft--;
+    score += DOT_POINTS;
+  } else if (c === 'o') {
+    grid[p.y][p.x] = ' ';
+    dotsLeft--;
+    score += POWER_POINTS;
+    // Big dot: every moving chaser turns blue and turns around
+    frightTimer = LEVELS[level - 1].fright;
+    eatChain = 0;
+    for (const g of chasers) {
+      if (g.wait > 0) continue;
+      if (!g.scared) reverse(g);
+      g.scared = true;
+    }
+  }
+}
+
+// ---------- Chasers ----------
+// Where a chaser wants to go. Each of the four behaves a little differently.
+function chaserTarget(g) {
+  const scatter = modeTimer < SCATTER_TIME;
+  const corners = [
+    { x: COLS - 2, y: 1 }, { x: 1, y: 1 }, { x: COLS - 2, y: ROWS - 2 }, { x: 1, y: ROWS - 2 }
+  ];
+  const corner = corners[g.kind % 4];
+  if (scatter) return corner;
+
+  if (g.kind % 4 === 0) return { x: player.x, y: player.y };                  // follows you directly
+  if (g.kind % 4 === 1) {                                                     // aims ahead of you
+    const d = player.dir || { x: 0, y: 0 };
+    return { x: player.x + d.x * 3, y: player.y + d.y * 3 };
+  }
+  if (g.kind % 4 === 2) return null;                                          // wanders randomly
+  const far = Math.hypot(g.x - player.x, g.y - player.y) > 5;                 // shy: backs off when close
+  return far ? { x: player.x, y: player.y } : corner;
+}
+
+function chooseChaserDir(g) {
+  // Possible directions: open tiles, and not straight back unless it is the only way
+  let options = ALL_DIRS.filter(d => isOpen(g.x + d.x, g.y + d.y));
+  if (g.dir) {
+    const forward = options.filter(d => !(d.x === -g.dir.x && d.y === -g.dir.y));
+    if (forward.length) options = forward;
+  }
+  if (!options.length) { g.dir = null; return; }
+
+  const target = g.scared ? null : chaserTarget(g);
+  if (!target) {
+    g.dir = options[Math.floor(Math.random() * options.length)];             // random move
+    return;
+  }
+  // Pick the direction that ends closest to the target
+  let best = options[0], bestD = Infinity;
+  for (const d of options) {
+    const dist = Math.hypot(g.x + d.x - target.x, g.y + d.y - target.y);
+    if (dist < bestD) { bestD = dist; best = d; }
+  }
+  g.dir = best;
+}
+
+// ---------- Update: move the whole game forward by dt seconds ----------
+function update(dt) {
+  clock += dt;
+
+  if (screen === 'ready') {
+    readyTimer -= dt;
+    if (readyTimer <= 0) screen = 'play';
+    return;
+  }
+  if (screen !== 'play') return;
+
+  // Scatter/chase cycle and blue time
+  modeTimer = (modeTimer + dt) % (SCATTER_TIME + CHASE_TIME);
+  if (frightTimer > 0) {
+    frightTimer -= dt;
+    if (frightTimer <= 0) {
+      frightTimer = 0;
+      for (const g of chasers) g.scared = false;
+    }
+  }
+
+  // Player: allow turning around at any time, eat the dot on the start tile
+  if (wanted && player.dir && wanted.x === -player.dir.x && wanted.y === -player.dir.y) reverse(player);
+  moveEntity(player, dt, choosePlayerDir, playerArrive);
+
+  // Chasers
+  for (const g of chasers) {
+    if (g.wait > 0) { g.wait -= dt; continue; }
+    g.speed = g.scared ? FRIGHT_SPEED : LEVELS[level - 1].speed;
+    moveEntity(g, dt, chooseChaserDir, null);
+  }
+
+  // Touching a chaser
+  const p = posOf(player);
+  for (const g of chasers) {
+    if (g.wait > 0) continue;
+    const q = posOf(g);
+    let dx = Math.abs(p.x - q.x);
+    dx = Math.min(dx, COLS - dx);                 // the tunnel joins both sides
+    if (Math.hypot(dx, p.y - q.y) > 0.6) continue;
+
+    if (g.scared) {
+      // Eat the blue chaser: it goes back to the centre for a few seconds
+      score += CHASER_POINTS * Math.pow(2, eatChain);
+      eatChain++;
+      g.x = g.home.x; g.y = g.home.y; g.dir = null; g.t = 0;
+      g.scared = false;
+      g.wait = 3;
+    } else {
+      // Caught: lose a life
+      lives--;
+      updateHud();
+      if (lives <= 0) screen = 'over';
+      else resetPositions();
+      return;
+    }
+  }
+
+  // Level finished
+  if (dotsLeft === 0) {
+    score += LEVEL_BONUS * level;
+    screen = level === LEVELS.length ? 'won' : 'clear';
+  }
+  updateHud();
+}
+
+// ---------- Drawing ----------
+function draw() {
+  const w = COLS * tile, h = ROWS * tile;
+  ctx.clearRect(0, 0, w, h);
+  if (!grid.length) loadMaze();                   // so the maze shows behind the title
+
+  // Walls, dots and big dots
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      const c = grid[y][x];
+      const cx = x * tile + tile / 2, cy = y * tile + tile / 2;
+      if (c === '#') {
+        ctx.fillStyle = '#24407a';
+        ctx.fillRect(x * tile + 1, y * tile + 1, tile - 2, tile - 2);
+      } else if (c === '.') {
+        ctx.fillStyle = '#f4d35e';
+        ctx.beginPath();
+        ctx.arc(cx, cy, Math.max(1.5, tile * 0.1), 0, Math.PI * 2);
+        ctx.fill();
+      } else if (c === 'o') {
+        ctx.fillStyle = '#f4d35e';
+        ctx.beginPath();
+        ctx.arc(cx, cy, tile * (0.26 + 0.05 * Math.sin(clock * 6)), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  if (screen !== 'title' && player) {
+    for (const g of chasers) drawChaser(g);
+    drawPlayer();
+  }
+
+  // Messages
+  let text = null;
+  if (screen === 'title')       text = ['Maze Muncher', 'Eat every dot. Avoid the chasers.', 'Tap to start'];
+  else if (screen === 'ready')  text = ['Level ' + level];
+  else if (screen === 'paused') text = ['Paused', 'Tap to resume'];
+  else if (screen === 'clear')  text = ['Level ' + level + ' clear!', 'Tap for level ' + (level + 1)];
+  else if (screen === 'won')    text = ['You win!', 'Score ' + score, 'Tap to play again'];
+  else if (screen === 'over')   text = ['Game over', 'Tap to retry level ' + level];
+
+  if (text) {
+    if (screen !== 'ready') {
+      ctx.fillStyle = 'rgba(11,18,32,0.78)';
+      ctx.fillRect(0, 0, w, h);
+    }
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // First line is big, the rest are smaller; the block of lines is centred
+    const gap = 30;
+    const top = h / 2 - (text.length - 1) * gap / 2;
+    for (let i = 0; i < text.length; i++) {
+      ctx.font = i === 0 ? '700 22px system-ui, sans-serif' : '500 15px system-ui, sans-serif';
+      ctx.fillText(text[i], w / 2, top + i * gap);
+    }
+  }
+}
+
+// Draw something at a tile position; near the tunnel edges it is drawn on both sides
+function drawAt(e, fn) {
+  const p = posOf(e);
+  const px = p.x * tile + tile / 2, py = p.y * tile + tile / 2;
+  fn(px, py);
+  if (p.x < 0.5) fn(px + COLS * tile, py);
+  if (p.x > COLS - 1.5) fn(px - COLS * tile, py);
+}
+
+// Two eyes looking in direction d
+function drawEyes(px, py, d, r) {
+  const ox = d ? d.x * r * 0.25 : 0, oy = d ? d.y * r * 0.25 : 0;
+  for (const side of [-1, 1]) {
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(px + side * r * 0.38 + ox, py - r * 0.15 + oy, r * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#0b1220';
+    ctx.beginPath();
+    ctx.arc(px + side * r * 0.38 + ox * 1.6, py - r * 0.15 + oy * 1.6, r * 0.13, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawPlayer() {
+  const r = tile * 0.42;
+  drawAt(player, (px, py) => {
+    ctx.fillStyle = '#4dd4ac';
+    ctx.beginPath();
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fill();
+    drawEyes(px, py, player.dir, r);
+  });
+}
+
+function drawChaser(g) {
+  const r = tile * 0.42;
+  // Blue while scared; flashes white just before the blue time ends
+  let color = g.color;
+  if (g.scared) color = (frightTimer < 1.5 && Math.floor(clock * 6) % 2 === 0) ? '#ffffff' : '#5b8def';
+
+  drawAt(g, (px, py) => {
+    ctx.globalAlpha = g.wait > 0 ? 0.5 : 1;       // faded while waiting in the centre
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(px, py - r * 0.1, r, Math.PI, 0);     // round top
+    ctx.lineTo(px + r, py + r);
+    ctx.lineTo(px + r * 0.5, py + r * 0.6);       // zig-zag bottom
+    ctx.lineTo(px, py + r);
+    ctx.lineTo(px - r * 0.5, py + r * 0.6);
+    ctx.lineTo(px - r, py + r);
+    ctx.closePath();
+    ctx.fill();
+    drawEyes(px, py, g.scared ? null : g.dir, r);
+    ctx.globalAlpha = 1;
+  });
+}
+
+// ---------- Fit the maze to the screen ----------
+function resize() {
+  const dpr = window.devicePixelRatio || 1;       // keep drawing sharp on phone screens
+  tile = Math.floor(Math.min(boardWrap.clientWidth / COLS, boardWrap.clientHeight / ROWS));
+  tile = Math.max(tile, 8);
+  canvas.style.width  = COLS * tile + 'px';
+  canvas.style.height = ROWS * tile + 'px';
+  canvas.width  = Math.round(COLS * tile * dpr);
+  canvas.height = Math.round(ROWS * tile * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+// ---------- Input: swipe anywhere ----------
+const SWIPE_MIN = 18;            // pixels a finger must move to count as a swipe
+let swipeStart = null;
+
+app.addEventListener('pointerdown', (e) => {
+  swipeStart = { x: e.clientX, y: e.clientY };
+  if (screen !== 'play' && screen !== 'ready') advance();
+});
+app.addEventListener('pointermove', (e) => {
+  if (!swipeStart) return;
+  const dx = e.clientX - swipeStart.x, dy = e.clientY - swipeStart.y;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE_MIN) return;
+  if (Math.abs(dx) > Math.abs(dy)) wanted = dx > 0 ? RIGHT : LEFT;
+  else wanted = dy > 0 ? DOWN : UP;
+  swipeStart = { x: e.clientX, y: e.clientY };    // lets you change direction without lifting
+});
+app.addEventListener('pointerup', () => { swipeStart = null; });
+app.addEventListener('pointercancel', () => { swipeStart = null; });
+
+// ---------- Input: arrow buttons ----------
+function bindButton(id, dir) {
+  document.getElementById(id).addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    wanted = dir;
+  });
+}
+bindButton('btnUp', UP);
+bindButton('btnLeft', LEFT);
+bindButton('btnDown', DOWN);
+bindButton('btnRight', RIGHT);
+
+// ---------- Input: keyboard (for testing on a laptop) ----------
+window.addEventListener('keydown', (e) => {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (k === 'ArrowLeft'  || k === 'a') wanted = LEFT;
+  else if (k === 'ArrowRight' || k === 'd') wanted = RIGHT;
+  else if (k === 'ArrowUp'    || k === 'w') wanted = UP;
+  else if (k === 'ArrowDown'  || k === 's') wanted = DOWN;
+  else if (k === ' ') advance();
+  else if (k === 'p') togglePause();
+  else return;
+  e.preventDefault();
+});
+
+// Pause automatically when the app goes to the background
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && screen === 'play') screen = 'paused';
+});
+
+// ---------- Main loop ----------
+let lastTime = 0;
+function loop(time) {
+  // dt = seconds since last frame, capped so a paused tab does not jump the game
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ---------- Start ----------
+window.addEventListener('resize', resize);
+resize();
+updateHud();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
