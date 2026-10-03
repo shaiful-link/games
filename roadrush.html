@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Road Rush</title>
+<style>
+  /* Page fills the phone screen: stats on top, game below */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b1220;
+    color: #ffffff;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  /* Top bar: score, level, distance, lives */
+  #top {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 8px 10px;
+  }
+  .stat { text-align: center; min-width: 60px; }
+  .stat span {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+  }
+  .stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stat b.low { color: #ff6b6b; }               /* last life */
+
+  #stage { flex: 1; min-height: 0; }
+  #game { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div class="stat"><span>Score</span><b id="score">0</b></div>
+    <div class="stat"><span>Level</span><b id="level">1/10</b></div>
+    <div class="stat"><span>To go</span><b id="togo">0 m</b></div>
+    <div class="stat"><span>Lives</span><b id="lives">3</b></div>
+  </div>
+  <div id="stage"><canvas id="game"></canvas></div>
+</div>
+
+<script>
+// =====================================================
+// ROAD RUSH - simple racing game, with 10 levels
+// Slide your finger in the strip at the bottom to steer.
+// Overtake the traffic without crashing and reach the finish distance.
+// Coins give bonus points. A crash costs a life.
+// Keyboard (for laptop testing): arrows or A/D steer, Space = start
+// =====================================================
+
+// ---------- Settings (change these to experiment) ----------
+const WORLD_W = 360, WORLD_H = 640;   // game area in game units
+const CONTROL_ZONE = 100;             // height of the finger strip at the bottom
+const FIELD_H = WORLD_H - CONTROL_ZONE;
+const ROAD_X = 40, ROAD_W = 280;      // where the road is, and how wide
+const LANES = 4;
+const LANE_W = ROAD_W / LANES;
+const CAR_W = 38, CAR_H = 64;
+const PLAYER_Y = FIELD_H - 110;       // top of your car
+const STEER_SPEED = 520;              // how fast your car moves sideways (units per second)
+const START_LIVES = 3;                // lives are topped back up to this at each new level
+const SAFE_TIME = 1.5;                // seconds you cannot crash again after a crash
+const COIN_POINTS = 50;               // multiplied by the level number
+const COIN_CHANCE = 0.35;             // chance of a coin between two rows of traffic
+const LEVEL_BONUS = 300;              // bonus for finishing a level (multiplied by the level number)
+
+// ---------- Levels ----------
+// goal  = distance to drive, in metres
+// speed = how fast the traffic comes toward you (game units per second)
+// gap   = seconds between rows of traffic
+// two   = chance that a row has 2 cars     three = chance that a row has 3 cars
+// There is always at least one free lane in every row.
+// To add a level, add one more line to this list.
+const LEVELS = [
+  { goal: 500,  speed: 220, gap: 1.30, two: 0.00, three: 0.00 },   // 1
+  { goal: 600,  speed: 250, gap: 1.20, two: 0.15, three: 0.00 },   // 2
+  { goal: 700,  speed: 280, gap: 1.10, two: 0.25, three: 0.00 },   // 3
+  { goal: 800,  speed: 310, gap: 1.00, two: 0.35, three: 0.00 },   // 4
+  { goal: 900,  speed: 340, gap: 0.95, two: 0.45, three: 0.00 },   // 5
+  { goal: 1000, speed: 370, gap: 0.90, two: 0.50, three: 0.05 },   // 6
+  { goal: 1100, speed: 400, gap: 0.85, two: 0.50, three: 0.10 },   // 7
+  { goal: 1200, speed: 430, gap: 0.80, two: 0.50, three: 0.15 },   // 8
+  { goal: 1350, speed: 460, gap: 0.78, two: 0.50, three: 0.20 },   // 9
+  { goal: 1500, speed: 500, gap: 0.75, two: 0.50, three: 0.25 }    // 10
+];
+
+const TRAFFIC_COLORS = ['#ff6b6b', '#5b8def', '#f4d35e', '#b388eb', '#f79d65', '#e8ecf5'];
+
+// ---------- Page elements ----------
+const stage  = document.getElementById('stage');
+const canvas = document.getElementById('game');
+const ctx    = canvas.getContext('2d');
+const elScore = document.getElementById('score');
+const elLevel = document.getElementById('level');
+const elTogo  = document.getElementById('togo');
+const elLives = document.getElementById('lives');
+
+// ---------- Game state ----------
+let screen = 'title';            // 'title' | 'play' | 'clear' | 'over' | 'won'
+let level = 1, score = 0, levelStartScore = 0;
+let lives = START_LIVES;
+let carX = WORLD_W / 2;          // centre of your car
+let targetX = WORLD_W / 2;       // where your finger wants the car to be
+let distance = 0;                // metres driven in this level
+let traffic = [];                // other cars: { x, y, color }
+let coins = [];                  // { x, y }
+let effects = [];                // floating text such as "+50"
+let spawnTimer = 0;
+let safeTimer = 0;               // seconds of crash protection left
+let roadScroll = 0;              // makes the lane markings move
+const keys = {};
+
+// Screen fitting
+let dpr = 1, scale = 1, offX = 0, offY = 0, screenW = 0, screenH = 0;
+
+// ---------- Helpers ----------
+function laneCentre(i) { return ROAD_X + LANE_W * (i + 0.5); }
+function clampToRoad(x) {
+  return Math.max(ROAD_X + CAR_W / 2 + 2, Math.min(ROAD_X + ROAD_W - CAR_W / 2 - 2, x));
+}
+
+// ---------- Start a level ----------
+function startLevel(n) {
+  level = n;
+  levelStartScore = score;
+  distance = 0;
+  traffic = [];
+  coins = [];
+  effects = [];
+  spawnTimer = 1.0;              // short clear run before the first traffic
+  safeTimer = 0;
+  screen = 'play';
+  updateHud();
+}
+
+// Tap or Space: what happens depends on the current screen
+function advance() {
+  if (screen === 'title' || screen === 'won') { score = 0; lives = START_LIVES; startLevel(1); }
+  else if (screen === 'clear') { lives = Math.max(lives, START_LIVES); startLevel(level + 1); }
+  else if (screen === 'over') { score = levelStartScore; lives = START_LIVES; startLevel(level); }   // retry same level
+}
+
+function updateHud() {
+  elScore.textContent = Math.floor(score);
+  elLevel.textContent = level + '/' + LEVELS.length;
+  elTogo.textContent = Math.max(0, Math.ceil(LEVELS[level - 1].goal - distance)) + ' m';
+  elLives.textContent = lives;
+  elLives.classList.toggle('low', lives <= 1);
+}
+
+// ---------- Traffic ----------
+// Add one row of traffic at the top. At least one lane is always left free.
+function spawnRow() {
+  const def = LEVELS[level - 1];
+  let count = 1;
+  const roll = Math.random();
+  if (roll < def.three) count = 3;
+  else if (roll < def.three + def.two) count = 2;
+
+  // Pick "count" different lanes at random
+  const lanes = [0, 1, 2, 3];
+  for (let i = lanes.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [lanes[i], lanes[j]] = [lanes[j], lanes[i]];
+  }
+  for (let i = 0; i < count; i++) {
+    traffic.push({
+      x: laneCentre(lanes[i]), y: -CAR_H,
+      color: TRAFFIC_COLORS[Math.floor(Math.random() * TRAFFIC_COLORS.length)]
+    });
+  }
+
+  // Sometimes put a coin in the space between this row and the next one
+  if (Math.random() < COIN_CHANCE) {
+    const lane = Math.floor(Math.random() * LANES);
+    coins.push({ x: laneCentre(lane), y: -CAR_H - def.speed * def.gap / 2 });
+  }
+}
+
+function floatText(text, x, y, color) {
+  effects.push({ text, x, y, color, t: 0, life: 0.8 });
+}
+
+// ---------- Update: move the whole game forward by dt seconds ----------
+function update(dt) {
+  for (const e of effects) e.t += dt;
+  effects = effects.filter(e => e.t < e.life);
+
+  if (screen !== 'play') return;
+  const def = LEVELS[level - 1];
+
+  // Steering: the car moves toward your finger, limited by STEER_SPEED
+  if (keys['ArrowLeft']  || keys['a']) targetX = carX - 60;
+  if (keys['ArrowRight'] || keys['d']) targetX = carX + 60;
+  targetX = clampToRoad(targetX);
+  const step = STEER_SPEED * dt;
+  carX += Math.max(-step, Math.min(step, targetX - carX));
+  carX = clampToRoad(carX);
+
+  // Distance and score (10 game units = 1 metre)
+  const metres = def.speed * dt / 10;
+  distance += metres;
+  score += metres * level * 0.5;
+  roadScroll = (roadScroll + def.speed * dt) % 60;
+  safeTimer = Math.max(0, safeTimer - dt);
+
+  // New traffic
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    spawnRow();
+    spawnTimer = def.gap;
+  }
+
+  // Move traffic and coins down the screen
+  for (const c of traffic) c.y += def.speed * dt;
+  for (const c of coins) c.y += def.speed * dt;
+
+  // Crash check (the boxes are slightly smaller than the cars, to be forgiving)
+  if (safeTimer === 0) {
+    for (const c of traffic) {
+      if (Math.abs(c.x - carX) < CAR_W - 8 && c.y + CAR_H - 6 > PLAYER_Y && c.y + 6 < PLAYER_Y + CAR_H) {
+        c.hit = true;
+        lives--;
+        safeTimer = SAFE_TIME;
+        floatText('Crash!', carX, PLAYER_Y - 10, '#ff6b6b');
+        if (lives <= 0) { lives = 0; screen = 'over'; }
+        break;
+      }
+    }
+  }
+
+  // Coins
+  for (const c of coins) {
+    if (Math.abs(c.x - carX) < CAR_W / 2 + 12 && c.y + 12 > PLAYER_Y && c.y - 12 < PLAYER_Y + CAR_H) {
+      c.taken = true;
+      score += COIN_POINTS * level;
+      floatText('+' + COIN_POINTS * level, c.x, PLAYER_Y - 10, '#f4d35e');
+    }
+  }
+
+  traffic = traffic.filter(c => !c.hit && c.y < FIELD_H + 20);
+  coins = coins.filter(c => !c.taken && c.y < FIELD_H + 20);
+
+  // Level finished
+  if (screen === 'play' && distance >= def.goal) {
+    score += LEVEL_BONUS * level;
+    traffic = [];
+    coins = [];
+    screen = level === LEVELS.length ? 'won' : 'clear';
+  }
+  updateHud();
+}
+
+// ---------- Drawing ----------
+function draw() {
+  // Clear the whole canvas
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(0, 0, screenW, screenH);
+
+  // From here on, draw in game units (scaled and centred on screen)
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
+
+  // Keep all drawing inside the game area (nothing spills above or below it)
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, WORLD_W, WORLD_H);
+  ctx.clip();
+
+  // Grass with moving stripes (gives the feeling of speed)
+  ctx.fillStyle = '#2f5d3a';
+  ctx.fillRect(0, 0, WORLD_W, FIELD_H);
+  ctx.fillStyle = '#356b42';
+  for (let y = -60 + roadScroll; y < FIELD_H; y += 60) {
+    ctx.fillRect(0, y, ROAD_X, 30);
+    ctx.fillRect(ROAD_X + ROAD_W, y, WORLD_W - ROAD_X - ROAD_W, 30);
+  }
+
+  // Road, edges and lane markings
+  ctx.fillStyle = '#3a3f4b';
+  ctx.fillRect(ROAD_X, 0, ROAD_W, FIELD_H);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(ROAD_X, 0, 4, FIELD_H);
+  ctx.fillRect(ROAD_X + ROAD_W - 4, 0, 4, FIELD_H);
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  for (let i = 1; i < LANES; i++) {
+    for (let y = -60 + roadScroll; y < FIELD_H; y += 60) {
+      ctx.fillRect(ROAD_X + LANE_W * i - 2, y, 4, 30);
+    }
+  }
+
+  // Coins
+  for (const c of coins) {
+    ctx.fillStyle = '#f4d35e';
+    ctx.beginPath(); ctx.arc(c.x, c.y, 12, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#c9a227';
+    ctx.beginPath(); ctx.arc(c.x, c.y, 7, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Traffic, then your car (it blinks while protected after a crash)
+  for (const c of traffic) drawCar(c.x, c.y, c.color);
+  if (screen !== 'title') {
+    const blink = safeTimer > 0 && Math.floor(safeTimer * 10) % 2 === 0;
+    if (!blink) drawCar(carX, PLAYER_Y, '#4dd4ac');
+  }
+
+  // Progress bar along the top of the road
+  if (screen === 'play') {
+    const done = Math.min(1, distance / LEVELS[level - 1].goal);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(ROAD_X, 6, ROAD_W, 8);
+    ctx.fillStyle = '#4dd4ac';
+    ctx.fillRect(ROAD_X, 6, ROAD_W * done, 8);
+  }
+
+  drawControlZone();
+
+  // Floating text
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const e of effects) {
+    ctx.globalAlpha = 1 - e.t / e.life;
+    ctx.fillStyle = e.color;
+    ctx.font = '700 18px system-ui, sans-serif';
+    ctx.fillText(e.text, e.x, e.y - 40 * (e.t / e.life));
+    ctx.globalAlpha = 1;
+  }
+
+  // Messages
+  let text = null;
+  if (screen === 'title')      text = ['Road Rush', 'Slide in the bottom strip to steer', 'Pass the traffic, do not crash', 'Tap to start'];
+  else if (screen === 'clear') text = ['Level ' + level + ' clear!', 'Tap for level ' + (level + 1)];
+  else if (screen === 'won')   text = ['You win!', 'Score ' + Math.floor(score), 'Tap to play again'];
+  else if (screen === 'over')  text = ['Game over', 'Tap to retry level ' + level];
+  if (text) {
+    ctx.fillStyle = 'rgba(11,18,32,0.78)';
+    ctx.fillRect(0, 0, WORLD_W, FIELD_H);
+    ctx.fillStyle = '#ffffff';
+    const gap = 32;
+    const top = FIELD_H / 2 - (text.length - 1) * gap / 2;
+    for (let i = 0; i < text.length; i++) {
+      ctx.font = i === 0 ? '700 28px system-ui, sans-serif' : '500 17px system-ui, sans-serif';
+      ctx.fillText(text[i], WORLD_W / 2, top + i * gap);
+    }
+  }
+  ctx.restore();
+}
+
+// A car seen from above: x is the centre of the car, y is its top edge
+function drawCar(x, y, color) {
+  const w = CAR_W, h = CAR_H, left = x - w / 2;
+  // Wheels
+  ctx.fillStyle = '#15181f';
+  ctx.fillRect(left - 3, y + 8, 6, 14);
+  ctx.fillRect(left + w - 3, y + 8, 6, 14);
+  ctx.fillRect(left - 3, y + h - 22, 6, 14);
+  ctx.fillRect(left + w - 3, y + h - 22, 6, 14);
+  // Body with rounded corners
+  ctx.fillStyle = color;
+  const r = 9;
+  ctx.beginPath();
+  ctx.moveTo(left + r, y);
+  ctx.arcTo(left + w, y, left + w, y + h, r);
+  ctx.arcTo(left + w, y + h, left, y + h, r);
+  ctx.arcTo(left, y + h, left, y, r);
+  ctx.arcTo(left, y, left + w, y, r);
+  ctx.closePath();
+  ctx.fill();
+  // Windows
+  ctx.fillStyle = 'rgba(11,18,32,0.75)';
+  ctx.fillRect(left + 5, y + 14, w - 10, 12);
+  ctx.fillRect(left + 5, y + h - 20, w - 10, 9);
+}
+
+// The finger strip at the bottom
+function drawControlZone() {
+  ctx.fillStyle = '#0e1730';
+  ctx.fillRect(0, FIELD_H, WORLD_W, CONTROL_ZONE);
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillRect(0, FIELD_H, WORLD_W, 1);
+
+  // Small marker showing where your car is
+  ctx.fillStyle = 'rgba(77,212,172,0.35)';
+  ctx.beginPath();
+  ctx.arc(carX, FIELD_H + CONTROL_ZONE / 2 - 6, 20, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.font = '500 13px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('◀  slide here  ▶', WORLD_W / 2, WORLD_H - 14);
+}
+
+// ---------- Fit the game area to the screen ----------
+function resize() {
+  dpr = window.devicePixelRatio || 1;            // keep drawing sharp on phone screens
+  screenW = stage.clientWidth;
+  screenH = stage.clientHeight;
+  canvas.width  = Math.round(screenW * dpr);
+  canvas.height = Math.round(screenH * dpr);
+  scale = Math.min(screenW / WORLD_W, screenH / WORLD_H);
+  offX = (screenW - WORLD_W * scale) / 2;
+  offY = (screenH - WORLD_H * scale) / 2;
+}
+
+// ---------- Input: slide to steer ----------
+let dragging = false;
+function steer(e) {
+  const rect = canvas.getBoundingClientRect();
+  targetX = (e.clientX - rect.left - offX) / scale;
+}
+canvas.addEventListener('pointerdown', (e) => {
+  if (screen !== 'play') { advance(); return; }
+  dragging = true;
+  canvas.setPointerCapture(e.pointerId);
+  steer(e);
+});
+canvas.addEventListener('pointermove', (e) => {
+  // With a mouse the car follows without holding the button; with a finger it follows the slide
+  if (screen === 'play' && (dragging || e.pointerType === 'mouse')) steer(e);
+});
+canvas.addEventListener('pointerup', () => { dragging = false; });
+canvas.addEventListener('pointercancel', () => { dragging = false; });
+
+// ---------- Input: keyboard (for testing on a laptop) ----------
+window.addEventListener('keydown', (e) => {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  keys[k] = true;
+  if (k === ' ' && screen !== 'play') advance();
+  if (k.startsWith('Arrow') || k === ' ') e.preventDefault();
+});
+window.addEventListener('keyup', (e) => {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  keys[k] = false;
+  // Stop steering when the key is released
+  if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'a' || k === 'd') targetX = carX;
+});
+
+// ---------- Main loop ----------
+let lastTime = 0;
+function loop(time) {
+  // dt = seconds since last frame, capped so a paused tab does not jump the game
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ---------- Start ----------
+window.addEventListener('resize', resize);
+resize();
+updateHud();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
