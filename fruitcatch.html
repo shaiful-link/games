@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Fruit Catch</title>
+<style>
+  /* Page fills the phone screen: stats on top, game below */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b1220;
+    color: #ffffff;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  /* Top bar: score, level, caught, lives */
+  #top {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 8px 10px;
+  }
+  .stat { text-align: center; min-width: 60px; }
+  .stat span {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+  }
+  .stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stat b.low { color: #ff6b6b; }               /* last life */
+
+  #stage { flex: 1; min-height: 0; }
+  #game { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div class="stat"><span>Score</span><b id="score">0</b></div>
+    <div class="stat"><span>Level</span><b id="level">1/10</b></div>
+    <div class="stat"><span>Caught</span><b id="caught">0/0</b></div>
+    <div class="stat"><span>Lives</span><b id="lives">5</b></div>
+  </div>
+  <div id="stage"><canvas id="game"></canvas></div>
+</div>
+
+<script>
+// =====================================================
+// FRUIT CATCH - catch the falling fruit, with 10 levels
+// Drag left and right to move the basket.
+// Catch fruit to reach the level target. Missing a fruit costs a life.
+// Do not catch a bomb: that also costs a life.
+// Star = bonus points. Heart = one extra life.
+// Keyboard (for laptop testing): arrows or A/D move, Space = start
+// =====================================================
+
+// ---------- Settings (change these to experiment) ----------
+const WORLD_W = 360, WORLD_H = 640;   // game area in game units
+const START_LIVES   = 5;              // lives are topped back up to this at each new level
+const BASKET_W      = 76;
+const BASKET_H      = 34;
+const BASKET_Y      = WORLD_H - 70;   // top of the basket
+const ITEM_SIZE     = 34;             // size of the falling pictures
+const FRUIT_POINTS  = 10;             // multiplied by the level number
+const STAR_POINTS   = 50;             // multiplied by the level number
+const STAR_CHANCE   = 0.06;           // chance that a falling item is a star
+const HEART_CHANCE  = 0.04;           // chance of a heart (only when a life is missing)
+const LEVEL_BONUS   = 200;            // bonus for finishing a level (multiplied by the level number)
+const KEY_SPEED     = 420;            // basket speed with the keyboard, units per second
+
+// ---------- Levels ----------
+// goal = fruit to catch to finish the level
+// fall = falling speed (game units per second)
+// gap  = seconds between falling items
+// bomb = chance that a falling item is a bomb (0 = never, 1 = always)
+// To add a level, add one more line to this list.
+const LEVELS = [
+  { goal: 10, fall: 170, gap: 1.10, bomb: 0.00 },   // 1
+  { goal: 12, fall: 195, gap: 1.00, bomb: 0.10 },   // 2
+  { goal: 14, fall: 220, gap: 0.95, bomb: 0.15 },   // 3
+  { goal: 16, fall: 245, gap: 0.90, bomb: 0.18 },   // 4
+  { goal: 18, fall: 270, gap: 0.85, bomb: 0.20 },   // 5
+  { goal: 20, fall: 295, gap: 0.80, bomb: 0.22 },   // 6
+  { goal: 22, fall: 320, gap: 0.75, bomb: 0.25 },   // 7
+  { goal: 24, fall: 345, gap: 0.70, bomb: 0.27 },   // 8
+  { goal: 26, fall: 370, gap: 0.65, bomb: 0.30 },   // 9
+  { goal: 30, fall: 400, gap: 0.60, bomb: 0.30 }    // 10
+];
+
+const FRUITS = ['🍎', '🍌', '🍇', '🍉', '🍓', '🍊', '🍍', '🥭'];
+const BOMB = '💣', STAR = '⭐', HEART = '❤️';
+
+// ---------- Page elements ----------
+const stage  = document.getElementById('stage');
+const canvas = document.getElementById('game');
+const ctx    = canvas.getContext('2d');
+const elScore  = document.getElementById('score');
+const elLevel  = document.getElementById('level');
+const elCaught = document.getElementById('caught');
+const elLives  = document.getElementById('lives');
+
+// ---------- Game state ----------
+let screen = 'title';            // 'title' | 'play' | 'clear' | 'over' | 'won'
+let level = 1, score = 0, levelStartScore = 0;
+let lives = START_LIVES, caught = 0;
+let basketX = WORLD_W / 2;       // centre of the basket
+let items = [];                  // falling things: { kind, symbol, x, y, speed }
+let effects = [];                // floating text such as "+10"
+let spawnTimer = 0;
+let lastSpawnX = WORLD_W / 2;
+const keys = {};
+
+// Screen fitting
+let dpr = 1, scale = 1, offX = 0, offY = 0, screenW = 0, screenH = 0;
+
+// ---------- Start a level ----------
+function startLevel(n) {
+  level = n;
+  levelStartScore = score;
+  caught = 0;
+  items = [];
+  effects = [];
+  spawnTimer = 0.6;              // short wait before the first item
+  screen = 'play';
+  updateHud();
+}
+
+// Tap or Space: what happens depends on the current screen
+function advance() {
+  if (screen === 'title' || screen === 'won') { score = 0; lives = START_LIVES; startLevel(1); }
+  else if (screen === 'clear') { lives = Math.max(lives, START_LIVES); startLevel(level + 1); }
+  else if (screen === 'over') { score = levelStartScore; lives = START_LIVES; startLevel(level); }   // retry same level
+}
+
+function updateHud() {
+  elScore.textContent = score;
+  elLevel.textContent = level + '/' + LEVELS.length;
+  elCaught.textContent = caught + '/' + LEVELS[level - 1].goal;
+  elLives.textContent = lives;
+  elLives.classList.toggle('low', lives <= 1);
+}
+
+// ---------- Falling items ----------
+function spawnItem() {
+  const def = LEVELS[level - 1];
+  let kind = 'fruit', symbol = FRUITS[Math.floor(Math.random() * FRUITS.length)];
+  const roll = Math.random();
+  if (roll < def.bomb) { kind = 'bomb'; symbol = BOMB; }
+  else if (roll < def.bomb + STAR_CHANCE) { kind = 'star'; symbol = STAR; }
+  else if (roll < def.bomb + STAR_CHANCE + HEART_CHANCE && lives < START_LIVES) { kind = 'heart'; symbol = HEART; }
+
+  // Do not put the new item too far from the last one, so every fruit can be reached
+  const margin = ITEM_SIZE / 2 + 4;
+  const reach = 200;
+  const lo = Math.max(margin, lastSpawnX - reach), hi = Math.min(WORLD_W - margin, lastSpawnX + reach);
+  const x = lo + Math.random() * (hi - lo);
+  lastSpawnX = x;
+
+  items.push({ kind, symbol, x, y: -ITEM_SIZE, speed: def.fall * (0.9 + Math.random() * 0.2) });
+}
+
+function floatText(text, x, y, color) {
+  effects.push({ text, x, y, color, t: 0, life: 0.8 });
+}
+
+function loseLife(x, y) {
+  lives--;
+  floatText('-1 life', x, y, '#ff6b6b');
+  if (lives <= 0) { lives = 0; screen = 'over'; }
+}
+
+// What happens when the basket catches an item
+function catchItem(it) {
+  if (it.kind === 'fruit') {
+    caught++;
+    score += FRUIT_POINTS * level;
+    floatText('+' + FRUIT_POINTS * level, it.x, BASKET_Y - 10, '#ffffff');
+  } else if (it.kind === 'star') {
+    score += STAR_POINTS * level;
+    floatText('+' + STAR_POINTS * level, it.x, BASKET_Y - 10, '#f4d35e');
+  } else if (it.kind === 'heart') {
+    lives = Math.min(START_LIVES, lives + 1);
+    floatText('+1 life', it.x, BASKET_Y - 10, '#4dd4ac');
+  } else {
+    loseLife(it.x, BASKET_Y - 10);            // bomb
+  }
+}
+
+// ---------- Update: move the whole game forward by dt seconds ----------
+function update(dt) {
+  for (const e of effects) e.t += dt;
+  effects = effects.filter(e => e.t < e.life);
+
+  if (screen !== 'play') return;
+
+  // Keyboard movement
+  if (keys['ArrowLeft']  || keys['a']) basketX -= KEY_SPEED * dt;
+  if (keys['ArrowRight'] || keys['d']) basketX += KEY_SPEED * dt;
+  basketX = Math.max(BASKET_W / 2, Math.min(WORLD_W - BASKET_W / 2, basketX));
+
+  // New items
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    spawnItem();
+    spawnTimer = LEVELS[level - 1].gap;
+  }
+
+  // Move items, check catches and misses
+  for (const it of items) {
+    const before = it.y;
+    it.y += it.speed * dt;
+    if (it.done) continue;
+
+    // Caught: the item crosses the top of the basket while over it
+    const overBasket = Math.abs(it.x - basketX) < BASKET_W / 2 + ITEM_SIZE * 0.25;
+    if (overBasket && before <= BASKET_Y + 14 && it.y >= BASKET_Y - 6) {
+      it.done = true;
+      catchItem(it);
+    } else if (it.y > WORLD_H + ITEM_SIZE) {
+      // Fell off the bottom: only a missed fruit costs a life
+      it.done = true;
+      if (it.kind === 'fruit') loseLife(it.x, WORLD_H - 30);
+    }
+    if (screen !== 'play') break;
+  }
+  items = items.filter(it => !it.done);
+
+  // Level finished
+  if (screen === 'play' && caught >= LEVELS[level - 1].goal) {
+    score += LEVEL_BONUS * level;
+    items = [];
+    screen = level === LEVELS.length ? 'won' : 'clear';
+  }
+  updateHud();
+}
+
+// ---------- Drawing ----------
+function draw() {
+  // Clear the whole canvas
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(0, 0, screenW, screenH);
+
+  // From here on, draw in game units (scaled and centred on screen)
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
+
+  // Sky and ground
+  const sky = ctx.createLinearGradient(0, 0, 0, WORLD_H);
+  sky.addColorStop(0, '#16284d');
+  sky.addColorStop(1, '#1f3d5c');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+  ctx.fillStyle = '#2f5d3a';
+  ctx.fillRect(0, WORLD_H - 30, WORLD_W, 30);
+
+  // Falling items
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = ITEM_SIZE + 'px system-ui, sans-serif';
+  ctx.fillStyle = '#ffffff';
+  for (const it of items) ctx.fillText(it.symbol, it.x, it.y);
+
+  drawBasket();
+
+  // Floating text
+  for (const e of effects) {
+    ctx.globalAlpha = 1 - e.t / e.life;
+    ctx.fillStyle = e.color;
+    ctx.font = '700 18px system-ui, sans-serif';
+    ctx.fillText(e.text, e.x, e.y - 40 * (e.t / e.life));
+    ctx.globalAlpha = 1;
+  }
+
+  // Messages
+  let text = null;
+  if (screen === 'title')      text = ['Fruit Catch', 'Drag to move the basket', 'Catch the fruit, avoid the bombs', 'Tap to start'];
+  else if (screen === 'clear') text = ['Level ' + level + ' clear!', 'Tap for level ' + (level + 1)];
+  else if (screen === 'won')   text = ['You win!', 'Score ' + score, 'Tap to play again'];
+  else if (screen === 'over')  text = ['Game over', 'Tap to retry level ' + level];
+  if (text) {
+    ctx.fillStyle = 'rgba(11,18,32,0.78)';
+    ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+    ctx.fillStyle = '#ffffff';
+    const gap = 32;
+    const top = WORLD_H / 2 - (text.length - 1) * gap / 2;
+    for (let i = 0; i < text.length; i++) {
+      ctx.font = i === 0 ? '700 28px system-ui, sans-serif' : '500 17px system-ui, sans-serif';
+      ctx.fillText(text[i], WORLD_W / 2, top + i * gap);
+    }
+  }
+}
+
+function drawBasket() {
+  const x = basketX, y = BASKET_Y, w = BASKET_W, h = BASKET_H;
+  // Body: wider at the top than the bottom
+  ctx.fillStyle = '#b97a45';
+  ctx.beginPath();
+  ctx.moveTo(x - w / 2, y);
+  ctx.lineTo(x + w / 2, y);
+  ctx.lineTo(x + w / 2 - 10, y + h);
+  ctx.lineTo(x - w / 2 + 10, y + h);
+  ctx.closePath();
+  ctx.fill();
+  // Weave lines
+  ctx.strokeStyle = '#8a5a3c';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 1; i < 3; i++) {
+    ctx.moveTo(x - w / 2 + i * 3.3, y + i * h / 3);
+    ctx.lineTo(x + w / 2 - i * 3.3, y + i * h / 3);
+  }
+  ctx.stroke();
+  // Rim
+  ctx.fillStyle = '#e0a96d';
+  ctx.fillRect(x - w / 2 - 3, y - 4, w + 6, 8);
+}
+
+// ---------- Fit the game area to the screen ----------
+function resize() {
+  dpr = window.devicePixelRatio || 1;            // keep drawing sharp on phone screens
+  screenW = stage.clientWidth;
+  screenH = stage.clientHeight;
+  canvas.width  = Math.round(screenW * dpr);
+  canvas.height = Math.round(screenH * dpr);
+  scale = Math.min(screenW / WORLD_W, screenH / WORLD_H);
+  offX = (screenW - WORLD_W * scale) / 2;
+  offY = (screenH - WORLD_H * scale) / 2;
+}
+
+// ---------- Input: drag to move the basket ----------
+let dragging = false;
+function moveBasket(e) {
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left - offX) / scale;
+  basketX = Math.max(BASKET_W / 2, Math.min(WORLD_W - BASKET_W / 2, x));
+}
+canvas.addEventListener('pointerdown', (e) => {
+  if (screen !== 'play') { advance(); return; }
+  dragging = true;
+  canvas.setPointerCapture(e.pointerId);
+  moveBasket(e);
+});
+canvas.addEventListener('pointermove', (e) => {
+  // With a mouse the basket follows without holding the button; with a finger it follows the drag
+  if (screen === 'play' && (dragging || e.pointerType === 'mouse')) moveBasket(e);
+});
+canvas.addEventListener('pointerup', () => { dragging = false; });
+canvas.addEventListener('pointercancel', () => { dragging = false; });
+
+// ---------- Input: keyboard (for testing on a laptop) ----------
+window.addEventListener('keydown', (e) => {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  keys[k] = true;
+  if (k === ' ' && screen !== 'play') advance();
+  if (k.startsWith('Arrow') || k === ' ') e.preventDefault();
+});
+window.addEventListener('keyup', (e) => {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  keys[k] = false;
+});
+
+// ---------- Main loop ----------
+let lastTime = 0;
+function loop(time) {
+  // dt = seconds since last frame, capped so a paused tab does not jump the game
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ---------- Start ----------
+window.addEventListener('resize', resize);
+resize();
+updateHud();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
