@@ -95,8 +95,8 @@
 <div id="app">
   <div id="top">
     <div class="stat"><span>Score</span><b id="score">0</b></div>
-    <div class="stat"><span>Lines</span><b id="lines">0</b></div>
-    <div class="stat"><span>Level</span><b id="level">1</b></div>
+    <div class="stat"><span>Lines</span><b id="lines">0/0</b></div>
+    <div class="stat"><span>Level</span><b id="level">1/10</b></div>
     <canvas id="next" aria-label="Next piece"></canvas>
     <button id="pause" aria-label="Pause">II</button>
   </div>
@@ -114,7 +114,8 @@
 
 <script>
 // =====================================================
-// BLOCK DROP - falling-block puzzle for phones
+// BLOCK DROP - falling-block puzzle for phones, with 10 levels
+// Clear the target number of lines to finish a level. Finish level 10 to win.
 // Buttons: left, right, rotate, down, drop
 // Keyboard (for laptop testing): arrows, Space = drop, P = pause
 // =====================================================
@@ -122,11 +123,26 @@
 // ---------- Settings (change these to experiment) ----------
 const COLS = 10;                 // board width in cells
 const ROWS = 20;                 // board height in cells
-const START_INTERVAL = 800;      // ms between automatic drops at level 1
-const SPEED_STEP = 70;           // ms faster per level
-const MIN_INTERVAL = 100;        // fastest drop speed
-const LINES_PER_LEVEL = 10;
 const LINE_SCORES = [0, 100, 300, 500, 800];   // points for 0-4 lines at once
+const LEVEL_BONUS = 1000;        // bonus for finishing a level (multiplied by the level number)
+
+// ---------- Levels ----------
+// goal     = lines to clear to finish the level
+// interval = ms between automatic drops (lower = faster)
+// garbage  = grey rows already on the board at the start (each has one gap)
+// To add a level, add one more line to this list.
+const LEVELS = [
+  { goal: 5,  interval: 800, garbage: 0 },   // 1
+  { goal: 6,  interval: 700, garbage: 0 },   // 2
+  { goal: 7,  interval: 620, garbage: 0 },   // 3
+  { goal: 8,  interval: 540, garbage: 2 },   // 4
+  { goal: 8,  interval: 470, garbage: 2 },   // 5
+  { goal: 9,  interval: 400, garbage: 3 },   // 6
+  { goal: 10, interval: 340, garbage: 3 },   // 7
+  { goal: 10, interval: 280, garbage: 4 },   // 8
+  { goal: 11, interval: 220, garbage: 5 },   // 9
+  { goal: 12, interval: 170, garbage: 6 }    // 10
+];
 
 // ---------- Pieces: shape grids and colours ----------
 const SHAPES = {
@@ -140,7 +156,8 @@ const SHAPES = {
 };
 const COLORS = {
   I: '#4dd4e6', O: '#f4d35e', T: '#b388eb', S: '#4dd4ac',
-  Z: '#ff6b6b', J: '#5b8def', L: '#f79d65'
+  Z: '#ff6b6b', J: '#5b8def', L: '#f79d65',
+  G: '#5a6785'                   // grey garbage rows
 };
 
 // ---------- Page elements ----------
@@ -158,8 +175,11 @@ let board = newBoard();   // ROWS x COLS grid; each cell is null or a piece lett
 let piece = null;         // the falling piece: { type, m (shape grid), x, y }
 let nextType = null;      // letter of the next piece
 let bag = [];             // shuffled bag of the 7 pieces
-let score = 0, lines = 0, level = 1;
-let state = 'ready';      // 'ready' | 'playing' | 'paused' | 'over'
+let score = 0;
+let levelStartScore = 0;  // score when the current level began (used when retrying)
+let level = 1;            // current level, 1 to LEVELS.length
+let levelLines = 0;       // lines cleared in the current level
+let state = 'ready';      // 'ready' | 'playing' | 'paused' | 'clear' | 'over' | 'won'
 let dropTimer = 0;        // ms since the piece last moved down
 let cell = 20;            // size of one cell in CSS pixels (set by resize)
 
@@ -259,7 +279,8 @@ function hardDrop() {
   dropTimer = 0;
 }
 
-// Fix the piece into the board, clear full lines, bring in the next piece
+// Fix the piece into the board, clear full lines, then either finish the level
+// or bring in the next piece
 function lock() {
   for (let r = 0; r < piece.m.length; r++)
     for (let c = 0; c < piece.m[r].length; c++)
@@ -277,22 +298,52 @@ function lock() {
   }
   if (cleared) {
     score += LINE_SCORES[cleared] * level;
-    lines += cleared;
-    level = Math.floor(lines / LINES_PER_LEVEL) + 1;
+    levelLines += cleared;
   }
-  spawn();
+
+  if (levelLines >= LEVELS[level - 1].goal) {
+    // Level finished
+    levelLines = LEVELS[level - 1].goal;
+    score += LEVEL_BONUS * level;
+    piece = null;
+    state = level === LEVELS.length ? 'won' : 'clear';
+  } else {
+    spawn();
+  }
   updateHud();
 }
 
-function startGame() {
+// ---------- Levels ----------
+// Set up the board for level n (1-based) and start playing
+function startLevel(n) {
+  level = n;
+  levelLines = 0;
+  levelStartScore = score;
   board = newBoard();
+  addGarbage(LEVELS[n - 1].garbage);
   bag = [];
-  score = 0; lines = 0; level = 1;
   dropTimer = 0;
   nextType = takeFromBag();
   state = 'playing';
   spawn();
   updateHud();
+}
+
+// Fill the bottom rows with grey blocks, leaving one random gap in each row
+function addGarbage(rows) {
+  for (let i = 0; i < rows; i++) {
+    const y = ROWS - 1 - i;
+    const gap = Math.floor(Math.random() * COLS);
+    for (let x = 0; x < COLS; x++) board[y][x] = x === gap ? null : 'G';
+  }
+}
+
+// Tap on the board or Space: what happens depends on the current screen
+function advance() {
+  if (state === 'ready' || state === 'won') { score = 0; startLevel(1); }
+  else if (state === 'clear') startLevel(level + 1);
+  else if (state === 'over') { score = levelStartScore; startLevel(level); }   // retry same level
+  else if (state === 'paused') state = 'playing';
 }
 
 function togglePause() {
@@ -302,8 +353,8 @@ function togglePause() {
 
 function updateHud() {
   elScore.textContent = score;
-  elLines.textContent = lines;
-  elLevel.textContent = level;
+  elLines.textContent = levelLines + '/' + LEVELS[level - 1].goal;
+  elLevel.textContent = level + '/' + LEVELS.length;
 }
 
 // ---------- Drawing ----------
@@ -349,19 +400,24 @@ function draw() {
 
   // Message when not playing
   if (state !== 'playing') {
-    const text = state === 'ready'  ? ['Tap to start']
-               : state === 'paused' ? ['Paused', 'Tap to resume']
-               :                      ['Game over', 'Tap to play again'];
+    let text;
+    if (state === 'ready')       text = ['Block Drop', 'Tap to start'];
+    else if (state === 'paused') text = ['Paused', 'Tap to resume'];
+    else if (state === 'clear')  text = ['Level ' + level + ' clear!', 'Tap for level ' + (level + 1)];
+    else if (state === 'won')    text = ['You win!', 'Score ' + score, 'Tap to play again'];
+    else                         text = ['Game over', 'Tap to retry level ' + level];
+
     ctx.fillStyle = 'rgba(11,18,32,0.78)';
     ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '700 22px system-ui, sans-serif';
-    ctx.fillText(text[0], w / 2, h / 2 - (text[1] ? 16 : 0));
-    if (text[1]) {
-      ctx.font = '500 16px system-ui, sans-serif';
-      ctx.fillText(text[1], w / 2, h / 2 + 16);
+    // First line is big, the rest are smaller; the block of lines is centred
+    const gap = 30;
+    const top = h / 2 - (text.length - 1) * gap / 2;
+    for (let i = 0; i < text.length; i++) {
+      ctx.font = i === 0 ? '700 22px system-ui, sans-serif' : '500 16px system-ui, sans-serif';
+      ctx.fillText(text[i], w / 2, top + i * gap);
     }
   }
 }
@@ -435,11 +491,8 @@ bindButton('btnRotate', rotate,         false);
 bindButton('btnDrop',   hardDrop,       false);
 bindButton('pause',     togglePause,    false);
 
-// Tap the board to start, resume or restart
-boardCanvas.addEventListener('pointerdown', () => {
-  if (state === 'ready' || state === 'over') startGame();
-  else if (state === 'paused') state = 'playing';
-});
+// Tap the board to start, resume, go to the next level or retry
+boardCanvas.addEventListener('pointerdown', advance);
 
 // ---------- Input: keyboard (for testing on a laptop) ----------
 window.addEventListener('keydown', (e) => {
@@ -449,7 +502,7 @@ window.addEventListener('keydown', (e) => {
     case 'ArrowUp':    rotate();  break;
     case 'ArrowDown':  softDrop(); break;
     case ' ':
-      if (state === 'ready' || state === 'over') startGame(); else hardDrop();
+      if (state === 'playing') hardDrop(); else advance();
       break;
     case 'p': case 'P': togglePause(); break;
     default: return;
@@ -470,8 +523,7 @@ function loop(time) {
 
   if (state === 'playing') {
     dropTimer += dt;
-    const interval = Math.max(MIN_INTERVAL, START_INTERVAL - (level - 1) * SPEED_STEP);
-    if (dropTimer >= interval) {
+    if (dropTimer >= LEVELS[level - 1].interval) {
       dropTimer = 0;
       stepDown();
     }
