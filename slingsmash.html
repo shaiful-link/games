@@ -23,25 +23,38 @@
     height: 100dvh;
     touch-action: none;
   }
-  #restart {
+  /* The two small buttons in the top right corner (sound on/off and restart) */
+  #buttons {
     position: fixed;
     top: 10px;
     right: 10px;
+    display: flex;
+    gap: 8px;
+  }
+  #restart, #sound {
     height: 40px;
-    padding: 0 14px;
     border: 0;
     border-radius: 10px;
-    background: #1c2742;
+    background: rgba(255,255,255,0.10);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.14);
     color: #ffffff;
-    font-size: 14px;
+    font-family: inherit;
     font-weight: 600;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
-  #restart:active { background: #2c3a60; }
+  #restart { padding: 0 14px; font-size: 14px; }
+  #sound   { width: 40px; padding: 0; font-size: 18px; }
+  #restart:active, #sound:active { background: rgba(255,255,255,0.22); }
+  #sound.off { opacity: .45; }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
-<button id="restart" aria-label="Restart level">Restart</button>
+<div id="buttons">
+  <button id="sound" aria-label="Sound on or off"></button>
+  <button id="restart" aria-label="Restart level">Restart</button>
+</div>
 
 <!-- Physics library (free, open source). Needs internet to load. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
@@ -50,7 +63,10 @@
 // =====================================================
 // SLING SMASH - slingshot physics game
 // Drag the red ball back, release to launch, knock out every green target.
+// Thin flat planks (the lighter coloured ones) break when the ball hits them hard,
+// and the ball carries on through. Pillars and boxes do not break.
 // Best played with the phone turned sideways (landscape).
+// Sounds are made by code. The speaker button (top right) turns them on and off.
 // =====================================================
 
 // ---------- Settings (change these to experiment) ----------
@@ -63,8 +79,17 @@ const MAX_PULL = 90;                  // how far back the ball can be dragged
 const POWER = 0.22;                   // launch speed per unit of pull (higher = stronger)
 const KILL_SPEED = 2.5;               // a target pops when hit faster than this
 const BALL_KILL_SPEED = 1;            // the ball pops targets more easily
+const PANEL_MAX_THICK = 16;           // a flat block this thin (or thinner) is a breakable panel
+const BREAK_SPEED = 5;                // the ball breaks a panel when it hits faster than this
+const BREAK_KEEP = 0.75;              // share of its speed the ball keeps after breaking a panel
 const TARGET_POINTS = 500;
 const SPARE_SHOT_POINTS = 1000;       // bonus for each unused shot
+const SOUND_VOLUME = 0.25;            // 0 = silent, 1 = very loud
+const THUD_SPEED = 1.5;               // bumps slower than this make no sound
+const DUST_SPEED = 4;                 // bumps faster than this kick up a puff of dust
+const SHAKE_SPEED = 9;                // the ball hitting faster than this shakes the screen a little
+const SHAKE_PIXELS = 4;               // how far the screen shakes (keep it small)
+const MAX_PARTICLES = 150;            // most dust/pop/confetti pieces on screen at once
 
 // ---------- Levels ----------
 // blocks: [centre x, centre y, width, height]   targets: [centre x, centre y]
@@ -171,6 +196,174 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const physicsLoaded = typeof Matter !== 'undefined';
 
+// ---------- Sound ----------
+// All sounds are made by code (short notes), so there are no sound files to upload.
+// Phones only allow sound after a touch, so the sound engine starts on the first touch.
+// The on/off choice is remembered, and is shared by all the games on this site.
+const btnSound = document.getElementById('sound');
+let audio = null;                // the sound engine (created on first touch)
+let muted = false;
+try { muted = localStorage.getItem('gamesMuted') === '1'; } catch (e) { /* storage blocked: start with sound on */ }
+
+function showSoundButton() {
+  btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
+  btnSound.classList.toggle('off', muted);
+}
+showSoundButton();
+
+function startAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (e) { audio = null; }                                  // no sound support: the game still works
+}
+// Different phones accept different kinds of touch for this, so listen for all of them
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, startAudio, true);
+}
+
+// Play one note.
+//   freq  = pitch in Hz (higher number = higher note)
+//   dur   = length in seconds
+//   type  = 'sine' (soft), 'triangle' (round), 'square' (retro), 'sawtooth' (buzzy)
+//   delay = seconds to wait before it starts (used to build little tunes)
+//   slide = pitch to glide to by the end (optional)
+//   volume = 0 to 1, share of SOUND_VOLUME
+function beep(freq, dur, type = 'sine', delay = 0, slide = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME * volume, t + 0.01);   // quick fade in (no click)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);                   // fade out
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// Play a burst of hiss (for explosions, crashes, whooshes).
+//   dur = length in seconds, tone = how bright it is in Hz (300 = deep boom, 4000 = sharp crack)
+let noiseBuffer = null;
+function noise(dur, tone = 1000, delay = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  if (!noiseBuffer) {                                            // one second of random hiss, made once
+    noiseBuffer = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  const t = audio.currentTime + delay;
+  const src = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const gain = audio.createGain();
+  src.buffer = noiseBuffer;
+  src.loop = true;
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(tone, t);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(60, tone * 0.25), t + dur);
+  gain.gain.setValueAtTime(SOUND_VOLUME * volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(filter).connect(gain).connect(audio.destination);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+}
+
+// Short buzz on Android phones (iPhone does not allow this from a web page)
+function buzz(ms) {
+  if (!muted && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
+}
+
+btnSound.addEventListener('click', () => {
+  muted = !muted;
+  try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {}
+  showSoundButton();
+  startAudio();
+  if (!muted) setTimeout(() => beep(740, 0.05, 'sine', 0, 0, 0.6), 60);   // small note to confirm sound is on
+});
+
+// Some sounds can happen many times a second (bumps, stretching).
+// tooSoon('name', 60) says "yes" if that sound already played less than 60 ms ago, so we skip it.
+const lastPlayed = {};
+function tooSoon(name, gapMs) {
+  const now = performance.now();
+  if (lastPlayed[name] && now - lastPlayed[name] < gapMs) return true;
+  lastPlayed[name] = now;
+  return false;
+}
+
+// The game's own sounds: one small function for each thing that happens
+let lastStretch = 0;             // pull length when the stretch sound last played
+let popRun = 0;                  // targets popped by the current shot (each pop sounds a bit higher)
+const sfx = {
+  // Tapping a screen or the Restart button
+  tap() {
+    beep(520, 0.06, 'triangle', 0, 0, 0.5);
+  },
+  // Elastic creaking while the ball is pulled back: the further back, the higher the note
+  stretch(pullLength) {
+    if (Math.abs(pullLength - lastStretch) < 4) return;          // only when the pull really changed
+    if (tooSoon('stretch', 90)) return;
+    lastStretch = pullLength;
+    beep(160 + pullLength * 5, 0.05, 'triangle', 0, 0, 0.3);
+  },
+  // Whoosh when the ball is let go (a stronger pull gives a brighter whoosh)
+  launch(pullLength) {
+    noise(0.28, 1500 + pullLength * 25, 0, 0.6);
+    beep(240, 0.16, 'sine', 0, 600, 0.3);
+  },
+  // Thud when things bump into each other. Faster bumps are louder and deeper.
+  thud(impact, wooden) {
+    if (tooSoon('thud', 70)) return;
+    const strength = Math.min(1, impact / 12);                   // 0 = gentle, 1 = very hard
+    const volume = 0.15 + strength * 0.35;
+    if (wooden) beep(230 - strength * 90, 0.07, 'triangle', 0, 90, volume);   // wooden knock
+    else        beep(140 - strength * 50, 0.09, 'sine', 0, 50, volume);       // soft thump
+    if (strength > 0.4) noise(0.08, 500, 0, volume * 0.6);
+  },
+  // A plank snapping
+  crack() {
+    if (tooSoon('crack', 60)) return;
+    noise(0.14, 4000, 0, 0.7);
+    beep(420, 0.07, 'square', 0, 160, 0.25);
+    beep(300, 0.06, 'square', 0.04, 120, 0.2);
+  },
+  // A target popping
+  pop() {
+    popRun++;
+    if (tooSoon('pop', 50)) return;
+    const pitch = 480 + Math.min(popRun, 6) * 60;
+    beep(pitch, 0.09, 'sine', 0, pitch * 2, 0.7);
+    beep(pitch * 2.5, 0.06, 'triangle', 0.07, 0, 0.4);
+  },
+  // Level clear: short rising tune
+  clear() {
+    beep(523, 0.10, 'triangle', 0.00, 0, 0.7);
+    beep(659, 0.10, 'triangle', 0.10, 0, 0.7);
+    beep(784, 0.10, 'triangle', 0.20, 0, 0.7);
+    beep(1047, 0.26, 'triangle', 0.30, 0, 0.8);
+  },
+  // Out of shots: short falling tune
+  lost() {
+    beep(392, 0.14, 'triangle', 0.00, 0, 0.6);
+    beep(330, 0.14, 'triangle', 0.15, 0, 0.6);
+    beep(262, 0.14, 'triangle', 0.30, 0, 0.6);
+    beep(196, 0.32, 'triangle', 0.45, 150, 0.6);
+  },
+  // All levels complete: a longer fanfare with a second voice underneath
+  done() {
+    const tune = [523, 523, 523, 659, 784, 659, 784, 1047];
+    const when = [0, 0.12, 0.24, 0.36, 0.52, 0.68, 0.80, 0.96];
+    for (let i = 0; i < tune.length; i++) {
+      const last = i === tune.length - 1;
+      beep(tune[i], last ? 0.5 : 0.11, 'triangle', when[i], 0, 0.8);
+      beep(tune[i] / 2, last ? 0.5 : 0.11, 'sine', when[i], 0, 0.4);
+    }
+  }
+};
+
 // ---------- Game state ----------
 const STEP = 1000 / 60;               // physics runs in fixed 1/60 second steps
 const GRAVITY_PER_STEP = 0.001 * STEP * STEP;   // used for the aiming dots
@@ -185,10 +378,27 @@ let shotsLeft = 0;
 let ball = null;                      // the flying ball (null while aiming)
 let targets = [];
 let effects = [];                     // pop rings and score text
+let debris = [];                      // flying pieces of broken panels (drawing only)
+let ballKeep = null;                  // ball velocity to restore after it breaks a panel
 let pull = { x: 0, y: 0 };            // how far the ball is dragged from the anchor
 let dragging = false;
 let flyTime = 0, slowTime = 0, settleTime = 0, clearTimer = 0, levelTime = 0;
 let accumulator = 0;
+
+// Extra state used only for looks (it never changes how the game plays)
+let particles = [];                   // dust puffs, pop sparkles and confetti
+let trail = [];                       // dots left behind by the flying ball
+let trailTimer = 0;
+let shakeTime = 0;                    // seconds of screen shake left
+let snapTime = 1;                     // seconds since the elastic was let go (for its wobble)
+let snapDir = { x: 1, y: 0 };         // direction the elastic snapped in
+let lastBonus = 0;                    // spare-shot bonus of the level just cleared (shown on the clear screen)
+let confettiTimer = 0;
+let animTime = 0;                     // seconds since the page opened (for gentle pulsing)
+
+const SHAKE_LENGTH = 0.22;            // seconds a screen shake lasts
+const SNAP_LENGTH = 0.35;             // seconds the elastic wobbles after a launch
+const CONFETTI_COLOURS = ['#ff6b6b', '#ffd166', '#4dd4ac', '#6ea8ff', '#ffffff'];
 
 // Screen fitting
 let dpr = 1, scale = 1, offX = 0, offY = 0, screenW = 0, screenH = 0;
@@ -208,7 +418,11 @@ function buildLevel(n) {
     { isStatic: true, label: 'ground', friction: 0.8 }));
 
   for (const [x, y, w, h] of def.blocks) {
-    bodies.push(Bodies.rectangle(x, y, w, h, { label: 'block', friction: 0.6, density: 0.0012 }));
+    const block = Bodies.rectangle(x, y, w, h, { label: 'block', friction: 0.6, density: 0.0012 });
+    block.panel = w > h && h <= PANEL_MAX_THICK;    // flat and thin = breakable panel
+    block.w = w;
+    block.h = h;
+    bodies.push(block);
   }
 
   targets = [];
@@ -226,6 +440,8 @@ function buildLevel(n) {
   levelStartScore = score;
   ball = null;
   effects = [];
+  debris = [];
+  ballKeep = null;
   pull = { x: 0, y: 0 };
   dragging = false;
   phase = 'aim';
@@ -233,6 +449,13 @@ function buildLevel(n) {
   levelTime = 0;
   accumulator = 0;
   screen = 'play';
+
+  // Fresh level: clear the looks-only extras too
+  particles = [];
+  trail = [];
+  shakeTime = 0;
+  snapTime = 1;
+  popRun = 0;
 }
 
 // ---------- Collisions: decide when a target pops ----------
@@ -241,7 +464,46 @@ function onCollision(event) {
   for (const pair of event.pairs) {
     checkTargetHit(pair.bodyA, pair.bodyB);
     checkTargetHit(pair.bodyB, pair.bodyA);
+    checkPanelBreak(pair.bodyA, pair.bodyB);
+    checkPanelBreak(pair.bodyB, pair.bodyA);
+    impactEffects(pair);              // sound, dust and shake (looks only)
   }
+}
+
+// The ball breaks a panel when it hits it fast enough.
+// This runs just before the physics bounces the ball, so the ball's velocity here
+// is still its incoming velocity. We keep it and give it back after the step,
+// so the ball carries on through the gap instead of bouncing off.
+function checkPanelBreak(panel, other) {
+  if (!panel.panel || panel.broken || other.label !== 'ball') return;
+  const impact = Math.hypot(other.velocity.x - panel.velocity.x, other.velocity.y - panel.velocity.y);
+  if (impact < BREAK_SPEED) return;
+  panel.broken = true;                // removed after the physics step
+  const base = ballKeep || other.velocity;        // two panels in one step: slow down twice
+  ballKeep = { x: base.x * BREAK_KEEP, y: base.y * BREAK_KEEP };
+}
+
+// Replace a broken panel with a few loose pieces that fly off and fade
+function breakPanel(panel) {
+  const pieces = Math.max(4, Math.round(panel.w / 18));
+  const cos = Math.cos(panel.angle), sin = Math.sin(panel.angle);
+  const push = ballKeep || { x: 0, y: 0 };
+  for (let i = 0; i < pieces; i++) {
+    const along = (i + 0.5) / pieces * panel.w - panel.w / 2;     // position along the panel
+    debris.push({
+      x: panel.position.x + along * cos,
+      y: panel.position.y + along * sin,
+      vx: push.x * 0.25 + (Math.random() - 0.5) * 3,
+      vy: push.y * 0.25 - Math.random() * 3,
+      angle: panel.angle,
+      spin: (Math.random() - 0.5) * 0.4,
+      w: panel.w / pieces * 0.9,
+      h: panel.h,
+      t: 0,
+      life: 0.9
+    });
+  }
+  Matter.Composite.remove(engine.world, panel);
 }
 
 function checkTargetHit(target, other) {
@@ -252,6 +514,95 @@ function checkTargetHit(target, other) {
   if (impact > limit) target.dead = true;   // removed after the physics step
 }
 
+// Sound, dust and screen shake when two things bump. This only adds effects:
+// it never changes what the physics does.
+function impactEffects(pair) {
+  const a = pair.bodyA, b = pair.bodyB;
+  const impact = Math.hypot(a.velocity.x - b.velocity.x, a.velocity.y - b.velocity.y);
+  if (impact < THUD_SPEED) return;                // too gentle to notice
+  if (a.broken || b.broken) return;               // a breaking plank makes its own crack sound
+
+  const ballHit = a.label === 'ball' || b.label === 'ball';
+  const wooden = a.label === 'block' || b.label === 'block';
+  sfx.thud(impact, wooden);
+
+  if (impact > DUST_SPEED && !tooSoon('dust', 40)) {
+    const p = contactPoint(pair);
+    addDust(p.x, p.y, 3);
+  }
+  if (ballHit && impact > SHAKE_SPEED) {
+    shakeTime = SHAKE_LENGTH;
+    buzz(10);
+  }
+}
+
+// Where two bumping bodies touch (used to place the dust puff)
+function contactPoint(pair) {
+  const support = pair.collision && pair.collision.supports && pair.collision.supports[0];
+  if (support && isFinite(support.x) && isFinite(support.y)) return support;
+  // No contact point given: use the spot on the ground under the moving body, or halfway between the two
+  const a = pair.bodyA, b = pair.bodyB;
+  if (a.label === 'ground') return { x: b.position.x, y: GROUND_Y };
+  if (b.label === 'ground') return { x: a.position.x, y: GROUND_Y };
+  return { x: (a.position.x + b.position.x) / 2, y: (a.position.y + b.position.y) / 2 };
+}
+
+// ---------- Particles (dust, sparkles, confetti) ----------
+// Each particle is a tiny dot or square that moves, fades and is then removed.
+function addParticle(p) {
+  if (particles.length >= MAX_PARTICLES) return;  // never draw too many (keeps cheap phones smooth)
+  p.t = 0;
+  particles.push(p);
+}
+
+// Soft beige puffs that grow and fade
+function addDust(x, y, count) {
+  for (let i = 0; i < count; i++) {
+    addParticle({
+      kind: 'puff', x: x + (Math.random() - 0.5) * 10, y: y - Math.random() * 4,
+      vx: (Math.random() - 0.5) * 1.2, vy: -0.2 - Math.random() * 0.6, gravity: 0,
+      size: 4 + Math.random() * 4, colour: '#d9d2c0', life: 0.45 + Math.random() * 0.25
+    });
+  }
+}
+
+// Green and white sparkles flying out of a popped target
+function addPop(x, y) {
+  for (let i = 0; i < 10; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1.5 + Math.random() * 2.5;
+    addParticle({
+      kind: 'dot', x: x, y: y,
+      vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 1, gravity: 0.12,
+      size: 2 + Math.random() * 2.5, colour: i % 3 === 0 ? '#ffffff' : '#6ee7bf', life: 0.5 + Math.random() * 0.3
+    });
+  }
+}
+
+// Small pale wood chips from a snapped plank
+function addChips(x, y) {
+  for (let i = 0; i < 8; i++) {
+    addParticle({
+      kind: 'dot', x: x + (Math.random() - 0.5) * 30, y: y,
+      vx: (Math.random() - 0.5) * 4, vy: -1 - Math.random() * 3, gravity: 0.2,
+      size: 1.5 + Math.random() * 1.5, colour: '#ffe6c2', life: 0.5 + Math.random() * 0.3
+    });
+  }
+}
+
+// Coloured paper falling from the top of the screen
+function addConfetti(count) {
+  for (let i = 0; i < count; i++) {
+    addParticle({
+      kind: 'confetti', x: Math.random() * WORLD_W, y: -10 - Math.random() * 80,
+      vx: (Math.random() - 0.5) * 1.5, vy: 1.5 + Math.random() * 2, gravity: 0.01,
+      angle: Math.random() * 6, spin: (Math.random() - 0.5) * 0.3,
+      size: 5 + Math.random() * 4, colour: CONFETTI_COLOURS[i % CONFETTI_COLOURS.length],
+      life: 2.6 + Math.random() * 1.2
+    });
+  }
+}
+
 // ---------- Launch ----------
 function launch() {
   const { Bodies, Body, Composite } = Matter;
@@ -259,6 +610,16 @@ function launch() {
     { label: 'ball', density: 0.004, restitution: 0.3, friction: 0.5, frictionAir: BALL_AIR });
   Body.setVelocity(ball, { x: -pull.x * POWER, y: -pull.y * POWER });
   Composite.add(engine.world, ball);
+
+  // Looks and sound: whoosh, elastic wobble, and a fresh trail of dots
+  const pullLength = Math.hypot(pull.x, pull.y);
+  sfx.launch(pullLength);
+  if (pullLength > 0) snapDir = { x: -pull.x / pullLength, y: -pull.y / pullLength };
+  snapTime = 0;
+  trail = [];
+  trailTimer = 0;
+  popRun = 0;
+  lastStretch = 0;
 
   shotsLeft--;
   pull = { x: 0, y: 0 };
@@ -271,6 +632,37 @@ function launch() {
 function update(dt) {
   for (const e of effects) e.t += dt;
   effects = effects.filter(e => e.t < e.life);
+
+  // Broken panel pieces: simple falling and spinning, no physics
+  const steps = dt * 60;
+  for (const d of debris) {
+    d.t += dt;
+    d.vy += GRAVITY_PER_STEP * steps;
+    d.x += d.vx * steps;
+    d.y += d.vy * steps;
+    d.angle += d.spin * steps;
+  }
+  debris = debris.filter(d => d.t < d.life);
+
+  // Dust, sparkles and confetti: the same simple movement
+  for (const p of particles) {
+    p.t += dt;
+    p.vy += p.gravity * steps;
+    p.x += p.vx * steps;
+    p.y += p.vy * steps;
+    if (p.spin) p.angle += p.spin * steps;
+  }
+  particles = particles.filter(p => p.t < p.life);
+
+  // Timers for the screen shake and the elastic wobble
+  if (shakeTime > 0) shakeTime -= dt;
+  snapTime += dt;
+
+  // Keep the confetti coming on the "all levels complete" screen
+  if (screen === 'done') {
+    confettiTimer += dt;
+    if (confettiTimer > 0.7) { confettiTimer = 0; addConfetti(25); }
+  }
 
   if (!engine || screen === 'title') return;
 
@@ -296,6 +688,14 @@ function update(dt) {
     flyTime += dt;
     slowTime = ball.speed < 0.35 ? slowTime + dt : 0;
     const p = ball.position;
+
+    // Leave a dot behind the ball every so often, so you can see the path it took
+    trailTimer += dt;
+    if (trailTimer > 0.045 && ball.speed > 1.5 && trail.length < 60) {
+      trailTimer = 0;
+      trail.push({ x: p.x, y: p.y });
+    }
+
     const outside = p.x > WORLD_W + 60 || p.x < -60 || p.y > WORLD_H + 60;
     // The shot ends when the ball leaves the screen, stops, or takes too long
     if (outside || slowTime > 0.8 || flyTime > 7) {
@@ -310,12 +710,28 @@ function update(dt) {
       if (settleTime > 0.4) phase = 'aim';
     } else if (settleTime > 2.5) {
       screen = 'lost';                // no shots left and targets still standing
+      sfx.lost();
     }
   }
 }
 
-// Remove popped targets and anything that left the game area
+// Remove broken panels, popped targets and anything that left the game area
 function afterPhysicsStep() {
+  for (const body of Matter.Composite.allBodies(engine.world)) {
+    if (body.broken) {
+      breakPanel(body);
+      // Looks and sound for the snap
+      sfx.crack();
+      addChips(body.position.x, body.position.y);
+      shakeTime = SHAKE_LENGTH * 0.6;
+      buzz(12);
+    }
+  }
+  if (ballKeep) {
+    if (ball) Matter.Body.setVelocity(ball, ballKeep);   // the ball carries on through the gap
+    ballKeep = null;
+  }
+
   for (const t of targets) {
     const p = t.position;
     if (p.x > WORLD_W + 50 || p.x < -50 || p.y > WORLD_H + 50) t.dead = true;
@@ -323,64 +739,473 @@ function afterPhysicsStep() {
       Matter.Composite.remove(engine.world, t);
       score += TARGET_POINTS;
       effects.push({ x: p.x, y: p.y, t: 0, life: 0.7, text: '+' + TARGET_POINTS });
+      // Looks and sound for the pop
+      sfx.pop();
+      addPop(p.x, p.y);
+      buzz(12);
     }
   }
   targets = targets.filter(t => !t.dead);
 }
 
 function levelClear() {
-  score += shotsLeft * SPARE_SHOT_POINTS;
+  lastBonus = shotsLeft * SPARE_SHOT_POINTS;
+  score += lastBonus;
   screen = level === LEVELS.length - 1 ? 'done' : 'clear';
+
+  // Celebrate: tune and confetti (a bigger party after the last level)
+  confettiTimer = 0;
+  if (screen === 'done') { sfx.done(); addConfetti(70); buzz(40); }
+  else                   { sfx.clear(); addConfetti(45); buzz(30); }
+}
+
+// ---------- Pre-drawn pictures (sprites) ----------
+// Drawing gradients and fine detail every frame is slow on cheap phones.
+// So the background, ball, targets and blocks are each painted ONCE onto a small hidden
+// canvas (a "sprite"), and every frame we just stamp those pictures onto the screen.
+// They are painted again whenever the screen size changes, so they always stay sharp.
+let spritePixels = 1;                 // screen pixels per game unit inside a sprite
+let bgCanvas = null;                  // sky, clouds, hills and ground
+let ballSprite = null, shotSprite = null, shadowSprite = null;
+let targetSprite = null, targetScaredSprite = null;
+let blockSprites = {};                // one picture per block size, made the first time it is needed
+
+// Make a hidden canvas w x h game units big. paint(c) draws on it with (0,0) at its centre.
+function makeSprite(w, h, paint) {
+  const c = document.createElement('canvas');
+  c.width  = Math.ceil(w * spritePixels);
+  c.height = Math.ceil(h * spritePixels);
+  const g = c.getContext('2d');
+  g.setTransform(spritePixels, 0, 0, spritePixels, c.width / 2, c.height / 2);
+  paint(g);
+  return { canvas: c, w: w, h: h };
+}
+
+// Stamp a sprite with its centre at x, y (turned by angle, if given)
+function stamp(sprite, x, y, angle) {
+  if (angle) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.drawImage(sprite.canvas, -sprite.w / 2, -sprite.h / 2, sprite.w, sprite.h);
+    ctx.restore();
+  } else {
+    ctx.drawImage(sprite.canvas, x - sprite.w / 2, y - sprite.h / 2, sprite.w, sprite.h);
+  }
+}
+
+// A simple repeatable "random" number maker, so the stars and wood grain
+// look the same every time they are painted again
+function makeRandom(seed) {
+  let value = seed;
+  return function () {
+    value = (value * 9301 + 49297) % 233280;
+    return value / 233280;
+  };
+}
+
+// Path for a rectangle with rounded corners (x, y = top left corner)
+function roundRectPath(c, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.lineTo(x + w - r, y);
+  c.arcTo(x + w, y, x + w, y + r, r);
+  c.lineTo(x + w, y + h - r);
+  c.arcTo(x + w, y + h, x + w - r, y + h, r);
+  c.lineTo(x + r, y + h);
+  c.arcTo(x, y + h, x, y + h - r, r);
+  c.lineTo(x, y + r);
+  c.arcTo(x, y, x + r, y, r);
+  c.closePath();
+}
+
+// Paint all the sprites (called at the start and whenever the screen size changes)
+function buildSprites() {
+  spritePixels = Math.max(1, scale * dpr);
+  blockSprites = {};
+  buildBackground();
+
+  ballSprite = makeSprite(BALL_R * 2 + 4, BALL_R * 2 + 4, paintBall);
+
+  // Small plain red ball for the "shots left" row
+  shotSprite = makeSprite(20, 20, (c) => {
+    const shade = c.createRadialGradient(-2.5, -3, 1, 0, 0, 8);
+    shade.addColorStop(0, '#ffb3a6');
+    shade.addColorStop(0.5, '#ff6b6b');
+    shade.addColorStop(1, '#c8323f');
+    c.fillStyle = shade;
+    c.beginPath();
+    c.arc(0, 0, 8, 0, Math.PI * 2);
+    c.fill();
+    c.strokeStyle = 'rgba(255,255,255,0.85)';
+    c.lineWidth = 1.2;
+    c.stroke();
+  });
+
+  // Soft dark oval drawn on the ground under the ball and the targets
+  shadowSprite = makeSprite(40, 12, (c) => {
+    c.scale(1, 0.3);
+    const shade = c.createRadialGradient(0, 0, 2, 0, 0, 20);
+    shade.addColorStop(0, 'rgba(0,0,0,0.45)');
+    shade.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = shade;
+    c.beginPath();
+    c.arc(0, 0, 20, 0, Math.PI * 2);
+    c.fill();
+  });
+
+  targetSprite       = makeSprite(TARGET_R * 2 + 14, TARGET_R * 2 + 14, (c) => paintTarget(c, false));
+  targetScaredSprite = makeSprite(TARGET_R * 2 + 14, TARGET_R * 2 + 14, (c) => paintTarget(c, true));
+}
+
+// Sky, moon, stars, clouds, hills and grassy ground, as wide as the screen
+function buildBackground() {
+  bgCanvas = document.createElement('canvas');
+  bgCanvas.width  = canvas.width;
+  bgCanvas.height = Math.max(1, Math.round(WORLD_H * scale * dpr));
+  const c = bgCanvas.getContext('2d');
+  // Draw in game units. On wide screens the picture carries on past both sides of the game area.
+  c.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, 0);
+  const left = -offX / scale - 2, right = WORLD_W + offX / scale + 2;
+  const random = makeRandom(7);
+
+  // Evening sky: dark navy at the top, lighter blue near the hills
+  const sky = c.createLinearGradient(0, 0, 0, GROUND_Y);
+  sky.addColorStop(0, '#0c1630');
+  sky.addColorStop(0.6, '#1c3462');
+  sky.addColorStop(1, '#35588f');
+  c.fillStyle = sky;
+  c.fillRect(left, 0, right - left, GROUND_Y);
+
+  // Stars (only in the upper sky)
+  for (let i = 0; i < 70; i++) {
+    const x = left + random() * (right - left), y = random() * 200;
+    c.fillStyle = 'rgba(255,255,255,' + (0.25 + random() * 0.5).toFixed(2) + ')';
+    c.beginPath();
+    c.arc(x, y, 0.6 + random() * 0.9, 0, Math.PI * 2);
+    c.fill();
+  }
+
+  // Moon with a soft glow
+  const glow = c.createRadialGradient(470, 62, 10, 470, 62, 60);
+  glow.addColorStop(0, 'rgba(255,244,214,0.30)');
+  glow.addColorStop(1, 'rgba(255,244,214,0)');
+  c.fillStyle = glow;
+  c.fillRect(410, 2, 120, 120);
+  c.fillStyle = '#fff4d6';
+  c.beginPath();
+  c.arc(470, 62, 20, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = 'rgba(214,196,150,0.55)';       // a few craters
+  for (const [x, y, r] of [[463, 56, 4], [477, 68, 3], [473, 52, 2]]) {
+    c.beginPath();
+    c.arc(x, y, r, 0, Math.PI * 2);
+    c.fill();
+  }
+
+  // Clouds: each one is a few overlapping see-through circles
+  const clouds = [[90, 70, 1.1], [290, 120, 0.8], [640, 95, 1.2], [820, 150, 0.9], [-60, 150, 1]];
+  c.fillStyle = 'rgba(255,255,255,0.07)';
+  for (const [x, y, size] of clouds) {
+    for (const [dx, dy, r] of [[-28, 4, 16], [-10, -6, 22], [14, -2, 19], [34, 6, 13], [2, 8, 20]]) {
+      c.beginPath();
+      c.arc(x + dx * size, y + dy * size, r * size, 0, Math.PI * 2);
+      c.fill();
+    }
+  }
+
+  // Two rows of rolling hills (far ones paler, near ones darker)
+  drawHills(c, left, right, 330, 34, 0.006, 1.0, '#27477a');
+  drawHills(c, left, right, 365, 24, 0.011, 4.0, '#1d3a5c');
+
+  // Ground: dark soil with a strip of grass on top
+  const soil = c.createLinearGradient(0, GROUND_Y, 0, WORLD_H);
+  soil.addColorStop(0, '#22324f');
+  soil.addColorStop(1, '#131d33');
+  c.fillStyle = soil;
+  c.fillRect(left, GROUND_Y, right - left, WORLD_H - GROUND_Y);
+  c.fillStyle = 'rgba(0,0,0,0.18)';             // little stones in the soil
+  for (let i = 0; i < 60; i++) {
+    c.beginPath();
+    c.arc(left + random() * (right - left), GROUND_Y + 16 + random() * 30, 1 + random() * 2, 0, Math.PI * 2);
+    c.fill();
+  }
+  const grass = c.createLinearGradient(0, GROUND_Y, 0, GROUND_Y + 11);
+  grass.addColorStop(0, '#3c9a5e');
+  grass.addColorStop(1, '#22633f');
+  c.fillStyle = grass;
+  c.fillRect(left, GROUND_Y, right - left, 11);
+  c.fillStyle = 'rgba(255,255,255,0.18)';       // bright line along the top edge of the grass
+  c.fillRect(left, GROUND_Y, right - left, 1.2);
+  // Blades of grass sticking up
+  c.fillStyle = '#3c9a5e';
+  for (let x = left; x < right; x += 6) {
+    const bx = x + random() * 4, tall = 2.5 + random() * 4, lean = (random() - 0.5) * 3;
+    c.beginPath();
+    c.moveTo(bx - 1.5, GROUND_Y + 1);
+    c.lineTo(bx + lean, GROUND_Y - tall);
+    c.lineTo(bx + 1.5, GROUND_Y + 1);
+    c.fill();
+  }
+}
+
+// One row of smooth hills from the left edge to the right edge
+function drawHills(c, left, right, baseY, height, wave, shift, colour) {
+  c.fillStyle = colour;
+  c.beginPath();
+  c.moveTo(left, GROUND_Y);
+  for (let x = left; x <= right + 8; x += 8) {
+    const y = baseY - height * (Math.sin(x * wave + shift) * 0.7 + Math.sin(x * wave * 2.3 + shift * 2) * 0.3);
+    c.lineTo(x, y);
+  }
+  c.lineTo(right, GROUND_Y);
+  c.closePath();
+  c.fill();
+}
+
+// The red ball: shaded, shiny, with a determined little face looking toward the targets
+function paintBall(c) {
+  const shade = c.createRadialGradient(-4, -5, 2, 0, 0, BALL_R);
+  shade.addColorStop(0, '#ffb3a6');
+  shade.addColorStop(0.45, '#ff6b6b');
+  shade.addColorStop(1, '#c8323f');
+  c.fillStyle = shade;
+  c.beginPath();
+  c.arc(0, 0, BALL_R, 0, Math.PI * 2);
+  c.fill();
+  c.strokeStyle = 'rgba(255,255,255,0.9)';      // thin white rim so it stands out on the dark sky
+  c.lineWidth = 1.5;
+  c.beginPath();
+  c.arc(0, 0, BALL_R - 0.4, 0, Math.PI * 2);
+  c.stroke();
+  // Shine
+  c.fillStyle = 'rgba(255,255,255,0.5)';
+  c.beginPath();
+  c.ellipse(-6, -7.5, 3.6, 2, -0.6, 0, Math.PI * 2);
+  c.fill();
+  // Eyes
+  c.fillStyle = '#ffffff';
+  c.beginPath();
+  c.arc(0.5, -1, 3.3, 0, Math.PI * 2);
+  c.arc(7.5, -1, 3.3, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = '#0b1220';
+  c.beginPath();
+  c.arc(1.6, -0.6, 1.6, 0, Math.PI * 2);
+  c.arc(8.4, -0.6, 1.6, 0, Math.PI * 2);
+  c.fill();
+  // Eyebrows and mouth
+  c.strokeStyle = '#5a1620';
+  c.lineWidth = 1.8;
+  c.lineCap = 'round';
+  c.beginPath();
+  c.moveTo(-3.5, -6.5);
+  c.lineTo(2.8, -4.4);
+  c.moveTo(11, -6.5);
+  c.lineTo(5.4, -4.4);
+  c.moveTo(2, 5.5);
+  c.lineTo(7.5, 4.8);
+  c.stroke();
+}
+
+// A green target: shaded, with a leafy tuft and a face. "scared" is used when the ball is close.
+function paintTarget(c, scared) {
+  // Leafy tuft on top
+  c.fillStyle = '#2f9c78';
+  c.beginPath();
+  c.ellipse(-3, -TARGET_R - 1, 2, 4.5, -0.5, 0, Math.PI * 2);
+  c.ellipse(3, -TARGET_R - 1, 2, 4.5, 0.5, 0, Math.PI * 2);
+  c.fill();
+  // Body
+  const shade = c.createRadialGradient(-4, -5, 2, 0, 0, TARGET_R);
+  shade.addColorStop(0, '#a5f5d6');
+  shade.addColorStop(0.5, '#4dd4ac');
+  shade.addColorStop(1, '#23997a');
+  c.fillStyle = shade;
+  c.beginPath();
+  c.arc(0, 0, TARGET_R, 0, Math.PI * 2);
+  c.fill();
+  c.strokeStyle = '#0f5a48';
+  c.lineWidth = 1.4;
+  c.beginPath();
+  c.arc(0, 0, TARGET_R - 0.5, 0, Math.PI * 2);
+  c.stroke();
+  // Two eyes so you can see it roll
+  c.fillStyle = '#ffffff';
+  c.beginPath();
+  c.arc(-5, -3, 4, 0, Math.PI * 2);
+  c.arc(5, -3, 4, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = '#0b1220';
+  c.beginPath();
+  c.arc(-5, -3, scared ? 1.5 : 2.3, 0, Math.PI * 2);
+  c.arc(5, -3, scared ? 1.5 : 2.3, 0, Math.PI * 2);
+  c.fill();
+  // Mouth: a smile, or a round "oh!" when scared
+  if (scared) {
+    c.beginPath();
+    c.ellipse(0, 6.5, 2.4, 3, 0, 0, Math.PI * 2);
+    c.fill();
+  } else {
+    c.strokeStyle = '#0b1220';
+    c.lineWidth = 1.5;
+    c.lineCap = 'round';
+    c.beginPath();
+    c.arc(0, 4, 4, 0.25, Math.PI - 0.25);
+    c.stroke();
+  }
+  // Rosy cheeks
+  c.fillStyle = 'rgba(255,140,140,0.45)';
+  c.beginPath();
+  c.arc(-9, 3, 2, 0, Math.PI * 2);
+  c.arc(9, 3, 2, 0, Math.PI * 2);
+  c.fill();
+}
+
+// The picture for a block of this size (made the first time, then reused)
+function blockSprite(body) {
+  const key = body.w + 'x' + body.h;
+  if (!blockSprites[key]) {
+    blockSprites[key] = makeSprite(body.w + 2, body.h + 2, (c) => paintBlock(c, body.w, body.h, body.panel));
+  }
+  return blockSprites[key];
+}
+
+// Wood with grain lines. Breakable panels are pale planks with a nail at each end;
+// pillars and boxes are darker orange-brown wood with a thick dark edge.
+function paintBlock(c, w, h, panel) {
+  const base   = panel ? ['#fff0d6', '#f3cf9c'] : ['#f0935a', '#c96a35'];
+  const grain  = panel ? 'rgba(190,140,80,0.55)' : 'rgba(120,55,20,0.5)';
+  const edge   = panel ? '#c79a5e' : '#7a3a17';
+  const random = makeRandom(Math.round(w * 31 + h * 17));
+  const sideways = w >= h;            // the grain runs along the longer side
+  const longSide = Math.max(w, h), shortSide = Math.min(w, h);
+
+  // Base colour: lighter on the top/left, darker on the bottom/right
+  const shade = sideways ? c.createLinearGradient(0, -h / 2, 0, h / 2) : c.createLinearGradient(-w / 2, 0, w / 2, 0);
+  shade.addColorStop(0, base[0]);
+  shade.addColorStop(1, base[1]);
+  roundRectPath(c, -w / 2, -h / 2, w, h, 2.5);
+  c.fillStyle = shade;
+  c.fill();
+
+  // Grain lines (drawn inside the block shape only)
+  c.save();
+  c.clip();
+  if (!sideways) c.rotate(Math.PI / 2);          // now the long side always runs left to right
+  c.strokeStyle = grain;
+  c.lineWidth = 0.8;
+  const lines = Math.max(2, Math.round(shortSide / 5));
+  for (let i = 1; i < lines; i++) {
+    const y = -shortSide / 2 + shortSide * i / lines + (random() - 0.5) * 1.5;
+    const bend = (random() - 0.5) * 3;
+    c.beginPath();
+    c.moveTo(-longSide / 2, y);
+    c.quadraticCurveTo(0, y + bend, longSide / 2, y);
+    c.stroke();
+  }
+  if (!panel && shortSide >= 30) {               // a knot in the wood on the big boxes
+    c.beginPath();
+    c.ellipse(longSide * 0.15, -shortSide * 0.1, 5, 3, 0, 0, Math.PI * 2);
+    c.stroke();
+  }
+  if (panel) {                                   // nails at both ends of a plank
+    c.fillStyle = '#9a7445';
+    c.beginPath();
+    c.arc(-longSide / 2 + 5, 0, 1.4, 0, Math.PI * 2);
+    c.arc(longSide / 2 - 5, 0, 1.4, 0, Math.PI * 2);
+    c.fill();
+  }
+  c.restore();
+
+  // Highlight along the top and left edges, then the outline
+  c.strokeStyle = 'rgba(255,255,255,0.35)';
+  c.lineWidth = 1;
+  c.beginPath();
+  c.moveTo(-w / 2 + 2, h / 2 - 3);
+  c.lineTo(-w / 2 + 2, -h / 2 + 2);
+  c.lineTo(w / 2 - 3, -h / 2 + 2);
+  c.stroke();
+  roundRectPath(c, -w / 2 + 0.5, -h / 2 + 0.5, w - 1, h - 1, 2.5);
+  c.strokeStyle = edge;
+  c.lineWidth = panel ? 1.2 : 1.8;
+  c.stroke();
 }
 
 // ---------- Drawing ----------
 function draw() {
-  // Clear the whole canvas
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // Clear the whole canvas, then stamp the pre-drawn background across the game area
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#0b1220';
-  ctx.fillRect(0, 0, screenW, screenH);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bgCanvas, 0, Math.round(offY * dpr));
 
   // Hint when the phone is upright
-  if (screenH > screenW) {
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.font = '500 14px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('Turn your phone sideways for a bigger view', screenW / 2, offY + WORLD_H * scale + 16);
+  if (screenH > screenW) drawTurnHint();
+
+  // From here on, draw in game units (scaled and centred on screen).
+  // A screen shake nudges everything a few pixels for a moment.
+  let shakeX = 0, shakeY = 0;
+  if (shakeTime > 0) {
+    const strength = SHAKE_PIXELS * shakeTime / SHAKE_LENGTH;
+    shakeX = (Math.random() * 2 - 1) * strength;
+    shakeY = (Math.random() * 2 - 1) * strength;
   }
-
-  // From here on, draw in game units (scaled and centred on screen)
-  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
-
-  // Sky and ground
-  ctx.fillStyle = '#12203a';
-  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-  ctx.fillStyle = '#1b2d4f';
-  ctx.fillRect(0, GROUND_Y, WORLD_W, WORLD_H - GROUND_Y);
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * (offX + shakeX), dpr * (offY + shakeY));
 
   if (!physicsLoaded) {
+    shade();
     drawText('Could not load the physics library', WORLD_W / 2, WORLD_H / 2 - 14, 20, 700);
     drawText('Check your internet connection and reload', WORLD_W / 2, WORLD_H / 2 + 16, 15, 500);
     return;
   }
 
-  drawSling();
+  // The ball sits on the slingshot while aiming (and on the start screen, just for show)
+  const ballOnSling = screen === 'title' || (screen === 'play' && phase === 'aim');
+
+  drawTrail();
+  drawSling(ballOnSling);
 
   if (engine) {
-    for (const body of Matter.Composite.allBodies(engine.world)) {
+    const bodies = Matter.Composite.allBodies(engine.world);
+    // Soft shadows on the ground first, so they are underneath everything
+    for (const body of bodies) {
+      if (body.label === 'target' || body.label === 'ball') drawShadow(body.position.x, body.position.y);
+    }
+    for (const body of bodies) {
       if (body.label === 'block') drawBlock(body);
       else if (body.label === 'target') drawTarget(body);
-      else if (body.label === 'ball') drawBall(body.position.x, body.position.y);
+      else if (body.label === 'ball') drawBall(body.position.x, body.position.y, body.angle);
     }
   }
 
   // Ball waiting on the slingshot, with aiming dots while dragging
-  if (screen === 'play' && phase === 'aim') {
+  if (ballOnSling) {
     if (dragging) drawAimDots();
-    drawBall(ANCHOR.x + pull.x, ANCHOR.y + pull.y);
+    drawShadow(ANCHOR.x + pull.x, ANCHOR.y + pull.y);
+    drawBall(ANCHOR.x + pull.x, ANCHOR.y + pull.y, 0);
+    drawFrontBand();
   }
 
-  // Pop effects
+  // Pieces of broken panels
+  for (const d of debris) {
+    ctx.save();
+    ctx.globalAlpha = 1 - d.t / d.life;
+    ctx.translate(d.x, d.y);
+    ctx.rotate(d.angle);
+    ctx.fillStyle = '#ffe6c2';
+    ctx.fillRect(-d.w / 2, -d.h / 2, d.w, d.h);
+    ctx.strokeStyle = '#c79a5e';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-d.w / 2, -d.h / 2, d.w, d.h);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+
+  drawParticles(false);               // dust and sparkles (confetti comes later, on top)
+
+  // Pop effects: an expanding ring and the points floating up
   for (const e of effects) {
     const k = e.t / e.life;
     ctx.globalAlpha = 1 - k;
@@ -389,133 +1214,313 @@ function draw() {
     ctx.beginPath();
     ctx.arc(e.x, e.y, TARGET_R + 22 * k, 0, Math.PI * 2);
     ctx.stroke();
-    drawText(e.text, e.x, e.y - 20 - 24 * k, 15, 700);
+    drawText(e.text, e.x, e.y - 20 - 24 * k, 15, 700, 'center', '#ffe08a');
     ctx.globalAlpha = 1;
   }
 
+  // The score boxes and end screens do not shake
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
+
   // Score, level and shots left
   if (screen !== 'title') {
-    ctx.textAlign = 'left';
-    drawText('Level ' + (level + 1) + '/' + LEVELS.length, 14, 20, 15, 600, 'left');
-    drawText('Score ' + score, 14, 42, 15, 600, 'left');
+    const levelWidth = drawHudPill(12, 8, 'Level', (level + 1) + '/' + LEVELS.length, '#8fb8ff');
+    drawHudPill(12 + levelWidth + 8, 8, 'Score', String(score), '#ffd166');
     for (let i = 0; i < shotsLeft - (phase === 'aim' ? 1 : 0); i++) {
-      ctx.fillStyle = '#ff6b6b';
-      ctx.beginPath();
-      ctx.arc(24 + i * 22, GROUND_Y + 25, 8, 0, Math.PI * 2);
-      ctx.fill();
+      stamp(shotSprite, 24 + i * 22, GROUND_Y + 25);
     }
   }
 
   // Start, clear, lost and finished screens
   if (screen === 'title') {
-    shade();
-    drawText('Sling Smash', WORLD_W / 2, WORLD_H / 2 - 50, 34, 700);
-    drawText('Drag the red ball back and release', WORLD_W / 2, WORLD_H / 2 - 6, 16, 500);
-    drawText('Knock out every green target', WORLD_W / 2, WORLD_H / 2 + 18, 16, 500);
-    drawText('Tap to start', WORLD_W / 2, WORLD_H / 2 + 60, 19, 600);
+    drawCard('Sling Smash', '#ffd166', [
+      'Drag the red ball back and release',
+      'Knock out every green target',
+      'A hard hit breaks the light planks'
+    ], 'Tap to start', true);
   } else if (screen === 'clear') {
-    shade();
-    drawText('Level clear!', WORLD_W / 2, WORLD_H / 2 - 24, 30, 700);
-    drawText('Tap for the next level', WORLD_W / 2, WORLD_H / 2 + 20, 18, 600);
+    drawCard('Level clear!', '#7ee0a1',
+      lastBonus > 0 ? ['Spare shots bonus +' + lastBonus] : [], 'Tap for the next level', false);
   } else if (screen === 'lost') {
-    shade();
-    drawText('Out of shots', WORLD_W / 2, WORLD_H / 2 - 24, 30, 700);
-    drawText('Tap to try again', WORLD_W / 2, WORLD_H / 2 + 20, 18, 600);
+    drawCard('Out of shots', '#ff9a9a', [], 'Tap to try again', false);
   } else if (screen === 'done') {
-    shade();
-    drawText('All levels complete!', WORLD_W / 2, WORLD_H / 2 - 40, 30, 700);
-    drawText('Final score ' + score, WORLD_W / 2, WORLD_H / 2 + 2, 20, 600);
-    drawText('Tap to play again', WORLD_W / 2, WORLD_H / 2 + 44, 18, 600);
+    drawCard('All levels complete!', '#ffd166', ['Final score ' + score], 'Tap to play again', false);
   }
+
+  drawParticles(true);                // confetti falls in front of the end screens
+}
+
+// "Turn your phone sideways" hint, shown in a rounded box under the game area
+function drawTurnHint() {
+  const text = '↻  Turn your phone sideways for a bigger view';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  let size = 14;
+  ctx.font = '600 ' + size + 'px system-ui, sans-serif';
+  let width = ctx.measureText(text).width;
+  if (width > screenW - 40) {                     // narrow phone: shrink the text to fit
+    size = size * (screenW - 40) / width;
+    ctx.font = '600 ' + size + 'px system-ui, sans-serif';
+    width = screenW - 40;
+  }
+  const boxW = width + 28, boxH = size + 20;
+  const boxX = (screenW - boxW) / 2, boxY = offY + WORLD_H * scale + 14;
+  roundRectPath(ctx, boxX, boxY, boxW, boxH, boxH / 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, screenW / 2, boxY + boxH / 2);
 }
 
 function shade() {
-  ctx.fillStyle = 'rgba(11,18,32,0.75)';
-  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+  ctx.fillStyle = 'rgba(11,18,32,0.6)';
+  ctx.fillRect(-offX / scale, 0, WORLD_W + 2 * offX / scale, WORLD_H);
 }
 
 // Text that stays readable even when the game area is small
-function drawText(text, x, y, size, weight, align) {
+function drawText(text, x, y, size, weight, align, colour) {
   const px = Math.max(size, 12 / scale);
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = colour || '#ffffff';
   ctx.font = weight + ' ' + px + 'px system-ui, sans-serif';
   ctx.textAlign = align || 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x, y);
 }
 
-function drawSling() {
-  // Wooden post and fork
-  ctx.strokeStyle = '#8a5a3c';
-  ctx.lineWidth = 8;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(ANCHOR.x, GROUND_Y);
-  ctx.lineTo(ANCHOR.x, ANCHOR.y + 14);
-  ctx.moveTo(ANCHOR.x, ANCHOR.y + 14);
-  ctx.lineTo(ANCHOR.x - 12, ANCHOR.y - 8);
-  ctx.moveTo(ANCHOR.x, ANCHOR.y + 14);
-  ctx.lineTo(ANCHOR.x + 12, ANCHOR.y - 8);
+// One rounded score box, for example [ Level 3/10 ]. Returns its width so the next box can sit beside it.
+function drawHudPill(x, y, label, value, accent) {
+  const px = Math.max(14, 12 / scale);
+  ctx.font = '700 ' + px + 'px system-ui, sans-serif';
+  const labelW = ctx.measureText(label + ' ').width;
+  // Measure the number as if every digit were a 0, so the box does not wobble as the score changes
+  const valueW = ctx.measureText(value.replace(/[0-9]/g, '0')).width;
+  const padX = px * 0.75, h = px * 1.75, w = labelW + valueW + padX * 2;
+
+  roundRectPath(ctx, x, y, w, h, h / 2);
+  ctx.fillStyle = 'rgba(11,18,32,0.6)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+  ctx.lineWidth = 1;
   ctx.stroke();
 
-  // Elastic bands to the ball while aiming
-  if (screen === 'play' && phase === 'aim') {
-    ctx.strokeStyle = '#f4d35e';
-    ctx.lineWidth = 3;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = accent;
+  ctx.fillText(label, x + padX, y + h / 2 + px * 0.04);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(value, x + padX + labelW, y + h / 2 + px * 0.04);
+  return w;
+}
+
+// The box in the middle of the start / clear / lost / finished screens.
+//   title = big heading, lines = smaller lines under it, tapLine = the pulsing "Tap to..." line
+function drawCard(title, titleColour, lines, tapLine, showMascots) {
+  shade();
+
+  // Work out the text sizes first (text never gets smaller than 12 screen pixels)
+  const titlePx = Math.max(32, 12 / scale);
+  const linePx  = Math.max(16, 12 / scale);
+  const tapPx   = Math.max(19, 12 / scale);
+  const titleH = titlePx * 1.5, lineH = linePx * 1.5, tapH = tapPx * 2;
+  const totalH = titleH + lines.length * lineH + tapH;
+
+  // The card is as wide as its longest line
+  ctx.font = '700 ' + titlePx + 'px system-ui, sans-serif';
+  const titleW = ctx.measureText(title).width;
+  let widest = titleW + (showMascots ? 90 : 0);
+  ctx.font = '500 ' + linePx + 'px system-ui, sans-serif';
+  for (const line of lines) widest = Math.max(widest, ctx.measureText(line).width);
+  ctx.font = '600 ' + tapPx + 'px system-ui, sans-serif';
+  widest = Math.max(widest, ctx.measureText(tapLine).width);
+
+  const cardW = Math.min(WORLD_W - 16, widest + 56), cardH = totalH + 36;
+  const cardX = (WORLD_W - cardW) / 2, cardY = (WORLD_H - cardH) / 2;
+  roundRectPath(ctx, cardX, cardY, cardW, cardH, 18);
+  ctx.fillStyle = 'rgba(14,23,44,0.92)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Heading (with a dark copy just below it, like a shadow)
+  let y = cardY + 18 + titleH / 2;
+  drawText(title, WORLD_W / 2, y + 2, 32, 700, 'center', 'rgba(0,0,0,0.45)');
+  drawText(title, WORLD_W / 2, y, 32, 700, 'center', titleColour);
+  if (showMascots) {                  // the ball and a target either side of the game's name
+    stamp(ballSprite, WORLD_W / 2 - titleW / 2 - 26, y);
+    stamp(targetSprite, WORLD_W / 2 + titleW / 2 + 26, y);
+  }
+  y += titleH / 2;
+
+  for (const line of lines) {
+    drawText(line, WORLD_W / 2, y + lineH / 2, 16, 500, 'center', 'rgba(255,255,255,0.88)');
+    y += lineH;
+  }
+
+  // "Tap to..." line gently pulses
+  ctx.globalAlpha = 0.65 + 0.35 * Math.sin(animTime * 4);
+  drawText(tapLine, WORLD_W / 2, y + tapH / 2, 19, 600, 'center', '#ffffff');
+  ctx.globalAlpha = 1;
+}
+
+// Dots left behind by the flying ball
+function drawTrail() {
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  for (let i = 0; i < trail.length; i++) {
     ctx.beginPath();
-    ctx.moveTo(ANCHOR.x - 12, ANCHOR.y - 8);
-    ctx.lineTo(ANCHOR.x + pull.x, ANCHOR.y + pull.y);
-    ctx.lineTo(ANCHOR.x + 12, ANCHOR.y - 8);
+    ctx.arc(trail[i].x, trail[i].y, i % 2 === 0 ? 2.6 : 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// Dust puffs, sparkles and wood chips (confetti = false), or the confetti (confetti = true)
+function drawParticles(confetti) {
+  for (const p of particles) {
+    if ((p.kind === 'confetti') !== confetti) continue;
+    const k = p.t / p.life;                       // 0 = just made, 1 = about to vanish
+    ctx.fillStyle = p.colour;
+    if (p.kind === 'puff') {                      // dust grows and fades
+      ctx.globalAlpha = 0.5 * (1 - k);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * (0.6 + k), 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.kind === 'dot') {                // sparkles shrink and fade
+      ctx.globalAlpha = 1 - k;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * (1 - k * 0.5), 0, Math.PI * 2);
+      ctx.fill();
+    } else {                                      // confetti: a little spinning rectangle
+      ctx.globalAlpha = Math.min(1, (1 - k) * 4);
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle);
+      ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+      ctx.restore();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Soft shadow on the ground under something round (fainter the higher up it is)
+function drawShadow(x, y) {
+  const height = GROUND_Y - y;
+  if (height < 0 || height > 160) return;
+  ctx.globalAlpha = 1 - height / 160;
+  stamp(shadowSprite, x, GROUND_Y + 2);
+  ctx.globalAlpha = 1;
+}
+
+// The two tips of the slingshot fork
+const FORK_LEFT  = { x: ANCHOR.x - 12, y: ANCHOR.y - 8 };
+const FORK_RIGHT = { x: ANCHOR.x + 12, y: ANCHOR.y - 8 };
+
+// One pass over the wooden post and fork (drawn three times: dark edge, wood, highlight)
+function slingWoodPath(shiftX) {
+  ctx.beginPath();
+  ctx.moveTo(ANCHOR.x + shiftX, GROUND_Y + 2);
+  ctx.lineTo(ANCHOR.x + shiftX, ANCHOR.y + 14);
+  ctx.lineTo(FORK_LEFT.x + shiftX, FORK_LEFT.y);
+  ctx.moveTo(ANCHOR.x + shiftX, ANCHOR.y + 14);
+  ctx.lineTo(FORK_RIGHT.x + shiftX, FORK_RIGHT.y);
+}
+
+// How thick the elastic is: it gets thinner the further it is stretched
+function bandWidth() {
+  return 4 - 1.6 * Math.hypot(pull.x, pull.y) / MAX_PULL;
+}
+
+// Where the elastic holds the ball: just behind the ball's centre, on the side being pulled
+function pouchPoint() {
+  const d = Math.hypot(pull.x, pull.y);
+  const x = ANCHOR.x + pull.x, y = ANCHOR.y + pull.y;
+  if (d < 1) return { x: x, y: y };
+  return { x: x + pull.x / d * BALL_R * 0.55, y: y + pull.y / d * BALL_R * 0.55 };
+}
+
+function drawSling(ballOnSling) {
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Wooden post and fork: dark edge, then wood, then a thin highlight
+  ctx.strokeStyle = '#4a2c18';
+  ctx.lineWidth = 11;
+  slingWoodPath(0);
+  ctx.stroke();
+  ctx.strokeStyle = '#a06a43';
+  ctx.lineWidth = 8;
+  slingWoodPath(0);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,220,170,0.35)';
+  ctx.lineWidth = 2;
+  slingWoodPath(-2);
+  ctx.stroke();
+
+  if (ballOnSling) {
+    // Back elastic band (from the far fork tip, behind the ball)
+    const p = pouchPoint();
+    ctx.strokeStyle = '#b8962e';
+    ctx.lineWidth = bandWidth();
+    ctx.beginPath();
+    ctx.moveTo(FORK_RIGHT.x, FORK_RIGHT.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  } else {
+    // No ball on the slingshot: the elastic hangs between the tips,
+    // and wobbles for a moment just after a launch
+    let wobble = 0;
+    if (snapTime < SNAP_LENGTH) wobble = Math.cos(snapTime * 45) * 12 * (1 - snapTime / SNAP_LENGTH);
+    ctx.strokeStyle = '#f4d35e';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(FORK_LEFT.x, FORK_LEFT.y);
+    ctx.quadraticCurveTo(ANCHOR.x + snapDir.x * wobble, FORK_LEFT.y + 3 + snapDir.y * wobble, FORK_RIGHT.x, FORK_RIGHT.y);
     ctx.stroke();
   }
   ctx.lineCap = 'butt';
+  ctx.lineJoin = 'miter';
 }
 
-function drawBlock(body) {
-  const v = body.vertices;
+// Front elastic band and the little leather pouch (drawn after the ball, so they are in front of it)
+function drawFrontBand() {
+  const p = pouchPoint();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#f4d35e';
+  ctx.lineWidth = bandWidth();
   ctx.beginPath();
-  ctx.moveTo(v[0].x, v[0].y);
-  for (let i = 1; i < v.length; i++) ctx.lineTo(v[i].x, v[i].y);
-  ctx.closePath();
-  ctx.fillStyle = '#f79d65';
-  ctx.fill();
-  ctx.strokeStyle = '#c9743f';
-  ctx.lineWidth = 2;
+  ctx.moveTo(FORK_LEFT.x, FORK_LEFT.y);
+  ctx.lineTo(p.x, p.y);
   ctx.stroke();
+  ctx.fillStyle = '#6b4226';
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 3.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineCap = 'butt';
+}
+
+// Blocks are stamped from their pre-drawn wood picture.
+// Breakable panels are a lighter colour so you can tell them apart.
+function drawBlock(body) {
+  stamp(blockSprite(body), body.position.x, body.position.y, body.angle);
 }
 
 function drawTarget(body) {
-  ctx.save();
-  ctx.translate(body.position.x, body.position.y);
-  ctx.rotate(body.angle);
-  ctx.fillStyle = '#4dd4ac';
-  ctx.beginPath();
-  ctx.arc(0, 0, TARGET_R, 0, Math.PI * 2);
-  ctx.fill();
-  // Two eyes so you can see it roll
-  ctx.fillStyle = '#0b1220';
-  ctx.beginPath();
-  ctx.arc(-5, -3, 2.5, 0, Math.PI * 2);
-  ctx.arc(5, -3, 2.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  // A target looks worried while the ball is flying fast and close to it
+  let scared = false;
+  if (ball && ball.speed > 2) {
+    scared = Math.hypot(ball.position.x - body.position.x, ball.position.y - body.position.y) < 170;
+  }
+  stamp(scared ? targetScaredSprite : targetSprite, body.position.x, body.position.y, body.angle);
 }
 
-function drawBall(x, y) {
-  ctx.fillStyle = '#ff6b6b';
-  ctx.beginPath();
-  ctx.arc(x, y, BALL_R, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 2;
-  ctx.stroke();
+function drawBall(x, y, angle) {
+  stamp(ballSprite, x, y, angle);
 }
 
 // Dots showing the first part of the ball's path
 function drawAimDots() {
   let x = ANCHOR.x + pull.x, y = ANCHOR.y + pull.y;
   let vx = -pull.x * POWER, vy = -pull.y * POWER;
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
   for (let i = 1; i <= 42; i++) {
     vx *= 1 - BALL_AIR;
     vy = vy * (1 - BALL_AIR) + GRAVITY_PER_STEP;
@@ -524,7 +1529,7 @@ function drawAimDots() {
     if (y > GROUND_Y) break;
     if (i % 3 === 0) {
       ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.arc(x, y, 3.4 - i * 0.04, 0, Math.PI * 2);    // dots get a little smaller further away
       ctx.fill();
     }
   }
@@ -540,6 +1545,7 @@ function resize() {
   scale = Math.min(screenW / WORLD_W, screenH / WORLD_H);
   offX = (screenW - WORLD_W * scale) / 2;
   offY = (screenH - WORLD_H * scale) / 2;
+  buildSprites();                                // repaint the pre-drawn pictures at the new size
 }
 
 // ---------- Input ----------
@@ -555,13 +1561,14 @@ function setPull(p) {
   // Do not let the ball be dragged into the ground
   dy = Math.min(dy, GROUND_Y - BALL_R - ANCHOR.y);
   pull = { x: dx, y: dy };
+  sfx.stretch(Math.hypot(dx, dy));               // elastic creak (higher the further back)
 }
 
 canvas.addEventListener('pointerdown', (e) => {
   if (!physicsLoaded) return;
-  if (screen === 'title' || screen === 'done') { score = 0; buildLevel(0); return; }
-  if (screen === 'clear') { buildLevel(level + 1); return; }
-  if (screen === 'lost')  { score = levelStartScore; buildLevel(level); return; }
+  if (screen === 'title' || screen === 'done') { sfx.tap(); score = 0; buildLevel(0); return; }
+  if (screen === 'clear') { sfx.tap(); buildLevel(level + 1); return; }
+  if (screen === 'lost')  { sfx.tap(); score = levelStartScore; buildLevel(level); return; }
 
   // Start dragging only when the touch begins near the slingshot
   if (phase === 'aim') {
@@ -590,6 +1597,7 @@ canvas.addEventListener('pointercancel', () => { dragging = false; pull = { x: 0
 
 document.getElementById('restart').addEventListener('click', () => {
   if (!physicsLoaded || screen === 'title') return;
+  sfx.tap();
   if (screen === 'done') { score = 0; buildLevel(0); return; }
   score = levelStartScore;
   buildLevel(level);
@@ -601,6 +1609,7 @@ function loop(time) {
   // dt = seconds since last frame, capped so a paused tab does not jump the game
   const dt = Math.min((time - lastTime) / 1000, 0.05);
   lastTime = time;
+  animTime += dt;
   if (physicsLoaded) update(dt);
   draw();
   requestAnimationFrame(loop);

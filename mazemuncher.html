@@ -18,6 +18,7 @@
     -webkit-user-select: none;
     touch-action: none;
   }
+  body { background: radial-gradient(ellipse at 50% 35%, #14213d 0%, #0b1220 70%); }
   #app {
     display: flex;
     flex-direction: column;
@@ -27,13 +28,22 @@
     gap: 8px;
   }
 
-  /* Top bar: score, level, lives */
+  /* Top bar: score, level, lives (each in its own rounded box) and the sound button */
   #top {
     display: flex;
-    align-items: center;
-    justify-content: space-around;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 8px;
   }
-  .stat { text-align: center; min-width: 70px; }
+  .stat {
+    flex: 1;
+    text-align: center;
+    min-width: 70px;
+    padding: 5px 6px 4px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
   .stat span {
     display: block;
     font-size: 11px;
@@ -41,7 +51,41 @@
     text-transform: uppercase;
     color: rgba(255,255,255,0.55);
   }
-  .stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stat b {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    height: 24px;
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+  }
+  #score { color: #f4d35e; }
+  #level { color: #8ec5ff; }
+
+  /* One small muncher picture for each life (faded when that life is lost) */
+  .life {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #a8f5dc, #4dd4ac 55%, #2a9d7c);
+    clip-path: polygon(0 0, 100% 0, 100% 22%, 50% 50%, 100% 78%, 100% 100%, 0 100%);   /* cuts the mouth */
+  }
+  .life.lost { opacity: 0.18; }
+
+  /* Sound on/off button: in the top bar, far away from the arrow buttons */
+  #sound {
+    flex: none;
+    width: 42px;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.10);
+    color: #fff;
+    font-size: 18px;
+    padding: 0;
+    touch-action: manipulation;
+  }
+  #sound.off { opacity: .45; }
 
   /* Maze area takes all remaining space; canvas is centred inside */
   #boardWrap {
@@ -51,7 +95,11 @@
     align-items: center;
     justify-content: center;
   }
-  #board { background: #0b1220; border-radius: 6px; }
+  #board {
+    background: #0b1220;
+    border-radius: 10px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.07), 0 6px 18px rgba(0,0,0,0.45);
+  }
 
   /* Arrow buttons (you can also swipe anywhere on the screen) */
   #controls {
@@ -64,12 +112,13 @@
   #controls button {
     border: 0;
     border-radius: 12px;
-    background: #1c2742;
-    color: #ffffff;
+    background: linear-gradient(#26345a, #18223c);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 2px 0 rgba(0,0,0,0.35);
+    color: #cfe0ff;
     font-size: 22px;
     touch-action: none;
   }
-  #controls button:active { background: #2c3a60; }
+  #controls button:active { background: #2c3a60; transform: translateY(1px); }
   #btnUp    { grid-column: 2; grid-row: 1; }
   #btnLeft  { grid-column: 1; grid-row: 2; }
   #btnDown  { grid-column: 2; grid-row: 2; }
@@ -81,7 +130,8 @@
   <div id="top">
     <div class="stat"><span>Score</span><b id="score">0</b></div>
     <div class="stat"><span>Level</span><b id="level">1/10</b></div>
-    <div class="stat"><span>Lives</span><b id="lives">3</b></div>
+    <div class="stat"><span>Lives</span><b id="lives"></b></div>
+    <button id="sound" aria-label="Sound on or off"></button>
   </div>
 
   <div id="boardWrap"><canvas id="board"></canvas></div>
@@ -101,6 +151,9 @@
 // A big dot makes the chasers blue for a few seconds: then you can eat them.
 // Controls: swipe anywhere, or use the arrow buttons.
 // Keyboard (for laptop testing): arrows or WASD, Space = start, P = pause
+// Sound: made by code (no sound files). The speaker button at the top right turns it on/off.
+// Graphics: the maze and the characters are painted once onto hidden canvases
+// ("sprites") and then stamped on screen each frame, which keeps cheap phones fast.
 // =====================================================
 
 // ---------- Settings (change these to experiment) ----------
@@ -114,6 +167,15 @@ const LEVEL_BONUS   = 500;       // bonus for finishing a level (multiplied by t
 const RELEASE_GAP   = 2.5;       // seconds between each chaser leaving the centre
 const SCATTER_TIME  = 6;         // seconds chasers wander to their corners
 const CHASE_TIME    = 14;        // seconds chasers hunt you
+const SOUND_VOLUME  = 0.25;      // 0 = silent, 1 = very loud
+const DEATH_TIME    = 1.2;       // seconds the "caught" animation lasts
+const FLASH_TIME    = 1.0;       // seconds the maze flashes when a level is finished
+const MAX_PARTICLES = 150;       // most sparkles/confetti pieces allowed at once (keeps phones fast)
+const PLAYER_COLOR  = '#4dd4ac';
+const DOT_COLOR     = '#f4d35e';
+const SCARED_COLOR  = '#5b8def'; // chaser colour while blue
+// Neon colour of the maze walls. Level 1 uses the first, level 2 the second, and so on (then it repeats).
+const WALL_COLORS   = ['#3d7bff', '#8a5cff', '#e055c8', '#2fa8ff'];
 
 // ---------- Levels ----------
 // speed   = chaser speed in tiles per second (you move at PLAYER_SPEED)
@@ -186,7 +248,7 @@ let chasers = [];
 let wanted = null;               // direction the player asked for
 let playerStart = { x: 7, y: 13 };
 let chaserStarts = [];
-let screen = 'title';            // 'title' | 'ready' | 'play' | 'paused' | 'clear' | 'over' | 'won'
+let screen = 'title';            // 'title' | 'ready' | 'play' | 'dying' | 'paused' | 'clear' | 'over' | 'won'
 let level = 1, score = 0, levelStartScore = 0, lives = START_LIVES;
 let readyTimer = 0;              // short pause before play starts
 let frightTimer = 0;             // seconds of blue time left
@@ -194,6 +256,144 @@ let eatChain = 0;                // chasers eaten on the current big dot
 let modeTimer = 0;               // position in the scatter/chase cycle
 let clock = 0;                   // total time, used for animation
 let tile = 20;                   // size of one tile in CSS pixels (set by resize)
+
+// ---------- Effects state (only for looks, never changes the rules) ----------
+let particles = [];              // sparkles and confetti: { x, y, vx, vy, life, maxLife, size, color, gravity }
+let floatTexts = [];             // score numbers that float up: { x, y, text, life }
+let playerFacing = RIGHT;        // last direction the player moved (the mouth points this way)
+let dyingTimer = 0;              // seconds left of the "caught" animation
+let deathBurstDone = false;      // true once the little pop at the end of that animation has been made
+let shakeTimer = 0;              // seconds of screen shake left
+let screenTimer = 0;             // seconds since the current screen started (for fades and flashes)
+let lastScreen = 'title';
+
+// ---------- Sound ----------
+// All sounds are made by code (short notes), so there are no sound files to upload.
+// Phones only allow sound after a touch, so the sound engine starts on the first touch.
+// The on/off choice is remembered, and is shared by all the games on this site.
+const btnSound = document.getElementById('sound');
+let audio = null;                // the sound engine (created on first touch)
+let muted = false;
+try { muted = localStorage.getItem('gamesMuted') === '1'; } catch (e) { /* storage blocked: start with sound on */ }
+
+function showSoundButton() {
+  btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
+  btnSound.classList.toggle('off', muted);
+}
+showSoundButton();
+
+function startAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (e) { audio = null; }                                  // no sound support: the game still works
+}
+// Different phones accept different kinds of touch for this, so listen for all of them
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, startAudio, true);
+}
+
+// Play one note.
+//   freq  = pitch in Hz (higher number = higher note)
+//   dur   = length in seconds
+//   type  = 'sine' (soft), 'triangle' (round), 'square' (retro), 'sawtooth' (buzzy)
+//   delay = seconds to wait before it starts (used to build little tunes)
+//   slide = pitch to glide to by the end (optional)
+//   volume = 0 to 1, share of SOUND_VOLUME
+function beep(freq, dur, type = 'sine', delay = 0, slide = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME * volume, t + 0.01);   // quick fade in (no click)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);                   // fade out
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// Short buzz on Android phones (iPhone does not allow this from a web page)
+function buzz(ms) {
+  if (!muted && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
+}
+
+btnSound.addEventListener('click', () => {
+  muted = !muted;
+  try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {}
+  showSoundButton();
+  startAudio();
+  if (!muted) setTimeout(() => beep(740, 0.05, 'sine', 0, 0, 0.6), 60);   // small note to confirm sound is on
+});
+// Touching the sound button must not also count as "tap to start" or the start of a swipe
+btnSound.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
+
+// The game's own sounds: one small function for each thing that happens
+let lastDotSound = 0;            // when the last dot sound played (so they never pile up)
+let dotSoundHigh = false;        // the dot sound swaps between two notes: "wa", "ka", "wa", "ka"
+const sfx = {
+  // Small click for pause / resume
+  tap() { beep(660, 0.06, 'sine', 0, 0, 0.5); },
+  // Three quick rising notes when a level starts
+  start() {
+    beep(523, 0.09, 'triangle', 0.00, 0, 0.7);
+    beep(659, 0.09, 'triangle', 0.09, 0, 0.7);
+    beep(784, 0.14, 'triangle', 0.18, 0, 0.7);
+  },
+  // Eating a dot: quiet, very short, and skipped if one played less than 60 ms ago
+  dot() {
+    const now = performance.now();
+    if (now - lastDotSound < 60) return;
+    lastDotSound = now;
+    dotSoundHigh = !dotSoundHigh;
+    if (dotSoundHigh) beep(420, 0.07, 'triangle', 0, 600, 0.4);   // "wa" slides up
+    else              beep(600, 0.07, 'triangle', 0, 420, 0.4);   // "ka" slides down
+  },
+  // Big dot: a quick climbing run of notes
+  power() {
+    beep(330, 0.08, 'square', 0.00, 0, 0.45);
+    beep(440, 0.08, 'square', 0.07, 0, 0.45);
+    beep(554, 0.08, 'square', 0.14, 0, 0.45);
+    beep(659, 0.16, 'square', 0.21, 0, 0.45);
+  },
+  // Eating a blue chaser: a swoop up. It gets higher for each chaser in a row.
+  eatChaser(chain) {
+    const base = 440 * (1 + chain * 0.2);
+    beep(base, 0.16, 'square', 0, base * 2.2, 0.45);
+    beep(base * 2.2, 0.12, 'triangle', 0.15, 0, 0.7);
+  },
+  // Caught by a chaser: a short falling tune
+  caught() {
+    beep(620, 0.16, 'triangle', 0.00, 460, 0.8);
+    beep(460, 0.16, 'triangle', 0.16, 340, 0.8);
+    beep(340, 0.16, 'triangle', 0.32, 250, 0.8);
+    beep(250, 0.34, 'triangle', 0.48, 120, 0.8);
+  },
+  // Level finished: a short rising tune
+  levelClear() {
+    beep(523, 0.10, 'triangle', 0.00);
+    beep(659, 0.10, 'triangle', 0.10);
+    beep(784, 0.10, 'triangle', 0.20);
+    beep(1047, 0.26, 'triangle', 0.30);
+  },
+  // All 10 levels finished: a longer happy tune
+  win() {
+    const notes = [523, 659, 784, 1047, 784, 1047, 1319];
+    for (let i = 0; i < notes.length; i++) {
+      beep(notes[i], i === notes.length - 1 ? 0.45 : 0.12, 'triangle', i * 0.12);
+    }
+  },
+  // No lives left: a slow falling tune
+  gameOver() {
+    beep(392, 0.20, 'sine', 0.00);
+    beep(330, 0.20, 'sine', 0.20);
+    beep(262, 0.20, 'sine', 0.40);
+    beep(196, 0.50, 'sine', 0.60);
+  }
+};
 
 // ---------- Maze helpers ----------
 function wrapX(x) { return (x + COLS) % COLS; }
@@ -226,12 +426,16 @@ function startLevel(n) {
   loadMaze();
   resetPositions();
   updateHud();
+  buildMazeLayers();             // repaint the walls in this level's colour
+  particles = [];                // clear away old confetti
+  floatTexts = [];
 }
 
 // Put the player and chasers back on their start tiles
 function resetPositions() {
   player = { x: playerStart.x, y: playerStart.y, dir: null, t: 0, speed: PLAYER_SPEED };
   wanted = null;
+  playerFacing = RIGHT;
   chasers = chaserStarts.slice(0, LEVELS[level - 1].chasers).map((s, i) => ({
     x: s.x, y: s.y, dir: null, t: 0, speed: LEVELS[level - 1].speed,
     home: s, kind: i, color: CHASER_COLORS[i % CHASER_COLORS.length],
@@ -247,21 +451,28 @@ function resetPositions() {
 
 // Tap or Space: what happens depends on the current screen
 function advance() {
-  if (screen === 'title' || screen === 'won') { score = 0; lives = START_LIVES; startLevel(1); }
-  else if (screen === 'clear') { lives = Math.max(lives, START_LIVES); startLevel(level + 1); }   // lives refill to 3
-  else if (screen === 'over') { score = levelStartScore; lives = START_LIVES; startLevel(level); }   // retry same level
-  else if (screen === 'paused') screen = 'play';
+  if (screen === 'title' || screen === 'won') { score = 0; lives = START_LIVES; startLevel(1); sfx.start(); }
+  else if (screen === 'clear') { lives = Math.max(lives, START_LIVES); startLevel(level + 1); sfx.start(); }   // lives refill to 3
+  else if (screen === 'over') { score = levelStartScore; lives = START_LIVES; startLevel(level); sfx.start(); }   // retry same level
+  else if (screen === 'paused') { screen = 'play'; sfx.tap(); }
 }
 
 function togglePause() {
-  if (screen === 'play') screen = 'paused';
-  else if (screen === 'paused') screen = 'play';
+  if (screen === 'play') { screen = 'paused'; sfx.tap(); }
+  else if (screen === 'paused') { screen = 'play'; sfx.tap(); }
 }
 
 function updateHud() {
   elScore.textContent = score;
   elLevel.textContent = level + '/' + LEVELS.length;
-  elLives.textContent = lives;
+  // Lives are shown as little muncher pictures; lost lives stay as faded ones
+  const total = Math.max(lives, START_LIVES);
+  let html = '';
+  for (let i = 0; i < total; i++) {
+    html += '<i class="life' + (i < lives ? '' : ' lost') + '"></i>';
+  }
+  elLives.innerHTML = html;
+  elLives.setAttribute('aria-label', lives + ' lives');
 }
 
 // ---------- Movement ----------
@@ -311,14 +522,20 @@ function choosePlayerDir(p) {
 
 function playerArrive(p) {
   const c = grid[p.y][p.x];
+  const cx = p.x * tile + tile / 2, cy = p.y * tile + tile / 2;   // middle of this tile, in pixels
   if (c === '.') {
     grid[p.y][p.x] = ' ';
     dotsLeft--;
     score += DOT_POINTS;
+    sfx.dot();
+    spawnParticles(cx, cy, 3, [DOT_COLOR, '#ffffff'], 2.5, 0.3, 0);          // tiny sparkle
   } else if (c === 'o') {
     grid[p.y][p.x] = ' ';
     dotsLeft--;
     score += POWER_POINTS;
+    sfx.power();
+    buzz(15);
+    spawnParticles(cx, cy, 14, [DOT_COLOR, '#ffffff', '#ffb347'], 5, 0.5, 0); // bigger burst
     // Big dot: every moving chaser turns blue and turns around
     frightTimer = LEVELS[level - 1].fright;
     eatChain = 0;
@@ -373,13 +590,90 @@ function chooseChaserDir(g) {
   g.dir = best;
 }
 
+// ---------- Effects: sparkles, confetti and floating score numbers ----------
+// Throw out `count` little pieces from pixel position (x, y).
+//   speed   = how fast they fly, in tiles per second
+//   life    = seconds before they fade away
+//   gravity = how hard they are pulled down, in tiles per second per second (0 = float)
+function spawnParticles(x, y, count, colors, speed, life, gravity) {
+  for (let i = 0; i < count; i++) {
+    if (particles.length >= MAX_PARTICLES) return;                // never more than the cap
+    const angle = Math.random() * Math.PI * 2;
+    const v = speed * tile * (0.4 + Math.random() * 0.6);
+    particles.push({
+      x: x, y: y,
+      vx: Math.cos(angle) * v, vy: Math.sin(angle) * v,
+      life: life * (0.6 + Math.random() * 0.4), maxLife: life,
+      size: Math.max(2, tile * 0.13),
+      color: colors[Math.floor(Math.random() * colors.length)],
+      gravity: gravity * tile
+    });
+  }
+}
+
+// Confetti falls from the top of the maze when a level is finished
+function spawnConfetti(count) {
+  const colors = ['#f4d35e', '#ff6b6b', '#4dd4ac', '#4dd4e6', '#b388eb', '#ffffff'];
+  for (let i = 0; i < count; i++) {
+    if (particles.length >= MAX_PARTICLES) return;
+    particles.push({
+      x: Math.random() * COLS * tile, y: -Math.random() * tile * 4,
+      vx: (Math.random() - 0.5) * tile * 3, vy: tile * (2 + Math.random() * 4),
+      life: 2.2 + Math.random() * 0.8, maxLife: 3,
+      size: Math.max(3, tile * 0.2),
+      color: colors[Math.floor(Math.random() * colors.length)],
+      gravity: tile * 3
+    });
+  }
+}
+
+// Move every sparkle and floating number, and remove the ones that have finished
+function updateEffects(dt) {
+  for (const p of particles) {
+    p.vy += p.gravity * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  for (const f of floatTexts) {
+    f.y -= tile * 1.2 * dt;                                       // drift upward
+    f.life -= dt;
+  }
+  floatTexts = floatTexts.filter(f => f.life > 0);
+
+  if (shakeTimer > 0) shakeTimer -= dt;
+}
+
 // ---------- Update: move the whole game forward by dt seconds ----------
 function update(dt) {
   clock += dt;
 
+  // Keep track of how long the current screen has been showing (used for fades and flashes)
+  if (screen !== lastScreen) { lastScreen = screen; screenTimer = 0; }
+  screenTimer += dt;
+  updateEffects(dt);
+
   if (screen === 'ready') {
     readyTimer -= dt;
     if (readyTimer <= 0) screen = 'play';
+    return;
+  }
+
+  // "Caught" animation: everything stops while the player shrinks away,
+  // then either the round restarts or the game is over
+  if (screen === 'dying') {
+    dyingTimer -= dt;
+    if (dyingTimer <= 0.15 && !deathBurstDone) {
+      deathBurstDone = true;
+      const p = posOf(player);
+      spawnParticles(p.x * tile + tile / 2, p.y * tile + tile / 2, 12, [PLAYER_COLOR, '#ffffff'], 4, 0.5, 0);
+    }
+    if (dyingTimer <= 0) {
+      if (lives <= 0) { screen = 'over'; sfx.gameOver(); }
+      else resetPositions();
+    }
     return;
   }
   if (screen !== 'play') return;
@@ -416,17 +710,28 @@ function update(dt) {
 
     if (g.scared) {
       // Eat the blue chaser: it goes back to the centre for a few seconds
-      score += CHASER_POINTS * Math.pow(2, eatChain);
+      const points = CHASER_POINTS * Math.pow(2, eatChain);
+      score += points;
+      // Show the points floating up, with a burst and a sound
+      const gx = q.x * tile + tile / 2, gy = q.y * tile + tile / 2;
+      floatTexts.push({ x: gx, y: gy, text: '+' + points, life: 0.9 });
+      spawnParticles(gx, gy, 12, [SCARED_COLOR, '#ffffff', '#bcd3ff'], 5, 0.5, 0);
+      sfx.eatChaser(eatChain);
+      buzz(12);
       eatChain++;
       g.x = g.home.x; g.y = g.home.y; g.dir = null; g.t = 0;
       g.scared = false;
       g.wait = 3;
     } else {
-      // Caught: lose a life
+      // Caught: lose a life. A short animation plays first (see the 'dying' part above).
       lives--;
       updateHud();
-      if (lives <= 0) screen = 'over';
-      else resetPositions();
+      screen = 'dying';
+      dyingTimer = DEATH_TIME;
+      deathBurstDone = false;
+      shakeTimer = 0.25;
+      sfx.caught();
+      buzz(35);
       return;
     }
   }
@@ -435,8 +740,256 @@ function update(dt) {
   if (dotsLeft === 0) {
     score += LEVEL_BONUS * level;
     screen = level === LEVELS.length ? 'won' : 'clear';
+    if (screen === 'won') { sfx.win(); spawnConfetti(110); }
+    else { sfx.levelClear(); spawnConfetti(60); }
+    buzz(30);
   }
   updateHud();
+}
+
+// ---------- Sprites: pictures painted once, then stamped every frame ----------
+// Painting gradients and glows is slow, so each picture is painted one time onto a small
+// hidden canvas. They are rebuilt only when the screen size changes.
+const SPRITE_TILES = 1.5;        // each sprite canvas is this many tiles wide (room for the glow)
+let mazeLayer = null;            // the walls, painted once per level
+let mazeFlashLayer = null;       // the same walls in white (for the level clear flash)
+let playerSprites = [];          // the player with the mouth at different openings (facing right)
+let chaserSprites = [];          // chaserSprites[colour][frame]: body only, eyes are drawn on top
+let scaredSprites = [];          // blue frightened chaser, 2 frames
+let scaredFlashSprites = [];     // white frightened chaser (blue time nearly over), 2 frames
+let pelletSprite = null;         // glowing big dot
+
+// Make a hidden canvas that is w x h CSS pixels, sharp on phone screens.
+// Returns the canvas and a drawing context `c` that works in CSS pixels.
+function makeCanvas(w, h) {
+  const dpr = window.devicePixelRatio || 1;
+  const cv = document.createElement('canvas');
+  cv.width  = Math.max(1, Math.round(w * dpr));
+  cv.height = Math.max(1, Math.round(h * dpr));
+  const c = cv.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { canvas: cv, c: c };
+}
+
+// Make a sprite canvas with (0, 0) moved to its middle, which makes the shapes easier to draw
+function makeSprite() {
+  const size = tile * SPRITE_TILES;
+  const made = makeCanvas(size, size);
+  made.c.translate(size / 2, size / 2);
+  return made;
+}
+
+// Draw a sprite centred on pixel position (px, py)
+function stamp(sprite, px, py, scale = 1) {
+  const size = tile * SPRITE_TILES * scale;
+  ctx.drawImage(sprite, px - size / 2, py - size / 2, size, size);
+}
+
+function isWall(x, y) {
+  return x >= 0 && x < COLS && y >= 0 && y < ROWS && MAZE[y][x] === '#';
+}
+
+// Draw all the walls as thick lines with round ends, joining the middles of wall tiles
+// that are next to each other. Round ends are what give the walls their rounded corners.
+function strokeWalls(c, width, color) {
+  c.lineWidth = width;
+  c.lineCap = 'round';
+  c.lineJoin = 'round';
+  c.strokeStyle = color;
+  c.fillStyle = color;
+  c.beginPath();
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      if (!isWall(x, y)) continue;
+      const cx = x * tile + tile / 2, cy = y * tile + tile / 2;
+      c.moveTo(cx, cy);
+      c.lineTo(cx + 0.01, cy);                                    // a dot, for a wall tile standing alone
+      if (isWall(x + 1, y)) { c.moveTo(cx, cy); c.lineTo(cx + tile, cy); }
+      if (isWall(x, y + 1)) { c.moveTo(cx, cy); c.lineTo(cx, cy + tile); }
+    }
+  }
+  c.stroke();
+  fillWallBlocks(c, color, 0);
+}
+
+// Where four wall tiles make a square block, the lines leave a small hole in the middle.
+// This fills those holes. grow = extra pixels to cover on every side.
+function fillWallBlocks(c, color, grow) {
+  c.fillStyle = color;
+  for (let y = 0; y < ROWS - 1; y++) {
+    for (let x = 0; x < COLS - 1; x++) {
+      if (isWall(x, y) && isWall(x + 1, y) && isWall(x, y + 1) && isWall(x + 1, y + 1)) {
+        c.fillRect(x * tile + tile / 2 - grow, y * tile + tile / 2 - grow, tile + grow * 2, tile + grow * 2);
+      }
+    }
+  }
+}
+
+// Paint one picture of the whole maze: dark background, then glowing neon tube walls
+function paintMaze(color) {
+  const w = COLS * tile, h = ROWS * tile;
+  const made = makeCanvas(w, h);
+  const c = made.c;
+
+  // Background: dark navy, a little lighter in the middle
+  const bg = c.createRadialGradient(w / 2, h / 2, tile, w / 2, h / 2, h * 0.7);
+  bg.addColorStop(0, '#111c38');
+  bg.addColorStop(1, '#090f1d');
+  c.fillStyle = bg;
+  c.fillRect(0, 0, w, h);
+
+  const wallWidth = tile * 0.58;
+  const rim = Math.max(1.5, tile * 0.1);                          // thickness of the bright outline
+
+  // 1. soft glow around the walls   2. bright outline   3. dark inside (leaves only the outline bright)
+  c.save();
+  c.shadowColor = color;
+  c.shadowBlur = tile * 0.5;
+  strokeWalls(c, wallWidth, color);
+  c.restore();
+  strokeWalls(c, wallWidth, color);
+  strokeWalls(c, wallWidth - rim * 2, '#0e1730');
+  // 4. a thin faint line down the middle of each wall, like light inside a glass tube
+  //    (painted on its own see-through layer first, so crossing lines do not make brighter spots)
+  const lines = makeCanvas(w, h);
+  strokeWalls(lines.c, Math.max(1, tile * 0.08), color);
+  c.globalAlpha = 0.16;
+  c.drawImage(lines.canvas, 0, 0, w, h);
+  c.globalAlpha = 1;
+  fillWallBlocks(c, '#0e1730', tile * 0.06);                      // solid blocks stay plain inside
+  return made.canvas;
+}
+
+function buildMazeLayers() {
+  mazeLayer = paintMaze(WALL_COLORS[(level - 1) % WALL_COLORS.length]);
+  mazeFlashLayer = paintMaze('#ffffff');
+}
+
+// Paint the player: a shaded ball with a wedge cut out for the mouth, and one eye.
+// mouth = half of the mouth opening, in radians (0 = shut)
+function paintPlayer(mouth) {
+  const made = makeSprite();
+  const c = made.c;
+  const r = tile * 0.44;
+  const shade = c.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.1, 0, 0, r);
+  shade.addColorStop(0, '#b6f7e2');
+  shade.addColorStop(0.5, PLAYER_COLOR);
+  shade.addColorStop(1, '#2a9d7c');
+  c.shadowColor = 'rgba(77,212,172,0.6)';                          // soft glow
+  c.shadowBlur = tile * 0.25;
+  c.fillStyle = shade;
+  c.beginPath();
+  c.moveTo(-r * 0.1, 0);                                           // back of the mouth
+  c.arc(0, 0, r, mouth, Math.PI * 2 - mouth);
+  c.closePath();
+  c.fill();
+  c.shadowBlur = 0;
+  // Eye
+  c.fillStyle = '#0b1220';
+  c.beginPath();
+  c.arc(r * 0.1, -r * 0.5, r * 0.14, 0, Math.PI * 2);
+  c.fill();
+  return made.canvas;
+}
+
+// Trace the outline of a chaser body: round head, straight sides, wavy skirt.
+// frame 0 and 1 have the waves in different places, so swapping them makes the skirt wiggle.
+function traceChaserBody(c, r, frame) {
+  const top = -r * 0.1, base = r * 0.72, bump = r * 0.5;
+  c.beginPath();
+  c.arc(0, top, r, Math.PI, 0);                                    // round head
+  c.lineTo(r, base);
+  // Skirt: a row of bumps drawn from right to left. Each number is how wide that bump is.
+  const widths = frame === 0 ? [1, 1, 1] : [0.5, 1, 1, 0.5];
+  const unit = (r * 2) / 3;
+  let x = r;
+  for (const wide of widths) {
+    const next = x - unit * wide;
+    c.quadraticCurveTo((x + next) / 2, base + bump * wide, next, base);
+    x = next;
+  }
+  c.closePath();
+}
+
+// Paint a chaser body in one colour. scaredFace = paint the worried face of a blue chaser.
+function paintChaser(color, frame, scaredFace, faceColor) {
+  const made = makeSprite();
+  const c = made.c;
+  const r = tile * 0.44;
+  // Body with a soft glow
+  c.shadowColor = color;
+  c.shadowBlur = tile * 0.22;
+  c.fillStyle = color;
+  traceChaserBody(c, r, frame);
+  c.fill();
+  c.shadowBlur = 0;
+  // Shading: darker toward the bottom, and a shine on the top left
+  const shade = c.createLinearGradient(0, -r, 0, r);
+  shade.addColorStop(0, 'rgba(255,255,255,0.28)');
+  shade.addColorStop(0.45, 'rgba(255,255,255,0)');
+  shade.addColorStop(1, 'rgba(0,0,40,0.30)');
+  c.fillStyle = shade;
+  traceChaserBody(c, r, frame);
+  c.fill();
+  c.fillStyle = 'rgba(255,255,255,0.35)';
+  c.beginPath();
+  c.ellipse(-r * 0.45, -r * 0.6, r * 0.2, r * 0.12, -0.6, 0, Math.PI * 2);
+  c.fill();
+
+  if (scaredFace) {
+    // Two small eyes and a wobbly mouth
+    c.fillStyle = faceColor;
+    c.beginPath();
+    c.arc(-r * 0.34, -r * 0.2, r * 0.13, 0, Math.PI * 2);
+    c.arc( r * 0.34, -r * 0.2, r * 0.13, 0, Math.PI * 2);
+    c.fill();
+    c.strokeStyle = faceColor;
+    c.lineWidth = Math.max(1, r * 0.11);
+    c.lineJoin = 'round';
+    c.lineCap = 'round';
+    c.beginPath();
+    c.moveTo(-r * 0.55, r * 0.38);
+    c.lineTo(-r * 0.33, r * 0.22);
+    c.lineTo(-r * 0.11, r * 0.38);
+    c.lineTo( r * 0.11, r * 0.22);
+    c.lineTo( r * 0.33, r * 0.38);
+    c.lineTo( r * 0.55, r * 0.22);
+    c.stroke();
+  }
+  return made.canvas;
+}
+
+// Paint the glowing big dot
+function paintPellet() {
+  const made = makeSprite();
+  const c = made.c;
+  const r = tile * 0.3;
+  const glow = c.createRadialGradient(0, 0, r * 0.5, 0, 0, r * 2.2);
+  glow.addColorStop(0, 'rgba(244,211,94,0.55)');
+  glow.addColorStop(1, 'rgba(244,211,94,0)');
+  c.fillStyle = glow;
+  c.beginPath();
+  c.arc(0, 0, r * 2.2, 0, Math.PI * 2);
+  c.fill();
+  const ball = c.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.1, 0, 0, r);
+  ball.addColorStop(0, '#fff6cf');
+  ball.addColorStop(1, DOT_COLOR);
+  c.fillStyle = ball;
+  c.beginPath();
+  c.arc(0, 0, r, 0, Math.PI * 2);
+  c.fill();
+  return made.canvas;
+}
+
+// Paint every sprite. Called at the start and whenever the screen size changes.
+function buildSprites() {
+  buildMazeLayers();
+  playerSprites = [];
+  for (let i = 0; i < 5; i++) playerSprites.push(paintPlayer(0.04 + i * 0.2));
+  chaserSprites = CHASER_COLORS.map(color => [paintChaser(color, 0, false), paintChaser(color, 1, false)]);
+  scaredSprites      = [paintChaser(SCARED_COLOR, 0, true, '#ffe9c9'), paintChaser(SCARED_COLOR, 1, true, '#ffe9c9')];
+  scaredFlashSprites = [paintChaser('#ffffff', 0, true, '#e0483e'),    paintChaser('#ffffff', 1, true, '#e0483e')];
+  pelletSprite = paintPellet();
 }
 
 // ---------- Drawing ----------
@@ -445,58 +998,173 @@ function draw() {
   ctx.clearRect(0, 0, w, h);
   if (!grid.length) loadMaze();                   // so the maze shows behind the title
 
-  // Walls, dots and big dots
+  // Short screen shake when the player is caught: nudge the whole picture a few pixels
+  ctx.save();
+  if (shakeTimer > 0) {
+    ctx.translate((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
+  }
+
+  // Walls (already painted). When a level is finished they blink white a few times.
+  const finished = screen === 'clear' || screen === 'won';
+  const blink = finished && screenTimer < FLASH_TIME && Math.floor(screenTimer / 0.14) % 2 === 0;
+  ctx.drawImage(blink ? mazeFlashLayer : mazeLayer, 0, 0, w, h);
+
+  drawDots();
+
+  if (screen !== 'title' && player) {
+    // While the player is being caught, the chasers stay for a moment and then step away
+    const hideChasers = screen === 'over' || (screen === 'dying' && dyingTimer < DEATH_TIME - 0.35);
+    if (!hideChasers) {
+      for (const g of chasers) drawChaser(g);
+    }
+    if (screen === 'dying') drawDyingPlayer();
+    else if (screen !== 'over') drawPlayer();
+  }
+  ctx.restore();
+
+  drawMessages(w, h);
+  drawEffects();
+}
+
+// Small dots are drawn together as one shape (fast). Big dots are glowing sprites that pulse.
+function drawDots() {
+  const dotR = Math.max(1.5, tile * 0.11);
+  ctx.fillStyle = DOT_COLOR;
+  ctx.beginPath();
   for (let y = 0; y < ROWS; y++) {
     for (let x = 0; x < COLS; x++) {
       const c = grid[y][x];
       const cx = x * tile + tile / 2, cy = y * tile + tile / 2;
-      if (c === '#') {
-        ctx.fillStyle = '#24407a';
-        ctx.fillRect(x * tile + 1, y * tile + 1, tile - 2, tile - 2);
-      } else if (c === '.') {
-        ctx.fillStyle = '#f4d35e';
-        ctx.beginPath();
-        ctx.arc(cx, cy, Math.max(1.5, tile * 0.1), 0, Math.PI * 2);
-        ctx.fill();
+      if (c === '.') {
+        ctx.moveTo(cx + dotR, cy);
+        ctx.arc(cx, cy, dotR, 0, Math.PI * 2);
       } else if (c === 'o') {
-        ctx.fillStyle = '#f4d35e';
-        ctx.beginPath();
-        ctx.arc(cx, cy, tile * (0.26 + 0.05 * Math.sin(clock * 6)), 0, Math.PI * 2);
-        ctx.fill();
+        stamp(pelletSprite, cx, cy, 0.9 + 0.16 * Math.sin(clock * 6));
       }
     }
   }
+  ctx.fill();
+}
 
-  if (screen !== 'title' && player) {
-    for (const g of chasers) drawChaser(g);
-    drawPlayer();
-  }
-
-  // Messages
+// Messages in the middle of the maze (title, level number, paused, clear, game over)
+function drawMessages(w, h) {
   let text = null;
   if (screen === 'title')       text = ['Maze Muncher', 'Eat every dot. Avoid the chasers.', 'Tap to start'];
   else if (screen === 'ready')  text = ['Level ' + level];
   else if (screen === 'paused') text = ['Paused', 'Tap to resume'];
-  else if (screen === 'clear')  text = ['Level ' + level + ' clear!', 'Tap for level ' + (level + 1)];
+  else if (screen === 'clear')  text = ['Level ' + level + ' clear!', 'Bonus +' + LEVEL_BONUS * level, 'Tap for level ' + (level + 1)];
   else if (screen === 'won')    text = ['You win!', 'Score ' + score, 'Tap to play again'];
   else if (screen === 'over')   text = ['Game over', 'Tap to retry level ' + level];
+  if (!text) return;
 
-  if (text) {
-    if (screen !== 'ready') {
-      ctx.fillStyle = 'rgba(11,18,32,0.78)';
-      ctx.fillRect(0, 0, w, h);
-    }
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    // First line is big, the rest are smaller; the block of lines is centred
-    const gap = 30;
-    const top = h / 2 - (text.length - 1) * gap / 2;
-    for (let i = 0; i < text.length; i++) {
-      ctx.font = i === 0 ? '700 22px system-ui, sans-serif' : '500 15px system-ui, sans-serif';
-      ctx.fillText(text[i], w / 2, top + i * gap);
+  // How solid the message is (0 to 1). After a level is finished it waits for the wall
+  // flash to end, then fades in. Game over also fades in.
+  let show = 1;
+  if (screen === 'clear' || screen === 'won') show = Math.min(1, Math.max(0, (screenTimer - FLASH_TIME) / 0.3));
+  else if (screen === 'over') show = Math.min(1, screenTimer / 0.3);
+  if (show <= 0) return;
+
+  const bigSize = Math.round(Math.min(30, w * 0.095));
+  const smallSize = Math.round(Math.min(16, w * 0.052));
+  const gap = bigSize + 8;
+  const top = h / 2 - (text.length - 1) * gap / 2;                // the block of lines is centred
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  if (screen === 'ready') {
+    // Just the level number on a small dark pill, so the maze stays visible
+    ctx.font = '700 ' + Math.round(bigSize * 0.75) + 'px system-ui, sans-serif';
+    const pillW = ctx.measureText(text[0]).width + 28, pillH = bigSize + 8;
+    ctx.fillStyle = 'rgba(11,18,32,0.85)';
+    roundedRect(ctx, w / 2 - pillW / 2, h / 2 - pillH / 2, pillW, pillH, pillH / 2);
+    ctx.fill();
+    ctx.fillStyle = DOT_COLOR;
+    ctx.fillText(text[0], w / 2, h / 2 + 1);
+    return;
+  }
+
+  // Dark see-through cover over the maze
+  ctx.fillStyle = 'rgba(11,18,32,' + (0.78 * show) + ')';
+  ctx.fillRect(0, 0, w, h);
+
+  // Title screen: a little parade above the name (three chasers running after the player)
+  if (screen === 'title') drawTitleParade(w / 2, top - gap * 1.1);
+
+  for (let i = 0; i < text.length; i++) {
+    const y = top + i * gap;
+    if (i === 0) {
+      // First line is big: a dark copy just underneath gives it some depth
+      ctx.font = '800 ' + bigSize + 'px system-ui, sans-serif';
+      ctx.globalAlpha = show;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillText(text[i], w / 2, y + 2);
+      ctx.fillStyle = screen === 'over' ? '#ff8a8a' : DOT_COLOR;
+      ctx.fillText(text[i], w / 2, y);
+    } else {
+      ctx.font = '600 ' + smallSize + 'px system-ui, sans-serif';
+      // The "Tap to..." line gently pulses
+      const isTapLine = text[i].indexOf('Tap') === 0;
+      ctx.globalAlpha = show * (isTapLine ? 0.72 + 0.28 * Math.sin(clock * 5) : 0.9);
+      ctx.fillStyle = isTapLine ? '#ffffff' : '#cfe0ff';
+      ctx.fillText(text[i], w / 2, y);
     }
   }
+  ctx.globalAlpha = 1;
+}
+
+// Three chasers running after the player, shown on the title screen
+function drawTitleParade(cx, cy) {
+  const step = tile * 1.35, scale = 1.25;
+  const frame = Math.floor(clock * 8) % 2;
+  for (let i = 0; i < 3; i++) {
+    const px = cx - step * (2.4 - i);
+    stamp(chaserSprites[i][frame], px, cy, scale);
+    drawChaserEyes(px, cy, RIGHT, tile * 0.44 * scale);
+  }
+  const mouthFrame = Math.round(Math.abs(Math.sin(clock * 9)) * (playerSprites.length - 1));
+  stamp(playerSprites[mouthFrame], cx + step * 0.9, cy, scale);
+  ctx.fillStyle = DOT_COLOR;
+  ctx.beginPath();
+  for (let i = 0; i < 2; i++) {
+    const dx = cx + step * (1.8 + i * 0.65);
+    ctx.moveTo(dx + 3, cy);
+    ctx.arc(dx, cy, Math.max(2, tile * 0.13), 0, Math.PI * 2);
+  }
+  ctx.fill();
+}
+
+// Sparkles, confetti and floating score numbers (drawn last, on top of everything)
+function drawEffects() {
+  for (const p of particles) {
+    ctx.globalAlpha = Math.min(1, p.life / (p.maxLife * 0.5));    // fade out at the end
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '800 ' + Math.round(Math.max(12, tile * 0.7)) + 'px system-ui, sans-serif';
+  for (const f of floatTexts) {
+    ctx.globalAlpha = Math.min(1, f.life / 0.4);
+    const half = ctx.measureText(f.text).width / 2 + 2;
+    f.x = Math.max(half, Math.min(COLS * tile - half, f.x));      // keep the number inside the maze picture
+    ctx.fillStyle = '#0b1220';
+    ctx.fillText(f.text, f.x + 1, f.y + 1);                       // dark copy behind, so it is easy to read
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Trace a rectangle with rounded corners (then call ctx.fill())
+function roundedRect(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
 }
 
 // Draw something at a tile position; near the tunnel edges it is drawn on both sides
@@ -508,51 +1176,92 @@ function drawAt(e, fn) {
   if (p.x > COLS - 1.5) fn(px - COLS * tile, py);
 }
 
-// Two eyes looking in direction d
-function drawEyes(px, py, d, r) {
-  const ox = d ? d.x * r * 0.25 : 0, oy = d ? d.y * r * 0.25 : 0;
+// Two chaser eyes looking in direction d (the pupils slide toward where it is going)
+function drawChaserEyes(px, py, d, r) {
+  const ox = d ? d.x * r * 0.14 : 0, oy = d ? d.y * r * 0.14 : 0;
+  const eyeY = py - r * 0.22;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
   for (const side of [-1, 1]) {
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(px + side * r * 0.38 + ox, py - r * 0.15 + oy, r * 0.28, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#0b1220';
-    ctx.beginPath();
-    ctx.arc(px + side * r * 0.38 + ox * 1.6, py - r * 0.15 + oy * 1.6, r * 0.13, 0, Math.PI * 2);
-    ctx.fill();
+    const ex = px + side * r * 0.36 + ox;
+    ctx.moveTo(ex + r * 0.25, eyeY + oy);
+    ctx.ellipse(ex, eyeY + oy, r * 0.25, r * 0.31, 0, 0, Math.PI * 2);
   }
+  ctx.fill();
+  ctx.fillStyle = '#16245c';
+  ctx.beginPath();
+  for (const side of [-1, 1]) {
+    const ex = px + side * r * 0.36 + ox * 2.1;
+    ctx.moveTo(ex + r * 0.13, eyeY + oy * 2.1);
+    ctx.arc(ex, eyeY + oy * 2.1, r * 0.13, 0, Math.PI * 2);
+  }
+  ctx.fill();
+}
+
+// Stamp a player sprite turned to face direction d.
+// The sprites face right; left is a mirror image (so the eye stays on top), up/down are quarter turns.
+function stampPlayer(sprite, px, py, d) {
+  ctx.save();
+  ctx.translate(px, py);
+  if (d.x < 0) ctx.scale(-1, 1);
+  else if (d.y < 0) ctx.rotate(-Math.PI / 2);
+  else if (d.y > 0) ctx.rotate(Math.PI / 2);
+  stamp(sprite, 0, 0);
+  ctx.restore();
 }
 
 function drawPlayer() {
-  const r = tile * 0.42;
+  if (player.dir) playerFacing = player.dir;
+  // The mouth opens and shuts while moving; it rests a little open when standing still
+  let frame = 2;
+  if (player.dir && screen === 'play') {
+    frame = Math.round(Math.abs(Math.sin(clock * 14)) * (playerSprites.length - 1));
+  }
   drawAt(player, (px, py) => {
-    ctx.fillStyle = '#4dd4ac';
+    stampPlayer(playerSprites[frame], px, py, playerFacing);
+  });
+}
+
+// "Caught" animation: after a short freeze the mouth opens wider and wider (facing up)
+// until nothing is left
+function drawDyingPlayer() {
+  const elapsed = DEATH_TIME - dyingTimer;
+  if (elapsed < 0.35) {                           // freeze for a moment first
+    drawAt(player, (px, py) => { stampPlayer(playerSprites[2], px, py, playerFacing); });
+    return;
+  }
+  const k = Math.min(1, (elapsed - 0.35) / (DEATH_TIME - 0.35 - 0.15));    // 0 = whole, 1 = gone
+  if (k >= 1) return;
+  const mouth = 0.4 + k * (Math.PI - 0.4);
+  const r = tile * 0.44;
+  drawAt(player, (px, py) => {
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = PLAYER_COLOR;
     ctx.beginPath();
-    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, r, mouth, Math.PI * 2 - mouth);
+    ctx.closePath();
     ctx.fill();
-    drawEyes(px, py, player.dir, r);
+    ctx.restore();
   });
 }
 
 function drawChaser(g) {
-  const r = tile * 0.42;
+  const r = tile * 0.44;
+  const frame = Math.floor(clock * 8) % 2;        // swap the two skirt pictures to make it wiggle
   // Blue while scared; flashes white just before the blue time ends
-  let color = g.color;
-  if (g.scared) color = (frightTimer < 1.5 && Math.floor(clock * 6) % 2 === 0) ? '#ffffff' : '#5b8def';
+  let sprite = chaserSprites[g.kind % CHASER_COLORS.length][frame];
+  if (g.scared) {
+    const flash = frightTimer < 1.5 && Math.floor(clock * 6) % 2 === 0;
+    sprite = flash ? scaredFlashSprites[frame] : scaredSprites[frame];
+  }
 
   drawAt(g, (px, py) => {
     ctx.globalAlpha = g.wait > 0 ? 0.5 : 1;       // faded while waiting in the centre
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(px, py - r * 0.1, r, Math.PI, 0);     // round top
-    ctx.lineTo(px + r, py + r);
-    ctx.lineTo(px + r * 0.5, py + r * 0.6);       // zig-zag bottom
-    ctx.lineTo(px, py + r);
-    ctx.lineTo(px - r * 0.5, py + r * 0.6);
-    ctx.lineTo(px - r, py + r);
-    ctx.closePath();
-    ctx.fill();
-    drawEyes(px, py, g.scared ? null : g.dir, r);
+    stamp(sprite, px, py);
+    if (!g.scared) drawChaserEyes(px, py, g.dir, r);   // the scared face is already part of its sprite
     ctx.globalAlpha = 1;
   });
 }
@@ -567,6 +1276,7 @@ function resize() {
   canvas.width  = Math.round(COLS * tile * dpr);
   canvas.height = Math.round(ROWS * tile * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  buildSprites();                                 // the pictures depend on the tile size, so repaint them
 }
 
 // ---------- Input: swipe anywhere ----------

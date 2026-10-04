@@ -17,9 +17,45 @@
     user-select: none;
     -webkit-user-select: none;
     touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
+  /* Friendly background: a soft glow at the top fading into the dark navy of the site */
+  body {
+    background:
+      radial-gradient(120% 60% at 50% 0%, #223a78 0%, rgba(34,58,120,0) 70%),
+      linear-gradient(180deg, #121d3a 0%, #0b1220 60%, #0a0f1c 100%);
+  }
+
+  /* Faint maths symbols that drift slowly behind everything (only a few, so it stays cheap) */
+  #bg {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+  }
+  #bg span {
+    position: absolute;
+    font-size: 64px;
+    font-weight: 800;
+    color: #ffffff;
+    opacity: 0.06;
+    animation: drift 14s ease-in-out infinite alternate;
+  }
+  #bg span:nth-child(1) { left: 6%;  top: 12%; font-size: 70px; animation-duration: 13s; }
+  #bg span:nth-child(2) { left: 74%; top: 18%; font-size: 90px; animation-duration: 17s; animation-delay: -4s; }
+  #bg span:nth-child(3) { left: 40%; top: 33%; font-size: 56px; animation-duration: 15s; animation-delay: -8s; }
+  #bg span:nth-child(4) { left: 10%; top: 52%; font-size: 96px; animation-duration: 19s; animation-delay: -2s; }
+  #bg span:nth-child(5) { left: 78%; top: 58%; font-size: 64px; animation-duration: 16s; animation-delay: -6s; }
+  #bg span:nth-child(6) { left: 46%; top: 80%; font-size: 80px; animation-duration: 18s; animation-delay: -10s; }
+  @keyframes drift {
+    from { transform: translate(0, 0) rotate(-8deg); }
+    to   { transform: translate(14px, -34px) rotate(10deg); }
+  }
+
   #app {
     position: relative;
+    z-index: 1;
     display: flex;
     flex-direction: column;
     height: 100vh;
@@ -30,37 +66,112 @@
     gap: 12px;
   }
 
-  /* Top bar: score, level, question number, lives */
+  /* Top bar: score, level, question number, lives, each in its own pill card, then the sound button */
   #top {
     display: flex;
-    align-items: center;
-    justify-content: space-around;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 6px;
   }
-  .stat { text-align: center; min-width: 60px; }
+  .stat {
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: center;
+    padding: 5px 2px 6px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.05));
+    border: 1px solid rgba(255,255,255,0.10);
+  }
+  .stat.wide { flex-grow: 1.35; }               /* the score needs a little more room */
   .stat span {
     display: block;
-    font-size: 11px;
-    letter-spacing: 0.08em;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.55);
+    color: rgba(255,255,255,0.6);
+    white-space: nowrap;
   }
-  .stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
-  .stat b.low { color: #ff6b6b; }               /* last life */
+  .stat b {
+    display: block;
+    font-size: 19px;
+    line-height: 24px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  #score { color: #ffd54a; }                    /* gold */
+  #level { color: #7fd4ff; }                    /* sky blue */
+  #score.bump { animation: bump 0.3s ease-out; }
+  @keyframes bump {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.25); }
+    100% { transform: scale(1); }
+  }
 
-  /* Time bar: shrinks as the time for the question runs out */
+  /* Lives are drawn as hearts: red = still have it, grey = lost */
+  .heart { font-style: normal; color: #ff5d73; margin: 0 1px; }
+  .heart.lost { color: rgba(255,255,255,0.18); }
+  .stat b.low .heart:not(.lost) { display: inline-block; animation: heartbeat 0.8s ease-in-out infinite; }   /* last life */
+  @keyframes heartbeat {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.3); }
+  }
+
+  /* Sound on/off button, at the end of the top bar (away from the answer buttons) */
+  #sound {
+    position: relative;
+    z-index: 6;                                 /* stays usable on top of the message screen */
+    flex: 0 0 40px;
+    width: 40px;
+    min-height: 40px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.10);
+    color: #fff;
+    font-size: 18px;
+    font-family: inherit;
+    touch-action: manipulation;
+  }
+  #sound.off { opacity: .45; }
+
+  /* Narrow phones: make the top bar a little smaller so a big score still fits */
+  @media (max-width: 360px) {
+    #top { gap: 4px; }
+    .stat span { font-size: 9px; letter-spacing: 0; }
+    .stat b { font-size: 15px; }
+    .heart { margin: 0; }
+    #sound { flex-basis: 36px; width: 36px; }
+  }
+
+  /* Time bar: shrinks as the time for the question runs out. Green, then amber, then red. */
   #timeTrack {
-    height: 10px;
-    border-radius: 5px;
-    background: #1c2742;
+    height: 14px;
+    padding: 2px;
+    border-radius: 7px;
+    background: #16203a;
+    border: 1px solid rgba(255,255,255,0.08);
     overflow: hidden;
   }
   #timeBar {
+    position: relative;
     height: 100%;
     width: 100%;
-    background: #4dd4ac;
+    background-color: #4dd4ac;
+    border-radius: 5px;
+    transition: background-color 0.4s;
+    overflow: hidden;
+  }
+  #timeBar::after {                             /* shiny strip along the top of the bar */
+    content: '';
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 45%;
+    background: rgba(255,255,255,0.35);
     border-radius: 5px;
   }
-  #timeBar.low { background: #ff6b6b; }
+  #timeBar.mid { background-color: #ffb84d; }   /* amber: about half the time is gone */
+  #timeBar.low { background-color: #ff6b6b; }   /* red: hurry up */
 
   /* The question takes the middle of the screen */
   #questionWrap {
@@ -72,21 +183,76 @@
     justify-content: center;
     gap: 10px;
   }
+  /* The big question card */
+  #card {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 18px 12px 14px;
+    border-radius: 24px;
+    background: linear-gradient(180deg, #2a3b6e 0%, #1b2748 100%);
+    border: 2px solid rgba(255,255,255,0.12);
+    box-shadow: 0 8px 0 rgba(0,0,0,0.25), 0 16px 30px rgba(0,0,0,0.35);
+  }
+  #card.pop   { animation: pop 0.28s ease-out; }          /* each new question pops in gently */
+  #card.good  { border-color: #4dd4ac; animation: nod 0.3s ease-out; }
+  #card.bad   { border-color: #ff6b6b; animation: shake 0.35s ease-in-out; }
+  @keyframes pop {
+    0%   { transform: scale(0.9); opacity: 0.2; }
+    70%  { transform: scale(1.03); opacity: 1; }
+    100% { transform: scale(1); }
+  }
+  @keyframes nod {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(1.04); }
+    100% { transform: scale(1); }
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+  }
   #topic {
-    font-size: 13px;
+    font-size: 12px;
+    font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.5);
+    color: #cfe0ff;
+    background: rgba(255,255,255,0.10);
+    padding: 4px 12px;
+    border-radius: 999px;
+    text-align: center;
   }
   #question {
     font-size: 52px;
-    font-weight: 700;
+    font-size: clamp(30px, 11.5vw, 52px);         /* a little smaller on narrow phones so it stays on one line */
+    font-weight: 800;
     font-variant-numeric: tabular-nums;
     text-align: center;
+    white-space: nowrap;
+    text-shadow: 0 3px 0 rgba(0,0,0,0.25);
   }
-  #feedback { height: 24px; font-size: 18px; font-weight: 600; }
+  #feedback { height: 24px; font-size: 18px; font-weight: 700; }
   #feedback.good { color: #4dd4ac; }
-  #feedback.bad  { color: #ff6b6b; }
+  #feedback.bad  { color: #ff8a8a; }
+
+  /* "3 in a row!" badge, shown under the card while you keep getting answers right */
+  #streak {
+    height: 26px;
+    line-height: 26px;
+    padding: 0 14px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #3a2a00;
+    background: linear-gradient(180deg, #ffe27a, #ffb84d);
+    visibility: hidden;
+  }
+  #streak.show { visibility: visible; animation: pop 0.28s ease-out; }
 
   /* Four big answer buttons at the bottom, so your fingers do not cover the question */
   #answers {
@@ -95,53 +261,192 @@
     gap: 10px;
   }
   #answers button {
+    position: relative;
     height: 84px;
     border: 0;
-    border-radius: 14px;
-    background: #1c2742;
+    border-radius: 20px;
+    background: linear-gradient(180deg, var(--light), var(--dark));
+    box-shadow: 0 5px 0 var(--rim), inset 0 2px 0 rgba(255,255,255,0.35);
     color: #ffffff;
-    font-size: 30px;
-    font-weight: 700;
+    font-size: 32px;
+    font-weight: 800;
     font-family: inherit;
     font-variant-numeric: tabular-nums;
+    text-shadow: 0 2px 0 rgba(0,0,0,0.25);
+    touch-action: manipulation;
+    transition: transform 0.06s, opacity 0.2s;
   }
-  #answers button:active { background: #2c3a60; }
-  #answers button.right { background: #2a6f5c; }
-  #answers button.wrong { background: #a33b3b; }
+  /* Each button has its own colour: blue, purple, orange, pink */
+  #answers button:nth-child(1) { --light: #55a8ff; --dark: #2f6fe0; --rim: #1f4aa3; }
+  #answers button:nth-child(2) { --light: #b98bff; --dark: #8048e0; --rim: #5a2fa8; }
+  #answers button:nth-child(3) { --light: #ffa64d; --dark: #e86a17; --rim: #a84708; }
+  #answers button:nth-child(4) { --light: #ff7fc0; --dark: #dc3f8f; --rim: #9c2562; }
+
+  /* Press feedback: the button sinks down onto its rim */
+  #answers button:active {
+    transform: translateY(4px);
+    box-shadow: 0 1px 0 var(--rim), inset 0 2px 0 rgba(255,255,255,0.35);
+  }
+  /* After an answer: the right one turns green with a tick, a wrong pick turns red with a cross and shakes */
+  #answers.done button { opacity: 0.4; }
+  #answers.done button:active { transform: none; box-shadow: 0 5px 0 var(--rim), inset 0 2px 0 rgba(255,255,255,0.35); }
+  #answers button.right {
+    --light: #5fe08a; --dark: #1fa85a; --rim: #12703a;
+    opacity: 1;
+    outline: 3px solid #ffffff;
+    animation: nod 0.3s ease-out;
+  }
+  #answers button.wrong {
+    --light: #ff7a7a; --dark: #d03c3c; --rim: #8c2222;
+    opacity: 1;
+    animation: shake 0.35s ease-in-out;
+  }
+  #answers button.right::after,
+  #answers button.wrong::after {
+    position: absolute;
+    right: 10px;
+    top: 6px;
+    font-size: 22px;
+  }
+  #answers button.right::after { content: '\2713'; }      /* tick */
+  #answers button.wrong::after { content: '\2717'; }      /* cross */
 
   /* Message shown between levels */
   #overlay {
     position: absolute;
     inset: 0;
+    z-index: 5;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    background: rgba(11,18,32,0.94);
+    gap: 12px;
+    background:
+      radial-gradient(90% 50% at 50% 30%, rgba(52,84,170,0.55) 0%, rgba(52,84,170,0) 70%),
+      rgba(11,18,32,0.97);
     text-align: center;
     padding: 20px;
   }
   #overlay.hidden { display: none; }
-  #overlay h1 { margin: 0; font-size: 28px; }
+  #overlay h1 { margin: 0; font-size: 34px; font-weight: 800; text-shadow: 0 3px 0 rgba(0,0,0,0.3); }
   #overlay p  { margin: 0; font-size: 17px; color: rgba(255,255,255,0.8); }
+  #overlay.show > * { animation: pop 0.3s ease-out; }
+  #overlay #msgCheer { color: #ffd54a; font-weight: 700; font-size: 19px; }
+  #overlay #msgCheer:empty { display: none; }
+  /* The "Tap to..." line gently pulses so a child knows what to do next */
+  #overlay #msgLine2 {
+    margin-top: 10px;
+    padding: 12px 22px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #55a8ff, #2f6fe0);
+    box-shadow: 0 4px 0 #1f4aa3;
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 18px;
+    animation: pulse 1.3s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.07); }
+  }
+
+  /* Picture row above the message: maths tiles on the title screen, stars after a level */
+  #msgArt { display: flex; gap: 10px; justify-content: center; min-height: 10px; }
+  #msgArt .tile {
+    width: 54px;
+    height: 54px;
+    line-height: 52px;
+    border-radius: 16px;
+    font-size: 34px;
+    font-weight: 800;
+    background: linear-gradient(180deg, var(--light), var(--dark));
+    box-shadow: 0 4px 0 var(--rim), inset 0 2px 0 rgba(255,255,255,0.35);
+    animation: bob 1.6s ease-in-out infinite;
+  }
+  #msgArt .tile:nth-child(1) { --light: #55a8ff; --dark: #2f6fe0; --rim: #1f4aa3; }
+  #msgArt .tile:nth-child(2) { --light: #b98bff; --dark: #8048e0; --rim: #5a2fa8; animation-delay: -0.4s; }
+  #msgArt .tile:nth-child(3) { --light: #ffa64d; --dark: #e86a17; --rim: #a84708; animation-delay: -0.8s; }
+  #msgArt .tile:nth-child(4) { --light: #ff7fc0; --dark: #dc3f8f; --rim: #9c2562; animation-delay: -1.2s; }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-7px); }
+  }
+  #msgArt .star {
+    font-size: 52px;
+    line-height: 1;
+    color: #ffd54a;
+    text-shadow: 0 3px 0 #b07a00;
+    animation: starIn 0.45s ease-out backwards;
+  }
+  #msgArt .star.empty { color: rgba(255,255,255,0.16); text-shadow: none; }
+  #msgArt .star:nth-child(2) { animation-delay: 0.18s; }
+  #msgArt .star:nth-child(3) { animation-delay: 0.36s; }
+  @keyframes starIn {
+    0%   { transform: scale(0) rotate(-60deg); }
+    70%  { transform: scale(1.25) rotate(8deg); }
+    100% { transform: scale(1) rotate(0); }
+  }
+
+  /* Effects layer: star bursts and confetti are drawn here, on top of everything, and never block taps */
+  #fx {
+    position: absolute;
+    inset: 0;
+    z-index: 7;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .spark {
+    position: absolute;
+    margin: -10px 0 0 -10px;
+    width: 20px;
+    height: 20px;
+    line-height: 20px;
+    text-align: center;
+    font-size: 18px;
+    color: #ffd54a;
+    animation: spark 0.6s ease-out forwards;
+  }
+  @keyframes spark {
+    0%   { transform: translate(0, 0) scale(0.4); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) scale(1.2) rotate(90deg); opacity: 0; }
+  }
+  .confetti {
+    position: absolute;
+    top: -20px;
+    width: 9px;
+    height: 14px;
+    border-radius: 2px;
+    animation: fall 2.4s linear forwards;
+  }
+  @keyframes fall {
+    0%   { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+    85%  { opacity: 1; }
+    100% { transform: translate(var(--dx), 105vh) rotate(var(--spin)); opacity: 0; }
+  }
 </style>
 </head>
 <body>
+<!-- Faint maths symbols floating in the background -->
+<div id="bg"><span>+</span><span>&times;</span><span>&minus;</span><span>&divide;</span><span>=</span><span>+</span></div>
+
 <div id="app">
   <div id="top">
-    <div class="stat"><span>Score</span><b id="score">0</b></div>
+    <div class="stat wide"><span>Score</span><b id="score">0</b></div>
     <div class="stat"><span>Level</span><b id="level">1/10</b></div>
     <div class="stat"><span>Question</span><b id="count">0/10</b></div>
     <div class="stat"><span>Lives</span><b id="lives">3</b></div>
+    <button id="sound" aria-label="Sound on or off"></button>
   </div>
 
   <div id="timeTrack"><div id="timeBar"></div></div>
 
   <div id="questionWrap">
-    <div id="topic"></div>
-    <div id="question"></div>
-    <div id="feedback"></div>
+    <div id="card">
+      <div id="topic"></div>
+      <div id="question"></div>
+      <div id="feedback"></div>
+    </div>
+    <div id="streak"></div>
   </div>
 
   <div id="answers">
@@ -149,10 +454,15 @@
   </div>
 
   <div id="overlay">
+    <div id="msgArt"></div>
     <h1 id="msgTitle">Math Challenge</h1>
     <p id="msgLine1">Pick the right answer before the time runs out</p>
+    <p id="msgCheer"></p>
     <p id="msgLine2">Tap to start</p>
   </div>
+
+  <!-- Star bursts and confetti are added here by the code -->
+  <div id="fx"></div>
 </div>
 
 <script>
@@ -161,6 +471,9 @@
 // Each level has 10 questions. Tap the right answer before the time bar runs out.
 // A wrong answer or running out of time costs a life.
 // Faster answers score more points.
+// Extras that do not change the rules: sounds made by code (with an on/off button),
+// a "in a row" badge, a star burst for right answers, and stars + confetti after a level
+// (one star for each life you still have).
 // =====================================================
 
 // ---------- Settings (change these to experiment) ----------
@@ -170,6 +483,13 @@ const BASE_POINTS   = 100;       // points for a correct answer (multiplied by t
 const SPEED_POINTS  = 100;       // extra points for a very fast answer (multiplied by the level number)
 const LEVEL_BONUS   = 500;       // bonus for finishing a level (multiplied by the level number)
 const SHOW_ANSWER_MS = 800;      // pause after each answer, so you can see if it was right
+const SOUND_VOLUME = 0.25;       // 0 = silent, 1 = very loud
+const TICK_SECONDS  = 3;         // the clock ticks once a second for this many last seconds
+const STREAK_SHOW   = 2;         // show the "in a row" badge from this many right answers in a row
+const STAR_BURST    = 8;         // little stars that fly out of a right answer
+const CONFETTI_CLEAR = 50;       // confetti pieces when a level is cleared
+const CONFETTI_WIN   = 110;      // confetti pieces when the whole game is won
+const MAX_EFFECTS   = 150;       // never more than this many effect pieces on screen (keeps cheap phones smooth)
 
 // ---------- Levels ----------
 // name  = shown above the question
@@ -197,17 +517,23 @@ const LEVELS = [
 
 // ---------- Page elements ----------
 const overlay   = document.getElementById('overlay');
+const msgArt    = document.getElementById('msgArt');
 const msgTitle  = document.getElementById('msgTitle');
 const msgLine1  = document.getElementById('msgLine1');
+const msgCheer  = document.getElementById('msgCheer');
 const msgLine2  = document.getElementById('msgLine2');
 const elScore = document.getElementById('score');
 const elLevel = document.getElementById('level');
 const elCount = document.getElementById('count');
 const elLives = document.getElementById('lives');
+const elCard  = document.getElementById('card');
 const elTopic = document.getElementById('topic');
 const elQuestion = document.getElementById('question');
 const elFeedback = document.getElementById('feedback');
+const elStreak = document.getElementById('streak');
+const elAnswers = document.getElementById('answers');
 const timeBar = document.getElementById('timeBar');
+const fxLayer = document.getElementById('fx');
 const buttons = Array.from(document.querySelectorAll('#answers button'));
 
 // ---------- Game state ----------
@@ -218,6 +544,120 @@ let current = null;              // { text, answer, choices }
 let timeLeft = 0;                // seconds left for the current question
 let answered = false;            // true during the short pause after an answer
 let nextTimer = null;
+let streak = 0;                  // right answers in a row (only for the badge and the sound, not the score)
+let lastTick = 0;                // which "seconds left" number the clock last ticked for
+let shownScore = 0;              // the score currently written in the top bar
+
+// ---------- Sound ----------
+// All sounds are made by code (short notes), so there are no sound files to upload.
+// Phones only allow sound after a touch, so the sound engine starts on the first touch.
+// The on/off choice is remembered, and is shared by all the games on this site.
+const btnSound = document.getElementById('sound');
+let audio = null;                // the sound engine (created on first touch)
+let muted = false;
+try { muted = localStorage.getItem('gamesMuted') === '1'; } catch (e) { /* storage blocked: start with sound on */ }
+
+function showSoundButton() {
+  btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
+  btnSound.classList.toggle('off', muted);
+}
+showSoundButton();
+
+function startAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (e) { audio = null; }                                  // no sound support: the game still works
+}
+// Different phones accept different kinds of touch for this, so listen for all of them
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, startAudio, true);
+}
+
+// Play one note.
+//   freq  = pitch in Hz (higher number = higher note)
+//   dur   = length in seconds
+//   type  = 'sine' (soft), 'triangle' (round), 'square' (retro), 'sawtooth' (buzzy)
+//   delay = seconds to wait before it starts (used to build little tunes)
+//   slide = pitch to glide to by the end (optional)
+//   volume = 0 to 1, share of SOUND_VOLUME
+function beep(freq, dur, type = 'sine', delay = 0, slide = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME * volume, t + 0.01);   // quick fade in (no click)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);                   // fade out
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// Short buzz on Android phones (iPhone does not allow this from a web page)
+function buzz(ms) {
+  if (!muted && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
+}
+
+btnSound.addEventListener('click', () => {
+  muted = !muted;
+  try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {}
+  showSoundButton();
+  startAudio();
+  if (!muted) setTimeout(() => beep(740, 0.05, 'sine', 0, 0, 0.6), 60);   // small note to confirm sound is on
+  btnSound.blur();               // so Space/Enter on a laptop does not press this button again
+});
+
+// The game's own sounds: one named function for each thing that happens
+const sfx = {
+  // Any button tap
+  tap() {
+    beep(520, 0.05, 'triangle', 0, 0, 0.4);
+  },
+  // Right answer: a bright two-note chime. It gets a little higher for every answer in a row (up to 8 steps).
+  correct(inARow) {
+    const steps = Math.min(Math.max(inARow, 1) - 1, 8);
+    const note = 660 * Math.pow(2, steps / 12);                  // one step = one piano key higher
+    beep(note, 0.12, 'triangle', 0.05, 0, 0.8);
+    beep(note * 1.5, 0.22, 'triangle', 0.16, 0, 0.8);
+  },
+  // Wrong answer: two soft low notes going down (gentle, not a harsh buzzer)
+  wrong() {
+    beep(330, 0.16, 'sine', 0.05, 0, 0.7);
+    beep(262, 0.26, 'sine', 0.2, 0, 0.7);
+    buzz(12);
+  },
+  // Clock tick in the last few seconds
+  tick() {
+    beep(1000, 0.04, 'triangle', 0, 0, 0.5);
+  },
+  // Time ran out: one soft note sliding down
+  timeUp() {
+    beep(440, 0.4, 'sine', 0, 220, 0.7);
+    buzz(30);
+  },
+  // Level cleared: short rising tune
+  levelUp() {
+    const tune = [523, 659, 784, 1047];
+    tune.forEach((freq, i) => beep(freq, 0.16, 'triangle', i * 0.12, 0, 0.8));
+    buzz(30);
+  },
+  // Whole game finished: a longer happy tune
+  win() {
+    const tune = [523, 659, 784, 1047, 784, 1047, 1319];
+    tune.forEach((freq, i) => beep(freq, 0.18, 'triangle', i * 0.14, 0, 0.8));
+    beep(1568, 0.5, 'triangle', tune.length * 0.14, 0, 0.8);
+    buzz(40);
+  },
+  // Out of lives: short soft falling tune
+  gameOver() {
+    const tune = [392, 330, 262];
+    tune.forEach((freq, i) => beep(freq, 0.25, 'sine', i * 0.2, 0, 0.7));
+  }
+};
 
 // ---------- Helpers ----------
 // Whole random number from lo to hi (both included)
@@ -279,6 +719,99 @@ function makeQuestion() {
   return { text: sum.text, answer: sum.answer, choices: shuffle(choices) };
 }
 
+// ---------- Effects (pictures only, they never change the game) ----------
+// Play a CSS animation again from the start: take the class off, let the page notice, put it back on
+function replayAnimation(element, className) {
+  element.classList.remove(className);
+  void element.offsetWidth;                       // reading a size makes the browser apply the removal first
+  element.classList.add(className);
+}
+
+// Little stars flying out from the middle of an element (used for a right answer)
+function starBurst(element) {
+  if (fxLayer.childElementCount + STAR_BURST > MAX_EFFECTS) return;
+  const box = element.getBoundingClientRect();
+  const layer = fxLayer.getBoundingClientRect();
+  const x = box.left + box.width / 2 - layer.left;
+  const y = box.top + box.height / 2 - layer.top;
+  for (let i = 0; i < STAR_BURST; i++) {
+    const angle = (i / STAR_BURST) * Math.PI * 2;
+    const distance = 60 + Math.random() * 30;
+    const star = document.createElement('span');
+    star.className = 'spark';
+    star.textContent = '★';                  // star shape
+    star.style.left = x + 'px';
+    star.style.top = y + 'px';
+    star.style.setProperty('--dx', Math.round(Math.cos(angle) * distance) + 'px');
+    star.style.setProperty('--dy', Math.round(Math.sin(angle) * distance) + 'px');
+    star.addEventListener('animationend', () => star.remove());   // tidy up when it has faded
+    fxLayer.appendChild(star);
+  }
+}
+
+// Coloured paper falling from the top of the screen (level clear and win)
+const CONFETTI_COLOURS = ['#55a8ff', '#b98bff', '#ffa64d', '#ff7fc0', '#5fe08a', '#ffd54a'];
+function confetti(count) {
+  const room = MAX_EFFECTS - fxLayer.childElementCount;
+  const pieces = Math.min(count, room);
+  for (let i = 0; i < pieces; i++) {
+    const piece = document.createElement('span');
+    piece.className = 'confetti';
+    piece.style.left = rand(0, 100) + '%';
+    piece.style.background = pick(CONFETTI_COLOURS);
+    piece.style.animationDuration = (1.8 + Math.random() * 1.4) + 's';
+    piece.style.animationDelay = (Math.random() * 0.7) + 's';
+    piece.style.setProperty('--dx', rand(-60, 60) + 'px');
+    piece.style.setProperty('--spin', rand(360, 1080) + 'deg');
+    piece.addEventListener('animationend', () => piece.remove());
+    fxLayer.appendChild(piece);
+  }
+}
+
+// Remove every effect piece straight away (when the next screen starts)
+function clearEffects() {
+  fxLayer.textContent = '';
+}
+
+// Show or hide the "in a row" badge
+function showStreak() {
+  if (streak >= STREAK_SHOW) {
+    elStreak.textContent = '★ ' + streak + ' in a row!';
+    replayAnimation(elStreak, 'show');
+  } else {
+    elStreak.classList.remove('show');
+  }
+}
+
+// Picture row and cheer line on the message screen.
+//   kind = 'title' (maths tiles), 'stars' (one gold star per life left), or 'none'
+function decorateMessage(kind, cheer) {
+  msgArt.textContent = '';
+  if (kind === 'title') {
+    for (const symbol of ['+', '−', '×', '÷']) {
+      const tile = document.createElement('div');
+      tile.className = 'tile';
+      tile.textContent = symbol;
+      msgArt.appendChild(tile);
+    }
+  } else if (kind === 'stars') {
+    for (let i = 0; i < START_LIVES; i++) {
+      const star = document.createElement('div');
+      star.className = i < lives ? 'star' : 'star empty';
+      star.textContent = '★';
+      msgArt.appendChild(star);
+    }
+  }
+  msgCheer.textContent = cheer;
+}
+
+// A kind word for the end of a level, depending on how many lives are left
+function cheerText() {
+  if (lives >= START_LIVES) return 'Perfect! No mistakes!';
+  if (lives === START_LIVES - 1) return 'Great work!';
+  return 'Well done, you made it!';
+}
+
 // ---------- Game flow ----------
 function startLevel(n) {
   level = n;
@@ -295,13 +828,17 @@ function nextQuestion() {
   current = makeQuestion();
   answered = false;
   timeLeft = LEVELS[level - 1].time;
+  lastTick = 0;
   elQuestion.textContent = current.text + ' = ?';
   elFeedback.textContent = '';
   elFeedback.className = '';
+  elAnswers.classList.remove('done');
   buttons.forEach((btn, i) => {
     btn.textContent = current.choices[i];
     btn.className = '';
   });
+  elCard.className = '';
+  replayAnimation(elCard, 'pop');                 // the new question pops in
   updateHud();
 }
 
@@ -309,9 +846,11 @@ function nextQuestion() {
 function answer(index) {
   if (screen !== 'play' || answered) return;
   answered = true;
+  if (index >= 0) sfx.tap();
 
   const chosen = index >= 0 ? current.choices[index] : null;
   const correctIndex = current.choices.indexOf(current.answer);
+  elAnswers.classList.add('done');                   // fade the other buttons
   buttons[correctIndex].classList.add('right');      // always show the right answer
 
   if (chosen === current.answer) {
@@ -321,12 +860,20 @@ function answer(index) {
     score += points;
     elFeedback.textContent = 'Correct! +' + points;
     elFeedback.className = 'good';
+    streak++;
+    elCard.className = 'good';
+    starBurst(buttons[correctIndex]);
+    sfx.correct(streak);
   } else {
     lives--;
     if (index >= 0) buttons[index].classList.add('wrong');
     elFeedback.textContent = index >= 0 ? 'Not quite' : 'Out of time';
     elFeedback.className = 'bad';
+    streak = 0;
+    elCard.className = 'bad';
+    if (index >= 0) sfx.wrong(); else sfx.timeUp();
   }
+  showStreak();
   elQuestion.textContent = current.text + ' = ' + current.answer;
   updateHud();
 
@@ -338,15 +885,23 @@ function afterAnswer() {
   if (lives <= 0) {
     screen = 'over';
     showMessage('Game over', 'You reached question ' + questionNo + ' of ' + QUESTIONS_PER_LEVEL, 'Tap to retry level ' + level);
+    decorateMessage('none', 'Good try! Have another go');
+    sfx.gameOver();
   } else if (questionNo >= QUESTIONS_PER_LEVEL) {
     score += LEVEL_BONUS * level;
     updateHud();
     if (level === LEVELS.length) {
       screen = 'won';
       showMessage('You win!', 'Score ' + score, 'Tap to play again');
+      decorateMessage('stars', cheerText());
+      confetti(CONFETTI_WIN);
+      sfx.win();
     } else {
       screen = 'clear';
       showMessage('Level ' + level + ' clear!', 'Next: ' + LEVELS[level].name, 'Tap for level ' + (level + 1));
+      decorateMessage('stars', cheerText());
+      confetti(CONFETTI_CLEAR);
+      sfx.levelUp();
     }
   } else {
     nextQuestion();
@@ -358,20 +913,35 @@ function showMessage(title, line1, line2) {
   msgLine1.textContent = line1;
   msgLine2.textContent = line2;
   overlay.classList.remove('hidden');
+  replayAnimation(overlay, 'show');               // the message pops in
 }
 
 // Tap on the message: what happens depends on the current screen
 function advance() {
-  if (screen === 'title' || screen === 'won') { score = 0; lives = START_LIVES; startLevel(1); }
+  if (screen === 'play') return;
+  sfx.tap();
+  clearEffects();
+  if (screen === 'title' || screen === 'won') { score = 0; lives = START_LIVES; streak = 0; showStreak(); startLevel(1); }
   else if (screen === 'clear') { lives = Math.max(lives, START_LIVES); startLevel(level + 1); }
-  else if (screen === 'over') { score = levelStartScore; lives = START_LIVES; startLevel(level); }   // retry same level
+  else if (screen === 'over') { score = levelStartScore; lives = START_LIVES; streak = 0; showStreak(); startLevel(level); }   // retry same level
 }
 
 function updateHud() {
   elScore.textContent = score;
+  if (score > shownScore) replayAnimation(elScore, 'bump');      // the score gives a little jump when it grows
+  shownScore = score;
   elLevel.textContent = level + '/' + LEVELS.length;
   elCount.textContent = questionNo + '/' + QUESTIONS_PER_LEVEL;
-  elLives.textContent = Math.max(0, lives);
+
+  // Lives are shown as hearts: red for each life left, grey for each one lost
+  const livesLeft = Math.max(0, lives);
+  const hearts = Math.max(START_LIVES, livesLeft);
+  let html = '';
+  for (let i = 0; i < hearts; i++) {
+    html += '<i class="heart' + (i < livesLeft ? '' : ' lost') + '">♥︎</i>';
+  }
+  elLives.innerHTML = html;
+  elLives.setAttribute('aria-label', livesLeft + ' lives');
   elLives.classList.toggle('low', lives <= 1);
 }
 
@@ -381,7 +951,16 @@ function update(dt) {
   timeLeft -= dt;
   const share = Math.max(0, timeLeft / LEVELS[level - 1].time);
   timeBar.style.width = (share * 100) + '%';
+  timeBar.classList.toggle('mid', share < 0.55 && share >= 0.3);
   timeBar.classList.toggle('low', share < 0.3);
+
+  // Tick once a second in the last few seconds (at 3, 2 and 1 seconds left)
+  const secondsLeft = Math.ceil(timeLeft);
+  if (secondsLeft >= 1 && secondsLeft <= TICK_SECONDS && secondsLeft !== lastTick) {
+    lastTick = secondsLeft;
+    sfx.tick();
+  }
+
   if (timeLeft <= 0) answer(-1);                  // time ran out
 }
 
@@ -406,6 +985,7 @@ function loop(time) {
 }
 
 // ---------- Start ----------
+decorateMessage('title', '');
 updateHud();
 requestAnimationFrame(loop);
 </script>

@@ -25,23 +25,82 @@
     height: 100dvh;
   }
 
-  /* Top bar: score, level, power, lives */
+  /* Top bar: score, level, power, lives, and the sound button in the corner */
   #top {
     display: flex;
-    align-items: center;
-    justify-content: space-around;
-    padding: 8px 10px;
+    align-items: stretch;
+    gap: 6px;
+    padding: 6px 8px;
+    background: linear-gradient(#131d38, #0b1220);
   }
-  .stat { text-align: center; min-width: 60px; }
+  /* Each number sits in its own small rounded card */
+  .stat {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    padding: 3px 2px 4px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 12px;
+  }
   .stat span {
     display: block;
-    font-size: 11px;
+    font-size: 10px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: rgba(255,255,255,0.55);
   }
-  .stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
-  .stat b.low { color: #ff6b6b; }               /* last life */
+  .stat b {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 24px;
+    font-size: 19px;
+    font-variant-numeric: tabular-nums;
+  }
+  #score { color: #f4d35e; }
+  #level { color: #8fd3ff; }
+
+  /* Power is shown as small bars that light up */
+  #power i {
+    display: inline-block;
+    width: 9px;
+    height: 16px;
+    margin: 0 2px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.14);
+  }
+  #power i.on {
+    background: linear-gradient(#fff3a6, #f4b93e);
+    box-shadow: 0 0 6px rgba(244,211,94,0.7);
+  }
+
+  /* Lives are shown as small planes (drawn on a tiny canvas) */
+  #livesIcons { display: block; }
+  .stat.low {                                   /* last life: the card glows red */
+    border-color: rgba(255,107,107,0.8);
+    background: rgba(255,107,107,0.16);
+    animation: lowPulse 0.7s ease-in-out infinite alternate;
+  }
+  @keyframes lowPulse { from { background: rgba(255,107,107,0.10); } to { background: rgba(255,107,107,0.30); } }
+
+  /* Sound on/off button (top right corner, far away from the steering finger) */
+  #sound {
+    flex: 0 0 auto;
+    width: 38px;
+    align-self: stretch;
+    min-height: 38px;
+    padding: 0;
+    font-size: 18px;
+    line-height: 1;
+    color: #fff;
+    background: rgba(255,255,255,0.10);
+    border: 0;
+    border-radius: 10px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #sound.off { opacity: .45; }
 
   #stage { flex: 1; min-height: 0; }
   #game { display: block; width: 100%; height: 100%; }
@@ -52,8 +111,9 @@
   <div id="top">
     <div class="stat"><span>Score</span><b id="score">0</b></div>
     <div class="stat"><span>Level</span><b id="level">1/10</b></div>
-    <div class="stat"><span>Power</span><b id="power">1</b></div>
-    <div class="stat"><span>Lives</span><b id="lives">3</b></div>
+    <div class="stat"><span>Power</span><b id="power"></b></div>
+    <div class="stat" id="livesCard"><span>Lives</span><b id="lives"><canvas id="livesIcons"></canvas></b></div>
+    <button id="sound" aria-label="Sound on or off"></button>
   </div>
   <div id="stage"><canvas id="game"></canvas></div>
 </div>
@@ -66,6 +126,11 @@
 // Each level ends with a big boss plane.
 // P = stronger guns (up to power 3). Heart = extra life.
 // Keyboard (for laptop testing): arrows or A/D move, Space = start
+// Sounds are made by code. The speaker button (top right) turns them on or off.
+//
+// How the pictures work: every plane, bullet, cloud and explosion is painted
+// ONCE onto a small hidden canvas (a "sprite") and then stamped onto the screen
+// each frame. Stamping a ready-made picture is very fast, even on cheap phones.
 // =====================================================
 
 // ---------- Settings (change these to experiment) ----------
@@ -82,6 +147,10 @@ const SAFE_TIME = 2;                  // seconds you cannot be hit again after l
 const POWER_DROP = 0.12;              // chance that a destroyed plane drops a power-up
 const LIFE_DROP = 0.03;               // chance of a heart (only when a life is missing)
 const LEVEL_BONUS = 1000;             // bonus for finishing a level (multiplied by the level number)
+const SOUND_VOLUME = 0.25;            // 0 = silent, 1 = very loud
+const TAP_GUARD   = 0.4;        // seconds after a result panel appears before a tap is accepted
+const MAX_PARTICLES = 150;            // most sparks/smoke puffs on screen at once (keeps cheap phones fast)
+const SHAKE_AMOUNT = 1;               // screen shake strength: 0 = no shake, 1 = normal, 2 = strong
 
 // How tough each kind of enemy is, and what it is worth
 const ENEMY = {
@@ -111,6 +180,59 @@ const LEVELS = [
   { waves: 18, gap: 1.7, speed: 200, bullets: 240, boss: 200 }    // 10
 ];
 
+// ---------- How each level looks (pictures only, the game plays the same) ----------
+// ground  = what is below you: 'sea', 'ice', 'land', 'lava' or 'space'
+// sea...  = the three colours of the ground (main, lighter patches, darker patches)
+// shallow = light water around islands, shore = the beach ring, land... = the island colours
+// cloud   = cloud colour, cloudShade = the darker underside of the clouds
+// If there are more levels than looks, the looks repeat.
+const THEMES = [
+  { name: 'Coral Bay',      ground: 'sea',   sea: '#1b6ca8', seaLight: '#2f8fd0', seaDark: '#14588c', foam: 'rgba(255,255,255,0.30)',
+    shallow: 'rgba(120,225,235,0.40)', shore: '#e6d6a0', land: '#3f8f4f', landLight: '#63b56a', landDark: '#2c6e3c', trees: true,
+    cloud: 'rgba(255,255,255,0.50)', cloudShade: 'rgba(110,150,200,0.30)' },
+  { name: 'Emerald Isles',  ground: 'sea',   sea: '#128a9a', seaLight: '#2bb5b8', seaDark: '#0d6f80', foam: 'rgba(255,255,255,0.32)',
+    shallow: 'rgba(160,245,225,0.45)', shore: '#f3e3b0', land: '#2f9e5b', landLight: '#5cc97c', landDark: '#1f7a45', trees: true,
+    cloud: 'rgba(255,255,255,0.50)', cloudShade: 'rgba(90,170,180,0.30)' },
+  { name: 'Sunset Strait',  ground: 'sea',   sea: '#7a4a7e', seaLight: '#e0856a', seaDark: '#55386b', foam: 'rgba(255,210,170,0.35)',
+    shallow: 'rgba(255,170,130,0.30)', shore: '#c98a6a', land: '#4a3555', landLight: '#6b4a70', landDark: '#33243f', trees: true,
+    cloud: 'rgba(255,196,150,0.50)', cloudShade: 'rgba(170,80,110,0.32)' },
+  { name: 'Twilight Reef',  ground: 'sea',   sea: '#3b3f8f', seaLight: '#5a5fc0', seaDark: '#2a2d6e', foam: 'rgba(220,210,255,0.30)',
+    shallow: 'rgba(150,160,255,0.35)', shore: '#b9a6c9', land: '#3f6f6a', landLight: '#5a9088', landDark: '#2a504d', trees: true,
+    cloud: 'rgba(225,205,255,0.42)', cloudShade: 'rgba(90,70,150,0.30)' },
+  { name: 'Moonlit Sea',    ground: 'sea',   sea: '#12305c', seaLight: '#1f4a85', seaDark: '#0b2244', foam: 'rgba(200,225,255,0.32)',
+    shallow: 'rgba(90,150,210,0.30)', shore: '#8fa3b8', land: '#1f4a3c', landLight: '#2f6a55', landDark: '#12332a', trees: true, lights: true,
+    cloud: 'rgba(170,190,230,0.30)', cloudShade: 'rgba(20,30,60,0.30)' },
+  { name: 'Storm Front',    ground: 'sea',   sea: '#3c5a66', seaLight: '#557a86', seaDark: '#2a434d', foam: 'rgba(255,255,255,0.38)',
+    shallow: 'rgba(150,190,190,0.30)', shore: '#9a9a86', land: '#3d6148', landLight: '#55805f', landDark: '#2a4532', trees: true, rain: true,
+    cloud: 'rgba(70,80,95,0.55)', cloudShade: 'rgba(25,30,40,0.35)' },
+  { name: 'Frozen North',   ground: 'ice',   sea: '#2c6f9e', seaLight: '#4a93c2', seaDark: '#1f5680', foam: 'rgba(255,255,255,0.35)',
+    shallow: 'rgba(190,235,255,0.45)', shore: '#cfeaf7', land: '#f4fbff', landLight: '#ffffff', landDark: '#b9d9ea', trees: false,
+    cloud: 'rgba(255,255,255,0.45)', cloudShade: 'rgba(130,170,210,0.30)' },
+  { name: 'Jungle River',   ground: 'land',  sea: '#2a6a4a', seaLight: '#3a8558', seaDark: '#1f5239', foam: 'rgba(20,60,40,0.55)',
+    shallow: null, shore: '#d9c98a', land: '#2a7fb0', landLight: '#4aa3cf', landDark: '#1f6690', trees: false,
+    cloud: 'rgba(255,255,255,0.42)', cloudShade: 'rgba(60,110,90,0.30)' },
+  { name: 'Fire Mountains', ground: 'lava',  sea: '#3a2a2e', seaLight: '#4f3b3d', seaDark: '#261a1e', foam: 'rgba(255,120,30,0.55)',
+    shallow: 'rgba(255,90,20,0.25)', shore: '#ff7b1c', land: '#ffb52e', landLight: '#ffe27a', landDark: '#ff8a1c', trees: false,
+    cloud: 'rgba(60,45,50,0.50)', cloudShade: 'rgba(20,12,14,0.35)' },
+  { name: 'Edge of Space',  ground: 'space', sea: '#0a0f2a', seaLight: '#2a2f7a', seaDark: '#050818', foam: 'rgba(255,255,255,0.9)',
+    shallow: null, shore: '#6a5acd', land: '#8a7bea', landLight: '#c6bcff', landDark: '#4a3d9e', trees: false, noShadows: true,
+    cloud: 'rgba(130,150,255,0.16)', cloudShade: 'rgba(200,120,255,0.10)' }
+];
+
+// The boss of each level: its name and its paint colours (pictures only)
+const BOSS_LOOKS = [
+  { name: 'IRON HAWK',     hull: '#8c3b3b', light: '#c96a62', dark: '#5a2327', accent: '#ffd166' },   // 1
+  { name: 'SKY CRUSHER',   hull: '#8a4a2a', light: '#cf8250', dark: '#57301c', accent: '#ffe08a' },   // 2
+  { name: 'CRIMSON BARON', hull: '#a12f3f', light: '#e0606b', dark: '#651c2a', accent: '#ffd166' },   // 3
+  { name: 'NIGHT RAVEN',   hull: '#5b4a86', light: '#8f7cc4', dark: '#382c57', accent: '#ff8fab' },   // 4
+  { name: 'SHADOW BAT',    hull: '#6a5a7a', light: '#a391b6', dark: '#3f3549', accent: '#7df9ff' },   // 5
+  { name: 'THUNDER KING',  hull: '#7a6a3a', light: '#bfa85c', dark: '#4a3f20', accent: '#fff36b' },   // 6
+  { name: 'FROST GIANT',   hull: '#7a4a6a', light: '#b97aa3', dark: '#4a2a40', accent: '#9ff0ff' },   // 7
+  { name: 'JUNGLE VIPER',  hull: '#8c3b5a', light: '#cf6a90', dark: '#571f36', accent: '#c8ff6b' },   // 8
+  { name: 'FIRE DRAGON',   hull: '#93412c', light: '#e07a4c', dark: '#5a2416', accent: '#ffe27a' },   // 9
+  { name: 'SKY EMPEROR',   hull: '#8a3ba0', light: '#c877e0', dark: '#52206a', accent: '#ffd166' }    // 10
+];
+
 // ---------- Page elements ----------
 const stage  = document.getElementById('stage');
 const canvas = document.getElementById('game');
@@ -119,6 +241,212 @@ const elScore = document.getElementById('score');
 const elLevel = document.getElementById('level');
 const elPower = document.getElementById('power');
 const elLives = document.getElementById('lives');
+const elLivesCard = document.getElementById('livesCard');
+const livesCanvas = document.getElementById('livesIcons');
+
+// ---------- Sound ----------
+// All sounds are made by code (short notes), so there are no sound files to upload.
+// Phones only allow sound after a touch, so the sound engine starts on the first touch.
+// The on/off choice is remembered, and is shared by all the games on this site.
+const btnSound = document.getElementById('sound');
+let audio = null;                // the sound engine (created on first touch)
+let muted = false;
+try { muted = localStorage.getItem('gamesMuted') === '1'; } catch (e) { /* storage blocked: start with sound on */ }
+
+function showSoundButton() {
+  btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
+  btnSound.classList.toggle('off', muted);
+}
+showSoundButton();
+
+function startAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (e) { audio = null; }                                  // no sound support: the game still works
+}
+// Different phones accept different kinds of touch for this, so listen for all of them
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, startAudio, true);
+}
+
+// Play one note.
+//   freq  = pitch in Hz (higher number = higher note)
+//   dur   = length in seconds
+//   type  = 'sine' (soft), 'triangle' (round), 'square' (retro), 'sawtooth' (buzzy)
+//   delay = seconds to wait before it starts (used to build little tunes)
+//   slide = pitch to glide to by the end (optional)
+//   volume = 0 to 1, share of SOUND_VOLUME
+function beep(freq, dur, type = 'sine', delay = 0, slide = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME * volume, t + 0.01);   // quick fade in (no click)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);                   // fade out
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// Play a burst of hiss (for explosions, crashes, whooshes).
+//   dur = length in seconds, tone = how bright it is in Hz (300 = deep boom, 4000 = sharp crack)
+let noiseBuffer = null;
+function noise(dur, tone = 1000, delay = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  if (!noiseBuffer) {                                            // one second of random hiss, made once
+    noiseBuffer = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  const t = audio.currentTime + delay;
+  const src = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const gain = audio.createGain();
+  src.buffer = noiseBuffer;
+  src.loop = true;
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(tone, t);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(60, tone * 0.25), t + dur);
+  gain.gain.setValueAtTime(SOUND_VOLUME * volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(filter).connect(gain).connect(audio.destination);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+}
+
+// Short buzz on Android phones (iPhone does not allow this from a web page)
+function buzz(ms) {
+  if (!muted && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
+}
+
+btnSound.addEventListener('click', () => {
+  muted = !muted;
+  try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {}
+  showSoundButton();
+  startAudio();
+  btnSound.blur();                                                         // so the Space key does not press it again
+  if (!muted) setTimeout(() => beep(740, 0.05, 'sine', 0, 0, 0.6), 60);   // small note to confirm sound is on
+});
+
+// Some sounds can happen many times a second (shooting, hits).
+// notTooSoon('name', 60) says "yes" only if that sound has not played in the last 60 ms.
+const lastPlayed = {};
+function notTooSoon(name, gapMs) {
+  const now = performance.now();
+  if (lastPlayed[name] !== undefined && now - lastPlayed[name] < gapMs) return false;
+  lastPlayed[name] = now;
+  return true;
+}
+
+// The game's sounds. Each one is built from beep() notes and noise() bursts.
+const sfx = {
+  // Your gun: a tiny soft "pew". The pitch changes a little each time so it is not boring.
+  shoot() {
+    if (!notTooSoon('shoot', 60)) return;
+    beep(rand(780, 960), 0.06, 'triangle', 0, 400, 0.28);
+  },
+  // An enemy gun: lower and quieter
+  enemyShot() {
+    if (!notTooSoon('enemyShot', 90)) return;
+    beep(250, 0.09, 'square', 0, 150, 0.2);
+  },
+  // Your shot hit an enemy but did not destroy it: tiny tick
+  hit() {
+    if (!notTooSoon('hit', 60)) return;
+    beep(1500, 0.03, 'square', 0, 0, 0.18);
+  },
+  // Your shot hit the boss: low thump
+  bossHit() {
+    if (!notTooSoon('bossHit', 90)) return;
+    beep(130, 0.09, 'sine', 0, 60, 0.8);
+  },
+  // An enemy plane blew up: hiss + falling note. Bigger planes sound deeper.
+  destroy(kind) {
+    if (!notTooSoon('destroy', 50)) return;
+    if (kind === 'shooter')  { noise(0.30, 800, 0, 0.7);   beep(260, 0.30, 'triangle', 0, 60, 0.6); }
+    else if (kind === 'zig') { noise(0.20, 1500, 0, 0.55); beep(400, 0.20, 'triangle', 0, 100, 0.5); }
+    else                     { noise(0.16, 2200, 0, 0.5);  beep(520, 0.16, 'triangle', 0, 140, 0.5); }
+  },
+  // You lost a life: crunch + falling note
+  lifeLost() {
+    noise(0.30, 1200, 0, 0.9);
+    beep(420, 0.40, 'sawtooth', 0, 70, 0.5);
+    buzz(40);
+  },
+  // You lost your last life: crunch, then a sad falling tune
+  gameOver() {
+    noise(0.45, 900, 0, 1);
+    beep(300, 0.45, 'sawtooth', 0, 50, 0.5);
+    beep(392, 0.20, 'triangle', 0.55);
+    beep(330, 0.20, 'triangle', 0.77);
+    beep(262, 0.20, 'triangle', 0.99);
+    beep(196, 0.55, 'triangle', 1.21);
+    buzz(40);
+  },
+  // Picked up a P: three rising notes
+  power() {
+    beep(660, 0.09, 'sine', 0);
+    beep(880, 0.09, 'sine', 0.08);
+    beep(1175, 0.16, 'sine', 0.16);
+  },
+  // Picked up a P at full power (bonus points): two quick notes
+  bonus() {
+    beep(988, 0.07, 'sine', 0);
+    beep(1319, 0.14, 'sine', 0.07);
+  },
+  // Picked up a heart: brighter, longer chime
+  extraLife() {
+    beep(784, 0.10, 'triangle', 0);
+    beep(988, 0.10, 'triangle', 0.09);
+    beep(1175, 0.10, 'triangle', 0.18);
+    beep(1568, 0.30, 'triangle', 0.27);
+    beep(2093, 0.30, 'sine', 0.27, 0, 0.5);
+  },
+  // The boss is coming: two-tone alarm, three times
+  bossWarning() {
+    for (let i = 0; i < 3; i++) {
+      beep(620, 0.20, 'square', i * 0.6, 0, 0.3);
+      beep(440, 0.20, 'square', i * 0.6 + 0.24, 0, 0.3);
+    }
+  },
+  // The boss blew up: a chain of booms over about a second, then one huge one
+  bossDestroyed() {
+    noise(0.35, 900, 0, 1);
+    noise(0.30, 1400, 0.20, 0.8);
+    noise(0.30, 700, 0.42, 0.9);
+    noise(0.30, 1600, 0.64, 0.8);
+    noise(0.35, 600, 0.86, 0.9);
+    noise(0.90, 500, 1.15, 1);
+    beep(160, 0.60, 'sawtooth', 1.15, 40, 0.6);
+    buzz(40);
+  },
+  // Level finished: short rising tune ("delay" lets the boss explosion finish first)
+  levelClear(delay) {
+    beep(523, 0.12, 'triangle', delay);
+    beep(659, 0.12, 'triangle', delay + 0.12);
+    beep(784, 0.12, 'triangle', delay + 0.24);
+    beep(1047, 0.35, 'triangle', delay + 0.36);
+  },
+  // You beat the whole game: a longer fanfare
+  victory(delay) {
+    const tune = [523, 659, 784, 1047, 784, 1047, 1319];
+    for (let i = 0; i < tune.length; i++) beep(tune[i], 0.14, 'triangle', delay + i * 0.13);
+    beep(1568, 0.6, 'triangle', delay + tune.length * 0.13);
+    beep(1047, 0.6, 'sine', delay + tune.length * 0.13, 0, 0.6);
+  },
+  // Starting a level: quick little jingle
+  start() {
+    beep(392, 0.08, 'triangle', 0);
+    beep(523, 0.08, 'triangle', 0.08);
+    beep(659, 0.08, 'triangle', 0.16);
+    beep(784, 0.18, 'triangle', 0.24);
+  }
+};
 
 // ---------- Game state ----------
 let screen = 'title';            // 'title' | 'play' | 'clear' | 'over' | 'won'
@@ -130,7 +458,7 @@ let shots = [];                  // your bullets: { x, y, vx, vy }
 let enemyShots = [];             // enemy bullets
 let enemies = [];
 let drops = [];                  // falling power-ups: { kind, x, y }
-let sparks = [];                 // explosion pieces
+let sparks = [];                 // explosion pieces, smoke puffs and confetti
 let effects = [];                // floating text
 let fireTimer = 0, safeTimer = 0;
 let wavesLeft = 0, waveTimer = 0;
@@ -138,6 +466,23 @@ let bossState = 'none';          // 'none' | 'warning' | 'fighting'
 let bossTimer = 0;
 let seaScroll = 0, clock = 0;
 const keys = {};
+
+// ---------- Extra state used only for the pictures (never changes the game) ----------
+let blasts = [];                 // explosion fireballs: { x, y, t, life, size }
+let rings = [];                  // expanding rings when you pick something up
+let flashes = [];                // small gun flashes
+let wreck = null;                // the boss while it is blowing up: { x, y, t, timer }
+let farScroll = 0, nearScroll = 0, rainScroll = 0;   // how far each cloud layer has scrolled
+let tilt = 0;                    // how much your plane leans: -1 = hard left, 1 = hard right
+let lastPlaneX = WORLD_W / 2;
+let muzzleTimer = 0;             // your gun flash is shown while this is above 0
+let shakeTime = 0, shakeSize = 0;
+let whiteFlash = 0, redFlash = 0;   // full-screen flashes (boss explosion, being hit)
+let shownScreen = '';            // the screen we were on last frame (to notice changes)
+let screenTime = 0;              // seconds since the screen changed (for the pop-in animation)
+let panelDelay = 0;              // wait this long before the message panel pops in
+let levelTime = 0;               // seconds since the level started (for the "LEVEL 3" banner)
+let smokeTimer = 0, partyTimer = 0, lightningAt = 6, lightning = 0;
 
 // Screen fitting
 let dpr = 1, scale = 1, offX = 0, offY = 0, screenW = 0, screenH = 0;
@@ -148,16 +493,45 @@ const ISLANDS = [
   { x: 250, y: 640, r: 38 }, { x: 40, y: 800, r: 30 }
 ];
 const SEA_LOOP = 900;            // the sea picture repeats after this many units
+// A few tiny extra rocks between the islands, and how tall the cloud pictures are
+const ISLETS = [ { x: 205, y: 150, r: 11 }, { x: 335, y: 530, r: 13 }, { x: 160, y: 735, r: 10 }, { x: 25, y: 340, r: 9 } ];
+const FAR_LOOP = 640, NEAR_LOOP = 880, RAIN_LOOP = 560;
+const TAU = Math.PI * 2;         // a full circle
 
 // ---------- Helpers ----------
 function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// A random-number maker that gives the SAME numbers every time for the same seed.
+// Used to paint backgrounds, so the islands and clouds look the same on every visit.
+function seededRandom(seed) {
+  let s = seed;
+  return function () {
+    s = (s * 16807) % 2147483647;
+    return s / 2147483647;
+  };
+}
+
+// Turn '#rrggbb' into 'rgba(r,g,b,alpha)'
+function withAlpha(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+}
+
+// "Pop" curve for animations: goes 0 -> a little over 1 -> 1
+function popCurve(p) {
+  p = clamp(p, 0, 1);
+  const c = 1.9;
+  return 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2);
+}
 
 // ---------- Start a level ----------
 function startLevel(n) {
   level = n;
   levelStartScore = score;
   shots = []; enemyShots = []; enemies = []; drops = []; sparks = []; effects = [];
+  blasts = []; rings = []; flashes = []; wreck = null;     // (pictures only)
+  whiteFlash = 0; redFlash = 0; shakeTime = 0; levelTime = 0;
   wavesLeft = LEVELS[n - 1].waves;
   waveTimer = 1.2;               // short calm before the first planes
   bossState = 'none';
@@ -169,17 +543,54 @@ function startLevel(n) {
 
 // Tap or Space: what happens depends on the current screen
 function advance() {
-  if (screen === 'title' || screen === 'won') { score = 0; lives = START_LIVES; power = 1; startLevel(1); }
-  else if (screen === 'clear') { lives = Math.max(lives, START_LIVES); startLevel(level + 1); }
-  else if (screen === 'over') { score = levelStartScore; lives = START_LIVES; power = 1; startLevel(level); }   // retry same level
+  // Wait until the message panel has popped in before a tap counts.
+  // A finger that is still steering cannot skip the boss explosion or the result by accident.
+  if (screen !== 'title' && screenTime < panelDelay + TAP_GUARD) return;
+  if (screen === 'title' || screen === 'won') { score = 0; lives = START_LIVES; power = 1; startLevel(1); sfx.start(); }
+  else if (screen === 'clear') { lives = Math.max(lives, START_LIVES); startLevel(level + 1); sfx.start(); }
+  else if (screen === 'over') { score = levelStartScore; lives = START_LIVES; power = 1; startLevel(level); sfx.start(); }   // retry same level
 }
 
+// The top bar. To save work, the page is only touched when a number really changed.
+const hudShown = { score: null, level: null, power: null, lives: null };
 function updateHud() {
-  elScore.textContent = score;
-  elLevel.textContent = level + '/' + LEVELS.length;
-  elPower.textContent = power;
-  elLives.textContent = lives;
-  elLives.classList.toggle('low', lives <= 1);
+  if (hudShown.score !== score) { hudShown.score = score; elScore.textContent = score; }
+  if (hudShown.level !== level) { hudShown.level = level; elLevel.textContent = level + '/' + LEVELS.length; }
+  if (hudShown.power !== power) {
+    hudShown.power = power;
+    // One small bar for each power step; the first "power" bars are lit
+    elPower.textContent = '';
+    for (let i = 1; i <= MAX_POWER; i++) {
+      const bar = document.createElement('i');
+      if (i <= power) bar.className = 'on';
+      elPower.appendChild(bar);
+    }
+    elPower.setAttribute('aria-label', 'Power ' + power);
+  }
+  if (hudShown.lives !== lives) {
+    hudShown.lives = lives;
+    drawLivesIcons();
+    elLives.setAttribute('aria-label', lives + ' lives');
+    elLivesCard.classList.toggle('low', lives <= 1);
+  }
+}
+
+// Lives are drawn as small copies of your plane; lost lives are shown faded
+function drawLivesIcons() {
+  if (!sprites.player) return;                   // pictures not painted yet
+  const size = 18;                               // size of one icon on the page
+  const slots = Math.max(START_LIVES, lives);
+  livesCanvas.width = Math.round(slots * size * dpr);
+  livesCanvas.height = Math.round(size * dpr);
+  livesCanvas.style.width = slots * size + 'px';
+  livesCanvas.style.height = size + 'px';
+  const g = livesCanvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, slots * size, size);
+  for (let i = 0; i < slots; i++) {
+    g.globalAlpha = i < lives ? 1 : 0.18;
+    g.drawImage(sprites.player.canvas, i * size, 0, size, size);
+  }
 }
 
 // ---------- Enemy planes ----------
@@ -232,6 +643,10 @@ function spawnBoss() {
 function enemyFire(x, y, angle) {
   const speed = LEVELS[level - 1].bullets;
   enemyShots.push({ x, y, vx: Math.sin(angle) * speed, vy: Math.cos(angle) * speed });
+  // Gun flash and sound (a fan of bullets from one gun makes just one flash)
+  const last = flashes[flashes.length - 1];
+  if (!last || last.x !== x || last.y !== y || last.t > 0) flashes.push({ x, y, t: 0, life: 0.12, size: 26, enemy: true });
+  sfx.enemyShot();
 }
 // Angle from (x, y) toward your plane
 function aimAt(x, y) { return Math.atan2(planeX - x, PLAYER_Y - y); }
@@ -293,25 +708,56 @@ function hitRadius(e) { return e.kind === 'boss' ? 46 : 15 * ENEMY[e.kind].size;
 
 function destroyEnemy(e) {
   e.dead = true;
-  score += ENEMY[e.kind].points * (e.kind === 'boss' ? level : 1);
+  const points = ENEMY[e.kind].points * (e.kind === 'boss' ? level : 1);
+  score += points;
   explode(e.x, e.y, e.kind === 'boss' ? 40 : 10, e.kind === 'boss' ? '#f79d65' : '#f4d35e');
 
-  if (e.kind === 'boss') return;
+  if (e.kind === 'boss') {
+    // The boss does not just vanish: its wreck keeps exploding for a moment (pictures and sound only)
+    wreck = { x: e.x, y: e.y, t: 0, timer: 0 };
+    floatText('+' + points, e.x, e.y - 20, '#ffd166', 24);
+    sfx.bossDestroyed();
+    return;
+  }
+  floatText('+' + points, e.x, e.y, '#ffffff', 14);
+  sfx.destroy(e.kind);
   // Sometimes leave a power-up behind
   const roll = Math.random();
   if (roll < LIFE_DROP && lives < START_LIVES) drops.push({ kind: 'life', x: e.x, y: e.y });
   else if (roll < LIFE_DROP + (e.kind === 'shooter' ? 0.4 : POWER_DROP)) drops.push({ kind: 'power', x: e.x, y: e.y });
 }
 
-function explode(x, y, count, color) {
-  for (let i = 0; i < count; i++) {
-    const a = Math.random() * Math.PI * 2, s = rand(40, 190);
-    sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: 0, life: rand(0.3, 0.7), color });
-  }
+// Add one spark, smoke puff or confetti piece (but never more than MAX_PARTICLES at once)
+function addParticle(p) {
+  if (sparks.length < MAX_PARTICLES) sparks.push(p);
 }
 
-function floatText(text, x, y, color) {
-  effects.push({ text, x, y, color, t: 0, life: 0.9 });
+// An explosion at (x, y). "count" = how big (10 = small plane, 40 = boss).
+// It is built in layers: a fireball with a flash and a ring, flying sparks, and some smoke.
+function explode(x, y, count, color) {
+  const size = 40 + count * 2.2;
+  blasts.push({ x, y, t: 0, life: 0.36 + count * 0.008, size });
+  // Two smaller fireballs beside the main one, starting a moment later (looks less like a perfect circle)
+  blasts.push({ x: x + rand(-0.25, 0.25) * size, y: y + rand(-0.25, 0.25) * size, t: -0.05, life: 0.3, size: size * 0.6, noRing: true });
+  blasts.push({ x: x + rand(-0.3, 0.3) * size, y: y + rand(-0.3, 0.3) * size, t: -0.11, life: 0.3, size: size * 0.5, noRing: true });
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2, s = rand(40, 190);
+    addParticle({ kind: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: 0, life: rand(0.3, 0.7), color, size: rand(5, 9) });
+  }
+  for (let i = 0; i < Math.ceil(count / 5); i++) {
+    addParticle({ kind: 'smoke', x: x + rand(-8, 8), y: y + rand(-8, 8), vx: rand(-20, 20), vy: rand(-10, 30), t: 0, life: rand(0.5, 0.9), size: rand(22, 34) + count * 0.5 });
+  }
+  shake(count * 0.14, 0.12 + count * 0.008);
+}
+
+// Shake the picture a little. size = how many game units, time = seconds.
+function shake(size, time) {
+  // A small shake never cancels a bigger one that is still going
+  if (shakeTime <= 0 || size * SHAKE_AMOUNT >= shakeSize) { shakeSize = size * SHAKE_AMOUNT; shakeTime = time; }
+}
+
+function floatText(text, x, y, color, size) {
+  effects.push({ text, x, y, color, t: 0, life: 0.9, size: size || 16 });
 }
 
 // Your plane was hit
@@ -321,20 +767,148 @@ function playerHit() {
   safeTimer = SAFE_TIME;
   enemyShots = [];                               // clear the bullets to give you a fresh start
   explode(planeX, PLAYER_Y, 14, '#4dd4ac');
-  if (lives <= 0) { lives = 0; screen = 'over'; }
+  redFlash = 0.22;
+  shake(5, 0.3);
+  if (lives <= 0) {
+    lives = 0; screen = 'over'; sfx.gameOver();
+    explode(planeX, PLAYER_Y, 24, '#ffd166');    // your last plane goes with a bigger bang (picture only)
+  }
+  if (lives > 0) sfx.lifeLost();
+}
+
+// ---------- Update the pictures-only things (clouds, smoke, shake, confetti) ----------
+function updateLooks(dt) {
+  screenTime += dt;
+  levelTime += dt;
+
+  // The view keeps scrolling on every screen except "game over" (where everything freezes)
+  if (screen !== 'over') {
+    seaScroll = (seaScroll + 60 * dt) % SEA_LOOP;
+    farScroll = (farScroll + 85 * dt) % FAR_LOOP;
+    nearScroll = (nearScroll + 135 * dt) % NEAR_LOOP;
+    rainScroll = (rainScroll + 520 * dt) % RAIN_LOOP;
+  }
+
+  // Lean the plane toward the way it is moving (smoothly)
+  const sideSpeed = dt > 0 ? (planeX - lastPlaneX) / dt / MOVE_SPEED : 0;
+  lastPlaneX = planeX;
+  tilt += (clamp(sideSpeed * 1.6, -1, 1) - tilt) * Math.min(1, dt * 12);
+
+  // Timers that simply count down
+  muzzleTimer = Math.max(0, muzzleTimer - dt);
+  shakeTime = Math.max(0, shakeTime - dt);
+  whiteFlash = Math.max(0, whiteFlash - dt * 2.2);
+  redFlash = Math.max(0, redFlash - dt * 1.5);
+  lightning = Math.max(0, lightning - dt);
+
+  for (const b of blasts) b.t += dt;
+  blasts = blasts.filter(b => b.t < b.life);
+  for (const r of rings) r.t += dt;
+  rings = rings.filter(r => r.t < r.life);
+  for (const f of flashes) f.t += dt;
+  flashes = flashes.filter(f => f.t < f.life);
+
+  // The boss wreck: small explosions all over it, then one huge one
+  if (wreck) {
+    wreck.t += dt;
+    wreck.timer -= dt;
+    if (wreck.t < 1.15 && wreck.timer <= 0) {
+      wreck.timer = 0.13;
+      const x = wreck.x + rand(-44, 44), y = wreck.y + rand(-36, 36);
+      blasts.push({ x, y, t: 0, life: 0.42, size: rand(56, 90) });
+      for (let i = 0; i < 4; i++) {
+        const a = Math.random() * TAU, s = rand(60, 200);
+        addParticle({ kind: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: 0, life: rand(0.3, 0.6), color: '#ffd166', size: rand(5, 9) });
+      }
+      addParticle({ kind: 'smoke', x, y, vx: rand(-20, 20), vy: rand(-30, 0), t: 0, life: 0.9, size: rand(34, 50) });
+      shake(2.5, 0.15);
+    }
+    if (wreck.t >= 1.15) {
+      // The final blast: big fireball, white flash, lots of sparks, strong shake
+      blasts.push({ x: wreck.x, y: wreck.y, t: 0, life: 1.0, size: 250 });
+      blasts.push({ x: wreck.x - 34, y: wreck.y + 14, t: -0.08, life: 0.7, size: 140, noRing: true });
+      blasts.push({ x: wreck.x + 36, y: wreck.y - 12, t: -0.16, life: 0.7, size: 140, noRing: true });
+      blasts.push({ x: wreck.x + 6, y: wreck.y + 30, t: -0.26, life: 0.7, size: 120 });
+      blasts.push({ x: wreck.x - 10, y: wreck.y - 28, t: -0.36, life: 0.7, size: 110, noRing: true });
+      for (let i = 0; i < 46; i++) {
+        const a = Math.random() * TAU, s = rand(60, 330);
+        addParticle({ kind: 'spark', x: wreck.x, y: wreck.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: 0, life: rand(0.5, 1.2),
+                      color: i % 3 === 0 ? '#ffffff' : i % 3 === 1 ? '#ffd166' : '#f79d65', size: rand(6, 12) });
+      }
+      for (let i = 0; i < 8; i++) {
+        addParticle({ kind: 'smoke', x: wreck.x + rand(-30, 30), y: wreck.y + rand(-24, 24), vx: rand(-40, 40), vy: rand(-40, 20), t: 0, life: rand(0.9, 1.5), size: rand(54, 80) });
+      }
+      whiteFlash = 0.85;
+      shake(9, 0.55);
+      wreck = null;
+    }
+  }
+
+  // A badly damaged boss trails smoke and sparks
+  if (screen === 'play') {
+    for (const e of enemies) {
+      if (e.kind !== 'boss' || e.dead || e.hp / e.maxHp > 0.35) continue;
+      smokeTimer -= dt;
+      if (smokeTimer <= 0) {
+        smokeTimer = 0.07;
+        const x = e.x + rand(-40, 40), y = e.y + rand(-24, 16);
+        addParticle({ kind: 'smoke', x, y, vx: rand(-15, 15), vy: rand(-70, -30), t: 0, life: rand(0.7, 1.1), size: rand(26, 40) });
+        if (Math.random() < 0.45) {
+          const a = Math.random() * TAU, s = rand(50, 150);
+          addParticle({ kind: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: 0, life: rand(0.25, 0.5), color: '#ffd166', size: rand(4, 8) });
+        }
+      }
+    }
+  }
+
+  // Storm levels: a soft lightning flash now and then
+  if (screen === 'play' && currentTheme().rain) {
+    lightningAt -= dt;
+    if (lightningAt <= 0) { lightning = 0.22; lightningAt = rand(5, 9); }
+  }
+
+  // You won the whole game: confetti and fireworks
+  if (screen === 'won') {
+    partyTimer -= dt;
+    if (partyTimer <= 0) {
+      partyTimer = 0.07;
+      const colours = ['#ff6b6b', '#f4d35e', '#4dd4ac', '#8fd3ff', '#ff8fab', '#b388eb'];
+      // Confetti falls from the top
+      if (sparks.length < 90) {
+        for (let i = 0; i < 2; i++) {
+          addParticle({ kind: 'confetti', x: rand(0, WORLD_W), y: -10, vx: rand(-30, 30), vy: rand(70, 150), t: 0, life: 4.2,
+                        color: colours[Math.floor(Math.random() * colours.length)], size: rand(8, 12), spin: rand(4, 9) });
+        }
+      }
+      // A firework every so often
+      if (Math.random() < 0.13 && screenTime > panelDelay) {
+        // (above or below the message panel, so they are not hidden behind it)
+        const x = rand(40, WORLD_W - 40), y = Math.random() < 0.6 ? rand(40, 125) : rand(385, 470);
+        const color = colours[Math.floor(Math.random() * colours.length)];
+        blasts.push({ x, y, t: 0, life: 0.5, size: 90, ringOnly: true });
+        for (let i = 0; i < 18; i++) {
+          const a = i / 18 * TAU, s = rand(90, 130);
+          addParticle({ kind: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: 0, life: rand(0.8, 1.1), color, size: 11, gravity: 90 });
+        }
+      }
+    }
+  }
 }
 
 // ---------- Update: move the whole game forward by dt seconds ----------
 function update(dt) {
   clock += dt;
-  for (const s of sparks) { s.t += dt; s.x += s.vx * dt; s.y += s.vy * dt; }
+  updateLooks(dt);
+  for (const s of sparks) {
+    s.t += dt; s.x += s.vx * dt; s.y += s.vy * dt;
+    if (s.gravity) s.vy += s.gravity * dt;
+  }
   sparks = sparks.filter(s => s.t < s.life);
   for (const e of effects) e.t += dt;
   effects = effects.filter(e => e.t < e.life);
 
   if (screen !== 'play') return;
   const def = LEVELS[level - 1];
-  seaScroll = (seaScroll + 60 * dt) % SEA_LOOP;
 
   // Move your plane toward your finger
   if (keys['ArrowLeft']  || keys['a']) targetX = planeX - 60;
@@ -358,6 +932,8 @@ function update(dt) {
       shots.push({ x: planeX - 8, y, vx: -SHOT_SPEED * 0.2, vy: -SHOT_SPEED });
       shots.push({ x: planeX + 8, y, vx: SHOT_SPEED * 0.2, vy: -SHOT_SPEED });
     }
+    muzzleTimer = 0.06;                          // show the gun flash for a moment
+    sfx.shoot();
   }
 
   // New groups of planes, then the boss
@@ -367,6 +943,7 @@ function update(dt) {
   } else if (bossState === 'none' && enemies.length === 0) {
     bossState = 'warning';
     bossTimer = 2;
+    sfx.bossWarning();
   } else if (bossState === 'warning') {
     bossTimer -= dt;
     if (bossTimer <= 0) spawnBoss();
@@ -387,6 +964,11 @@ function update(dt) {
         e.hp--;
         e.flash = 0.08;
         if (e.hp <= 0) destroyEnemy(e);
+        else {
+          // Not destroyed yet: a tiny spark and a tick (or a thump for the boss)
+          addParticle({ kind: 'spark', x: s.x, y: s.y - 6, vx: rand(-70, 70), vy: rand(20, 110), t: 0, life: 0.22, color: '#fff6b0', size: 6 });
+          if (e.kind === 'boss') sfx.bossHit(); else sfx.hit();
+        }
       }
     }
   }
@@ -414,9 +996,11 @@ function update(dt) {
   for (const d of drops) {
     if (Math.abs(d.x - planeX) < 26 && Math.abs(d.y - PLAYER_Y) < 26) {
       d.taken = true;
-      if (d.kind === 'life') { lives = Math.min(START_LIVES, lives + 1); floatText('+1 life', d.x, d.y, '#ff8fab'); }
-      else if (power < MAX_POWER) { power++; floatText('Power up!', d.x, d.y, '#f4d35e'); }
-      else { score += 250; floatText('+250', d.x, d.y, '#f4d35e'); }
+      if (d.kind === 'life') { lives = Math.min(START_LIVES, lives + 1); floatText('+1 life', d.x, d.y, '#ff8fab'); sfx.extraLife(); }
+      else if (power < MAX_POWER) { power++; floatText('Power up!', d.x, d.y, '#f4d35e'); sfx.power(); }
+      else { score += 250; floatText('+250', d.x, d.y, '#f4d35e'); sfx.bonus(); }
+      // A ring that grows around your plane
+      rings.push({ t: 0, life: 0.45, color: d.kind === 'life' ? '#ff8fab' : '#f4d35e' });
     }
   }
 
@@ -432,35 +1016,1081 @@ function update(dt) {
     score += LEVEL_BONUS * level;
     enemyShots = [];
     screen = level === LEVELS.length ? 'won' : 'clear';
+    // The happy tune waits until the boss has finished exploding
+    if (screen === 'won') sfx.victory(wreck ? 1.9 : 0); else sfx.levelClear(wreck ? 1.9 : 0);
   }
   updateHud();
 }
 
-// ---------- Drawing ----------
-// A plane seen from above. "down" = flying toward the bottom of the screen.
-function drawPlane(x, y, size, color, down) {
+// =====================================================
+// PICTURES
+// Everything below paints the sprites (once) and stamps them (every frame).
+// =====================================================
+
+let spriteRes = 1;               // how many real screen pixels per game unit (so sprites stay sharp)
+let sprites = {};                // all the ready-made pictures, by name
+let dotCache = {};               // small glowing dots for sparks, one per colour
+let bg = {};                     // the background pictures for the current level
+let bgLevel = 0;                 // which level the background and boss pictures were made for
+
+// Make a sprite: a hidden canvas "w x h" game units big, painted once by paint(g).
+// Inside paint, (0,0) is the CENTRE of the picture (or the top-left corner if fromCorner is true).
+function makeSprite(w, h, paint, res, fromCorner) {
+  const r = res || spriteRes;
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.ceil(w * r));
+  c.height = Math.max(1, Math.ceil(h * r));
+  const g = c.getContext('2d');
+  g.scale(c.width / w, c.height / h);
+  if (!fromCorner) g.translate(w / 2, h / 2);
+  paint(g);
+  return { canvas: c, w, h };
+}
+
+// Stamp a sprite with its centre at (x, y)
+function stamp(s, x, y) {
+  ctx.drawImage(s.canvas, x - s.w / 2, y - s.h / 2, s.w, s.h);
+}
+// Stamp a sprite stretched: sx = sideways size, sy = up/down size (1 = normal)
+function stampScaled(s, x, y, sx, sy) {
+  ctx.drawImage(s.canvas, x - s.w * sx / 2, y - s.h * sy / 2, s.w * sx, s.h * sy);
+}
+// Stamp a sprite turned by an angle (in radians)
+function stampTurned(s, x, y, angle, size) {
   ctx.save();
   ctx.translate(x, y);
-  if (down) ctx.rotate(Math.PI);
-  ctx.scale(size, size);
-  ctx.fillStyle = color;
-  // Wings
-  ctx.beginPath();
-  ctx.moveTo(-17, 4); ctx.lineTo(17, 4); ctx.lineTo(11, -4); ctx.lineTo(-11, -4);
-  ctx.closePath(); ctx.fill();
-  // Tail
-  ctx.beginPath();
-  ctx.moveTo(-8, 14); ctx.lineTo(8, 14); ctx.lineTo(4, 9); ctx.lineTo(-4, 9);
-  ctx.closePath(); ctx.fill();
-  // Body
-  ctx.beginPath(); ctx.ellipse(0, 0, 4.5, 15, 0, 0, Math.PI * 2); ctx.fill();
-  // Cockpit
-  ctx.fillStyle = 'rgba(11,18,32,0.7)';
-  ctx.beginPath(); ctx.ellipse(0, -4, 2.2, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.rotate(angle);
+  ctx.drawImage(s.canvas, -s.w * size / 2, -s.h * size / 2, s.w * size, s.h * size);
   ctx.restore();
 }
 
+// A copy of a sprite where every painted pixel becomes one colour.
+// White copies are the "hit flash"; dark, low-detail copies are the soft shadows on the sea.
+function makeSilhouette(s, color, res) {
+  return makeSprite(s.w, s.h, (g) => {
+    g.drawImage(s.canvas, -s.w / 2, -s.h / 2, s.w, s.h);
+    g.globalCompositeOperation = 'source-in';
+    g.fillStyle = color;
+    g.fillRect(-s.w / 2, -s.h / 2, s.w, s.h);
+  }, res);
+}
+
+// A soft round glow. "stops" is a list of [position 0..1, colour] from the middle outwards.
+function makeGlow(size, stops, res) {
+  return makeSprite(size, size, (g) => {
+    const paint = g.createRadialGradient(0, 0, 0, 0, 0, size / 2);
+    for (const stop of stops) paint.addColorStop(stop[0], stop[1]);
+    g.fillStyle = paint;
+    g.fillRect(-size / 2, -size / 2, size, size);
+  }, res);
+}
+
+// ----- Small drawing helpers used while painting sprites -----
+// Outline a shape from a list of points: [x1, y1, x2, y2, ...]
+function shape(g, points) {
+  g.beginPath();
+  g.moveTo(points[0], points[1]);
+  for (let i = 2; i < points.length; i += 2) g.lineTo(points[i], points[i + 1]);
+  g.closePath();
+}
+// Fill (and maybe outline) a shape
+function paintShape(g, points, fill, outline) {
+  shape(g, points);
+  g.fillStyle = fill;
+  g.fill();
+  if (outline) { g.strokeStyle = outline; g.stroke(); }
+}
+function paintCircle(g, x, y, r, fill, outline) {
+  g.beginPath();
+  g.arc(x, y, r, 0, TAU);
+  g.fillStyle = fill;
+  g.fill();
+  if (outline) { g.strokeStyle = outline; g.stroke(); }
+}
+function paintOval(g, x, y, rx, ry, fill, outline) {
+  g.beginPath();
+  g.ellipse(x, y, rx, ry, 0, 0, TAU);
+  g.fillStyle = fill;
+  g.fill();
+  if (outline) { g.strokeStyle = outline; g.stroke(); }
+}
+// A box with rounded corners (path only)
+function roundedBox(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+function paintBox(g, x, y, w, h, r, fill, outline) {
+  roundedBox(g, x, y, w, h, r);
+  g.fillStyle = fill;
+  g.fill();
+  if (outline) { g.strokeStyle = outline; g.stroke(); }
+}
+// Paint something on the right side, then the same thing mirrored on the left side
+function bothSides(g, paintRightSide) {
+  paintRightSide();
+  g.save();
+  g.scale(-1, 1);
+  paintRightSide();
+  g.restore();
+}
+// A colour blend from left to right, made of [position, colour] steps
+function blendAcross(g, x1, x2, stops) {
+  const paint = g.createLinearGradient(x1, 0, x2, 0);
+  for (const stop of stops) paint.addColorStop(stop[0], stop[1]);
+  return paint;
+}
+// A colour blend from top to bottom
+function blendDown(g, y1, y2, stops) {
+  const paint = g.createLinearGradient(0, y1, 0, y2);
+  for (const stop of stops) paint.addColorStop(stop[0], stop[1]);
+  return paint;
+}
+// Cockpit glass with a white shine
+function paintGlass(g, x, y, rx, ry) {
+  paintOval(g, x, y, rx, ry, blendDown(g, y - ry, y + ry, [[0, '#c9efff'], [0.5, '#2f7fc4'], [1, '#12325e']]), '#0b2233');
+  paintOval(g, x - rx * 0.32, y - ry * 0.35, rx * 0.28, ry * 0.36, 'rgba(255,255,255,0.85)');
+}
+
+// ----- Your plane: a fighter jet seen from above, nose pointing up -----
+// bank = 0 flying level, -1 leaning left, 1 leaning right (one wing darker, one lighter)
+function paintPlayer(g, bank) {
+  const OUTLINE = '#0c3b3a';
+  g.lineJoin = 'round';
+  g.lineWidth = 1.1;
+  const wingPaint = blendDown(g, -8, 10, [[0, '#8ff0d2'], [1, '#2a9d7f']]);
+
+  bothSides(g, () => {
+    // Swept-back main wing
+    paintShape(g, [2, -7, 21, 5, 21, 9.5, 12, 9, 2, 7.5], wingPaint, OUTLINE);
+    // White stripe and a red-and-white roundel on the wing
+    paintShape(g, [15.2, 1.6, 17.6, 3.1, 17.6, 9.2, 15.2, 9.1], '#f4fffb');
+    paintCircle(g, 9.6, 3.8, 2.5, '#ffffff');
+    paintCircle(g, 9.6, 3.8, 1.3, '#f25f5c');
+    // Wing-tip pod
+    paintBox(g, 19.6, 1.2, 2.8, 9.6, 1.4, '#e9f5f2', OUTLINE);
+    paintBox(g, 19.6, 1.2, 2.8, 2.6, 1.3, '#f25f5c');
+    // Tail wing and tail fin
+    paintShape(g, [1.5, 12, 10, 18, 10, 20.8, 1.5, 19.4], wingPaint, OUTLINE);
+    paintShape(g, [2.5, 12.4, 4.3, 13.6, 4.7, 19.6, 3, 19.6], '#1f7a66');
+    // Air intake beside the body
+    paintShape(g, [4.4, -5, 7.2, -1.5, 7.2, 5, 4.4, 5.5], '#1f7a66', OUTLINE);
+  });
+
+  // Engine nozzle at the back
+  paintBox(g, -2.8, 17.5, 5.6, 4.6, 1.2, '#2b3a4a', OUTLINE);
+
+  // Body: light on the left, darker on the right, so it looks round
+  g.beginPath();
+  g.moveTo(0, -24);
+  g.bezierCurveTo(3, -21, 5.2, -13, 5.2, -4);
+  g.lineTo(4.6, 14); g.lineTo(3, 19.5); g.lineTo(-3, 19.5); g.lineTo(-4.6, 14); g.lineTo(-5.2, -4);
+  g.bezierCurveTo(-5.2, -13, -3, -21, 0, -24);
+  g.closePath();
+  g.fillStyle = blendAcross(g, -5.2, 5.2, [[0, '#d6fff3'], [0.45, '#4dd4ac'], [1, '#1f8f73']]);
+  g.fill();
+  g.strokeStyle = OUTLINE;
+  g.stroke();
+
+  // White nose cone
+  g.beginPath();
+  g.moveTo(0, -24);
+  g.bezierCurveTo(1.7, -22.3, 2.8, -19.6, 3.4, -17.2);
+  g.lineTo(-3.4, -17.2);
+  g.bezierCurveTo(-2.8, -19.6, -1.7, -22.3, 0, -24);
+  g.closePath();
+  g.fillStyle = '#f4fffb';
+  g.fill();
+
+  // Panel line down the back, and the cockpit glass
+  g.strokeStyle = 'rgba(12,59,58,0.45)';
+  g.lineWidth = 0.7;
+  g.beginPath(); g.moveTo(0, -1.5); g.lineTo(0, 16); g.stroke();
+  g.lineWidth = 0.8;
+  paintGlass(g, 0, -9.5, 2.8, 6.2);
+
+  // Leaning: darken the low wing and brighten the high wing
+  if (bank) {
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = 'rgba(0,25,45,0.32)';
+    g.fillRect(bank > 0 ? 0 : -40, -40, 40, 80);
+    g.fillStyle = 'rgba(255,255,255,0.20)';
+    g.fillRect(bank > 0 ? -40 : 0, -40, 40, 80);
+    g.globalCompositeOperation = 'source-over';
+  }
+}
+
+// ----- Enemy 1 ("small"): a red propeller fighter, nose pointing DOWN -----
+function paintSmallEnemy(g) {
+  const OUTLINE = '#4a1220';
+  g.lineJoin = 'round';
+  g.lineWidth = 1;
+  const wingPaint = blendDown(g, -6, 6, [[0, '#d94452'], [1, '#ff8f8f']]);
+  bothSides(g, () => {
+    // Straight wing with a yellow tip
+    paintShape(g, [2, -5.5, 15.5, -4, 17, -1.5, 17, 2, 15.5, 3.6, 2, 5.5], wingPaint, OUTLINE);
+    paintShape(g, [12.6, -4.3, 15.5, -4, 17, -1.5, 17, 2, 15.5, 3.6, 12.6, 3.9], '#ffd166', OUTLINE);
+    // Tail wing (at the top, because the plane flies downward)
+    paintShape(g, [1.5, -15, 8, -14.4, 8.6, -11.5, 1.5, -9.5], wingPaint, OUTLINE);
+  });
+  // Body
+  paintOval(g, 0, 0, 4.7, 15, blendAcross(g, -4.7, 4.7, [[0, '#ffc0c0'], [0.45, '#ff6b6b'], [1, '#a8323f']]), OUTLINE);
+  // Dark engine cover at the nose, cockpit, and a spinning propeller
+  paintOval(g, 0, 11.6, 3.5, 3.2, '#3a2a35');
+  paintGlass(g, 0, 1.5, 2.3, 4.2);
+  paintOval(g, 0, 15.6, 8, 1.7, 'rgba(255,255,255,0.40)');
+  paintCircle(g, 0, 15.2, 1.4, '#ffd166', OUTLINE);
+}
+
+// ----- Enemy 2 ("zig"): an orange flying-wing jet, nose pointing DOWN -----
+function paintZigEnemy(g) {
+  const OUTLINE = '#5a2a0c';
+  g.lineJoin = 'round';
+  g.lineWidth = 1;
+  // One big boomerang-shaped wing
+  paintShape(g, [0, 17.5, 5, 8, 19.5, -8.5, 18, -13, 7.5, -8.5, 3.4, -12.5, -3.4, -12.5, -7.5, -8.5, -18, -13, -19.5, -8.5, -5, 8],
+             blendAcross(g, -19.5, 19.5, [[0, '#ffd9ae'], [0.45, '#f79d65'], [1, '#c2622c']]), OUTLINE);
+  bothSides(g, () => {
+    // Dark warning stripes on the wing
+    paintShape(g, [8.2, 1.4, 11.2, -2, 13.6, -0.6, 10.2, 3.2], '#4a2a16');
+    paintShape(g, [12.6, -3.6, 15.2, -6.6, 17.2, -5.4, 14.9, -2.3], '#4a2a16');
+    // Engine nozzles at the back
+    paintBox(g, 0.6, -14.4, 2.6, 2.8, 0.8, '#3a2a25', OUTLINE);
+  });
+  // Raised middle section and cockpit
+  paintShape(g, [0, 15.5, 3.2, 6, 2.5, -11, -2.5, -11, -3.2, 6], '#e0823f');
+  paintGlass(g, 0, 6.2, 2.2, 4.4);
+}
+
+// ----- Enemy 3 ("shooter"): a purple gunship drone with two rotors and a gun, facing DOWN -----
+function paintShooterEnemy(g) {
+  const OUTLINE = '#2d1b4e';
+  g.lineJoin = 'round';
+  g.lineWidth = 1.1;
+  bothSides(g, () => {
+    // Arm out to the rotor, and the rotor ring with a blurred spinning disc
+    paintBox(g, 6, -5, 9, 5.5, 2, '#6f4bb0', OUTLINE);
+    paintCircle(g, 17, -2, 7.4, '#3c2a63', OUTLINE);
+    paintCircle(g, 17, -2, 5.9, 'rgba(215,198,255,0.30)');
+    paintCircle(g, 17, -2, 1.7, '#e6d9ff');
+  });
+  // Gun barrel pointing down at you
+  paintBox(g, -2.3, 8, 4.6, 9.5, 1.6, '#2b2440', OUTLINE);
+  paintBox(g, -2.9, 14.6, 5.8, 2.9, 1.2, '#4a3f66', OUTLINE);
+  // Armoured body
+  paintShape(g, [0, -15.5, 8, -11, 10.5, 2, 6.5, 11.5, -6.5, 11.5, -10.5, 2, -8, -11],
+             blendAcross(g, -10.5, 10.5, [[0, '#e6d6ff'], [0.45, '#b388eb'], [1, '#6f4bb0']]), OUTLINE);
+  // Yellow chevron marking and armour line
+  paintShape(g, [-5, -9.4, 0, -12.4, 5, -9.4, 5, -7.2, 0, -10.2, -5, -7.2], '#ffd166');
+  g.strokeStyle = 'rgba(45,27,78,0.5)';
+  g.lineWidth = 0.7;
+  g.beginPath(); g.moveTo(-8.6, 5.6); g.lineTo(8.6, 5.6); g.stroke();
+  // Glowing red "eye"
+  paintCircle(g, 0, -1, 4.8, '#2b1a4a');
+  paintCircle(g, 0, -1, 3.3, '#ff4d6d');
+  paintCircle(g, -1.1, -2.1, 1.1, 'rgba(255,255,255,0.9)');
+}
+
+// ----- The boss: a huge armoured bomber with four engines and gun turrets, nose DOWN -----
+// "look" gives its colours (see BOSS_LOOKS)
+function paintBoss(g, look) {
+  const OUTLINE = '#1c0f18';
+  const steel = blendAcross(g, -6, 6, [[0, '#d5dbe6'], [0.5, '#8a93a6'], [1, '#4a5163']]);
+  g.lineJoin = 'round';
+  g.lineWidth = 1.4;
+  const wingPaint = blendDown(g, -22, 16, [[0, look.dark], [0.55, look.hull], [1, look.light]]);
+
+  bothSides(g, () => {
+    // Tail wing with an upright fin (at the top)
+    paintShape(g, [4, -47, 25, -45, 28, -39, 23, -34, 4, -36], wingPaint, OUTLINE);
+    paintBox(g, 20, -48, 5, 13, 2, look.dark, OUTLINE);
+    // Giant main wing
+    paintShape(g, [8, -23, 50, -12, 57, -5, 57, 3, 50, 8, 8, 17], wingPaint, OUTLINE);
+    // Yellow and black warning stripes near the wing tip
+    paintShape(g, [46, -11.6, 50, -10.6, 50, 6.8, 46, 7.8], look.accent);
+    paintShape(g, [46, -5, 50, -4, 50, -0.5, 46, -1.5], '#2a1a1a');
+    paintShape(g, [46, 2, 50, 3, 50, 6.5, 46, 5.5], '#2a1a1a');
+    // Panel lines on the wing
+    g.strokeStyle = 'rgba(0,0,0,0.28)';
+    g.lineWidth = 0.8;
+    g.beginPath(); g.moveTo(12, -8); g.lineTo(54, -2); g.moveTo(12, 6); g.lineTo(52, 3); g.stroke();
+    g.lineWidth = 1.4;
+
+    // Two engines on each wing, each with a spinning propeller in front
+    for (const x of [21, 39]) {
+      paintBox(g, x - 4.6, -17, 9.2, 28, 4, blendAcross(g, x - 4.6, x + 4.6, [[0, '#d5dbe6'], [0.5, '#8a93a6'], [1, '#4a5163']]), OUTLINE);
+      paintBox(g, x - 4.6, 4, 9.2, 4, 1.5, look.accent);
+      paintOval(g, x, 12.6, 9.5, 2, 'rgba(255,255,255,0.38)');
+      paintCircle(g, x, 12, 1.8, '#2a2f3a', OUTLINE);
+    }
+
+    // A gun turret on each wing
+    paintBox(g, 28.6, 2, 2.8, 12, 1.2, '#2a2f3a', OUTLINE);
+    paintCircle(g, 30, 0, 5.2, steel, OUTLINE);
+    paintCircle(g, 30, 0, 2.2, look.dark);
+  });
+
+  // Main body
+  g.beginPath();
+  g.moveTo(0, 47);
+  g.bezierCurveTo(8, 44, 13.5, 32, 13.5, 20);
+  g.lineTo(13.5, -30); g.lineTo(8, -47); g.lineTo(-8, -47); g.lineTo(-13.5, -30); g.lineTo(-13.5, 20);
+  g.bezierCurveTo(-13.5, 32, -8, 44, 0, 47);
+  g.closePath();
+  g.fillStyle = blendAcross(g, -13.5, 13.5, [[0, look.light], [0.5, look.hull], [1, look.dark]]);
+  g.fill();
+  g.strokeStyle = OUTLINE;
+  g.stroke();
+
+  // Armour bands across the body, and a bright stripe down the back
+  g.strokeStyle = 'rgba(0,0,0,0.35)';
+  g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(-13, -30); g.lineTo(13, -30);
+  g.moveTo(-13.5, 14); g.lineTo(13.5, 14);
+  g.stroke();
+  paintBox(g, -1.6, -44, 3.2, 24, 1.4, look.accent);
+
+  // Twin nose guns (the boss bullets come from here)
+  bothSides(g, () => { paintBox(g, 3.4, 30, 3, 13, 1.3, '#2a2f3a', OUTLINE); });
+  // Cockpit glass at the nose
+  g.lineWidth = 1;
+  paintGlass(g, 0, 31, 4.6, 6.5);
+
+  // Top turret behind the core
+  bothSides(g, () => { paintBox(g, 0.6, -24, 2.4, 9, 1, '#2a2f3a', OUTLINE); });
+  paintCircle(g, 0, -24, 5.4, steel, OUTLINE);
+  paintCircle(g, 0, -24, 2.2, look.dark);
+
+  // The power core in the middle: a dark socket with a bright centre (it also glows, drawn each frame)
+  paintCircle(g, 0, 0, 11, '#1a1320', OUTLINE);
+  const core = g.createRadialGradient(0, 0, 0, 0, 0, 8.5);
+  core.addColorStop(0, '#ffffff');
+  core.addColorStop(0.45, look.accent);
+  core.addColorStop(1, withAlpha(look.accent, 0.25));
+  paintCircle(g, 0, 0, 8.5, core);
+  g.strokeStyle = 'rgba(255,255,255,0.5)';
+  g.lineWidth = 0.8;
+  g.beginPath(); g.arc(0, 0, 9.6, 0, TAU); g.stroke();
+}
+
+// ----- Power-up icons -----
+function paintPowerIcon(g) {
+  // Gold coin with a big P
+  paintCircle(g, 0, 0, 12, '#8a5a00');
+  paintCircle(g, 0, 0, 10.8, blendDown(g, -11, 11, [[0, '#fff3a6'], [0.5, '#f4d35e'], [1, '#e09a1f']]));
+  g.strokeStyle = 'rgba(255,255,255,0.7)';
+  g.lineWidth = 1;
+  g.beginPath(); g.arc(0, 0, 8.6, Math.PI * 1.05, Math.PI * 1.6); g.stroke();
+  g.fillStyle = '#5a3200';
+  g.font = '900 15px system-ui, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText('P', 0, 1);
+}
+function paintLifeIcon(g) {
+  // Pink bubble with a red heart
+  paintCircle(g, 0, 0, 12, '#a02a55');
+  paintCircle(g, 0, 0, 10.8, blendDown(g, -11, 11, [[0, '#ffe3ec'], [0.5, '#ff8fab'], [1, '#f0558a']]));
+  g.beginPath();
+  g.moveTo(0, 6.4);
+  g.bezierCurveTo(-9.5, 0, -6.5, -7.4, 0, -2.8);
+  g.bezierCurveTo(6.5, -7.4, 9.5, 0, 0, 6.4);
+  g.closePath();
+  g.fillStyle = '#d9003c';
+  g.fill();
+  paintOval(g, -2.8, -2.6, 1.3, 0.9, 'rgba(255,255,255,0.8)');
+}
+// Rays of light that spin slowly behind a power-up
+function paintRays(g, color) {
+  for (let i = 0; i < 8; i++) {
+    g.rotate(TAU / 8);
+    const paint = g.createLinearGradient(0, 0, 0, -22);
+    paint.addColorStop(0, withAlpha(color, 0.75));
+    paint.addColorStop(1, withAlpha(color, 0));
+    paintShape(g, [-3.4, 0, 3.4, 0, 0.8, -22, -0.8, -22], paint);
+  }
+}
+
+// ----- Paint all the sprites that do not depend on the level -----
+function buildSprites() {
+  sprites = {};
+  dotCache = {};
+
+  // Your plane: level, leaning left, leaning right, plus a big one for the title screen
+  sprites.player = makeSprite(52, 52, (g) => paintPlayer(g, 0));
+  sprites.playerLeft = makeSprite(52, 52, (g) => paintPlayer(g, -1));
+  sprites.playerRight = makeSprite(52, 52, (g) => paintPlayer(g, 1));
+  sprites.hero = makeSprite(104, 104, (g) => { g.scale(2, 2); paintPlayer(g, 0); });
+
+  // Enemy planes
+  sprites.small = makeSprite(40, 40, paintSmallEnemy);
+  sprites.zig = makeSprite(46, 42, paintZigEnemy);
+  sprites.shooter = makeSprite(56, 42, paintShooterEnemy);
+
+  // For each plane: a white copy (hit flash) and a soft dark copy (shadow on the sea)
+  for (const name of ['player', 'small', 'zig', 'shooter', 'hero']) {
+    sprites[name + 'White'] = makeSilhouette(sprites[name], '#ffffff');
+    sprites[name + 'Shadow'] = makeSilhouette(sprites[name], 'rgba(4,10,28,0.34)', Math.max(0.3, spriteRes * 0.3));
+  }
+
+  // Your bullet: a long thin yellow bolt (three versions: straight, leaning left, leaning right)
+  const paintBolt = (g) => {
+    paintOval(g, 0, 0, 4.6, 11, 'rgba(255,214,90,0.30)');
+    paintBox(g, -2.2, -8, 4.4, 14, 2.2, '#ffb52e');
+    paintBox(g, -1.3, -7.4, 2.6, 11.5, 1.3, '#fffbe0');
+  };
+  sprites.shot = makeSprite(12, 24, paintBolt);
+  sprites.shotLeft = makeSprite(16, 24, (g) => { g.rotate(-0.197); paintBolt(g); });
+  sprites.shotRight = makeSprite(16, 24, (g) => { g.rotate(0.197); paintBolt(g); });
+
+  // Enemy bullet: a fat round red ball with a dark rim (very different from yours)
+  sprites.enemyShot = makeSprite(18, 18, (g) => {
+    paintCircle(g, 0, 0, 8.6, 'rgba(255,40,80,0.28)');
+    paintCircle(g, 0, 0, 6.2, '#5a0018');
+    const paint = g.createRadialGradient(-1, -1, 0, 0, 0, 5.2);
+    paint.addColorStop(0, '#ffffff');
+    paint.addColorStop(0.35, '#ffb0c0');
+    paint.addColorStop(1, '#ff2a4a');
+    paintCircle(g, 0, 0, 5.2, paint);
+  });
+
+  // Glows and flames (soft, so they can be painted small and stretched)
+  const soft = Math.min(spriteRes, 1.5);
+  sprites.flame = makeSprite(12, 26, (g) => {
+    g.scale(1, 26 / 12);
+    const paint = g.createRadialGradient(0, -2, 0, 0, 0, 6);
+    paint.addColorStop(0, '#ffffff');
+    paint.addColorStop(0.3, '#ffe98a');
+    paint.addColorStop(0.6, 'rgba(255,140,40,0.75)');
+    paint.addColorStop(1, 'rgba(255,80,20,0)');
+    g.fillStyle = paint;
+    g.fillRect(-6, -6, 12, 12);
+  }, soft);
+  sprites.muzzle = makeGlow(28, [[0, '#ffffff'], [0.3, 'rgba(255,240,150,0.9)'], [1, 'rgba(255,200,60,0)']], soft);
+  sprites.redGlow = makeGlow(40, [[0, '#ffffff'], [0.25, 'rgba(255,120,140,0.9)'], [1, 'rgba(255,40,80,0)']], soft);
+  sprites.shield = makeGlow(64, [[0, 'rgba(140,255,225,0)'], [0.62, 'rgba(140,255,225,0.05)'], [0.86, 'rgba(140,255,225,0.55)'], [1, 'rgba(140,255,225,0)']], soft);
+  sprites.marker = makeGlow(56, [[0, 'rgba(77,212,172,0.55)'], [0.6, 'rgba(77,212,172,0.30)'], [1, 'rgba(77,212,172,0)']], soft);
+
+  // Explosion layers: white flash, fireball, expanding ring, smoke puff
+  sprites.blastFlash = makeGlow(64, [[0, '#ffffff'], [0.35, 'rgba(255,245,190,0.85)'], [1, 'rgba(255,220,120,0)']], soft);
+  sprites.fireball = makeGlow(64, [[0, '#ffffff'], [0.22, '#fff3a8'], [0.45, '#ffb93e'], [0.68, '#f2661f'], [0.86, 'rgba(170,40,15,0.75)'], [1, 'rgba(90,20,10,0)']], soft);
+  sprites.blastRing = makeGlow(64, [[0, 'rgba(255,255,255,0)'], [0.76, 'rgba(255,240,190,0)'], [0.88, 'rgba(255,236,170,0.95)'], [0.95, 'rgba(255,170,80,0.5)'], [1, 'rgba(255,120,40,0)']], soft);
+  sprites.smoke = makeGlow(64, [[0, 'rgba(46,44,56,0.85)'], [0.5, 'rgba(56,54,66,0.60)'], [0.8, 'rgba(60,60,72,0.25)'], [1, 'rgba(60,60,72,0)']], Math.min(spriteRes, 1));
+
+  // Power-ups: icon, and spinning rays behind it
+  sprites.power = makeSprite(26, 26, paintPowerIcon);
+  sprites.life = makeSprite(26, 26, paintLifeIcon);
+  sprites.powerRays = makeSprite(48, 48, (g) => paintRays(g, '#f4d35e'), soft);
+  sprites.lifeRays = makeSprite(48, 48, (g) => paintRays(g, '#ff8fab'), soft);
+
+  // Yellow and black warning stripes for the boss alarm (drawn twice as wide as the screen, so it can slide)
+  sprites.stripes = makeSprite(WORLD_W + 80, 12, (g) => {
+    g.fillStyle = '#f4d35e';
+    g.fillRect(0, 0, WORLD_W + 80, 12);
+    g.fillStyle = '#1a1420';
+    for (let x = -20; x < WORLD_W + 100; x += 20) paintShape(g, [x, 12, x + 10, 12, x + 22, 0, x + 12, 0], '#1a1420');
+  }, null, true);
+
+  // Dark corners over the playing field (makes the middle stand out)
+  sprites.vignette = makeSprite(90, 135, (g) => {
+    const paint = g.createRadialGradient(0, 0, 40, 0, 0, 86);
+    paint.addColorStop(0, 'rgba(6,10,26,0)');
+    paint.addColorStop(1, 'rgba(6,10,26,0.42)');
+    g.fillStyle = paint;
+    g.fillRect(-45, -67.5, 90, 135);
+  }, 1);
+
+  // The finger strip at the bottom
+  sprites.controlZone = makeSprite(WORLD_W, CONTROL_ZONE, (g) => {
+    g.fillStyle = blendDown(g, 0, CONTROL_ZONE, [[0, '#15213f'], [1, '#0b1220']]);
+    g.fillRect(0, 0, WORLD_W, CONTROL_ZONE);
+    // A rounded "track" the marker slides along
+    paintBox(g, 10, 20, WORLD_W - 20, 48, 24, 'rgba(255,255,255,0.05)', 'rgba(255,255,255,0.10)');
+    // Faint arrows pointing left and right
+    g.strokeStyle = 'rgba(255,255,255,0.10)';
+    g.lineWidth = 3;
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    for (let i = 0; i < 3; i++) {
+      g.beginPath(); g.moveTo(52 + i * 22, 34); g.lineTo(42 + i * 22, 44); g.lineTo(52 + i * 22, 54); g.stroke();
+      g.beginPath(); g.moveTo(WORLD_W - 52 - i * 22, 34); g.lineTo(WORLD_W - 42 - i * 22, 44); g.lineTo(WORLD_W - 52 - i * 22, 54); g.stroke();
+    }
+    // Bright line along the top edge
+    g.fillStyle = 'rgba(77,212,172,0.55)';
+    g.fillRect(0, 0, WORLD_W, 1.5);
+  }, null, true);
+
+  // The "SKY STRIKE" logo with a glow (the glow is slow to draw, so it is painted once here)
+  sprites.logo = makeSprite(340, 96, (g) => {
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.lineJoin = 'round';
+    g.font = 'italic 900 50px system-ui, sans-serif';
+    const wide = g.measureText('SKY STRIKE').width;
+    if (wide > 300) g.scale(300 / wide, 300 / wide);          // shrink if this phone's letters are wide
+    g.shadowColor = 'rgba(77,212,172,0.9)';
+    g.shadowBlur = 16;
+    g.strokeStyle = '#0b2a3a';
+    g.lineWidth = 9;
+    g.strokeText('SKY STRIKE', 0, 0);
+    g.shadowBlur = 0;
+    g.fillStyle = blendDown(g, -22, 22, [[0, '#ffffff'], [0.5, '#bff7e6'], [1, '#4dd4ac']]);
+    g.fillText('SKY STRIKE', 0, 0);
+    g.strokeStyle = 'rgba(255,255,255,0.55)';
+    g.lineWidth = 1;
+    g.strokeText('SKY STRIKE', 0, 0);
+  });
+
+  // A gold trophy for the "You win!" screen
+  sprites.trophy = makeSprite(60, 60, (g) => {
+    const gold = blendAcross(g, -16, 16, [[0, '#fff3a6'], [0.5, '#f4c33e'], [1, '#c9861a']]);
+    g.lineJoin = 'round';
+    g.lineWidth = 1.5;
+    g.strokeStyle = '#7a4a00';
+    // Handles
+    g.lineWidth = 4;
+    g.beginPath(); g.arc(-15, -8, 8, Math.PI * 0.5, Math.PI * 1.5); g.stroke();
+    g.beginPath(); g.arc(15, -8, 8, Math.PI * 1.5, Math.PI * 0.5); g.stroke();
+    g.lineWidth = 1.5;
+    // Cup
+    g.beginPath();
+    g.moveTo(-16, -22); g.lineTo(16, -22);
+    g.bezierCurveTo(16, -2, 8, 6, 0, 6);
+    g.bezierCurveTo(-8, 6, -16, -2, -16, -22);
+    g.closePath();
+    g.fillStyle = gold; g.fill(); g.stroke();
+    // Stem and base
+    paintBox(g, -3, 5, 6, 9, 1, gold, '#7a4a00');
+    paintBox(g, -12, 13, 24, 8, 2.5, gold, '#7a4a00');
+    // Star on the cup
+    g.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 === 0 ? 7 : 3;
+      g.lineTo(Math.cos(a) * r, -10 + Math.sin(a) * r);
+    }
+    g.closePath();
+    g.fillStyle = '#ffffff';
+    g.fill();
+  });
+
+  bgLevel = 0;                                   // the level pictures must be painted again too
+}
+
+// A small glowing dot in the given colour (made the first time that colour is needed)
+function getDot(color) {
+  if (!dotCache[color]) {
+    dotCache[color] = makeGlow(12, [[0, '#ffffff'], [0.3, color], [1, withAlpha(color, 0)]], Math.min(spriteRes, 2));
+  }
+  return dotCache[color];
+}
+
+// ---------- Backgrounds ----------
+function currentTheme() { return THEMES[(level - 1) % THEMES.length]; }
+
+// One island (or iceberg, lake, lava pool) made of a few overlapping blobs
+function paintIsland(g, x, y, r, theme, seed) {
+  const random = seededRandom(seed);
+  const blobs = [{ dx: 0, dy: 0, rx: r, ry: r * 0.75 }];
+  for (let i = 0; i < 3; i++) {
+    blobs.push({ dx: (random() - 0.5) * r * 1.1, dy: (random() - 0.5) * r * 0.7, rx: r * (0.45 + random() * 0.3), ry: r * (0.35 + random() * 0.25) });
+  }
+  // Paint all blobs a bit bigger ("grow") in one colour: this makes the rings around the island
+  const layer = (grow, color, shiftX, shiftY) => {
+    g.fillStyle = color;
+    g.beginPath();
+    for (const b of blobs) {
+      g.moveTo(x + b.dx + (shiftX || 0) + b.rx + grow, y + b.dy + (shiftY || 0));
+      g.ellipse(x + b.dx + (shiftX || 0), y + b.dy + (shiftY || 0), b.rx + grow, b.ry + grow, 0, 0, TAU);
+    }
+    g.fill();
+  };
+  if (theme.shallow) layer(15, theme.shallow);                    // light shallow water (or lava glow)
+  if (theme.ground === 'sea' || theme.ground === 'ice') layer(8.5, 'rgba(255,255,255,0.55)');   // white foam
+  layer(6, theme.shore);                                          // beach
+  layer(0, 'rgba(0,0,0,0.18)', 1.5, 2.5);                         // soft shadow under the land
+  layer(0, theme.land);
+  layer(-r * 0.22, theme.landLight, -r * 0.1, -r * 0.1);          // lighter middle
+
+  // Trees (or bumps): small dark circles with a light spot
+  const count = Math.round(r * (theme.trees ? 0.9 : 0.35));
+  for (let i = 0; i < count; i++) {
+    const a = random() * TAU, d = Math.sqrt(random()) * 0.78;
+    const tx = x + Math.cos(a) * r * d, ty = y + Math.sin(a) * r * 0.75 * d;
+    const size = 2.2 + random() * 2.6;
+    paintCircle(g, tx, ty, size, theme.landDark);
+    paintCircle(g, tx - size * 0.3, ty - size * 0.3, size * 0.5, theme.landLight);
+  }
+  // Night levels: a few warm house lights
+  if (theme.lights) {
+    for (let i = 0; i < 4; i++) {
+      const a = random() * TAU, d = random() * 0.6;
+      const lx = x + Math.cos(a) * r * d, ly = y + Math.sin(a) * r * 0.75 * d;
+      paintCircle(g, lx, ly, 3.2, 'rgba(255,220,120,0.25)');
+      paintCircle(g, lx, ly, 1.2, '#ffe9a6');
+    }
+  }
+}
+
+// A ringed planet (space level)
+function paintPlanet(g, x, y, r, theme) {
+  const paint = g.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r);
+  paint.addColorStop(0, theme.landLight);
+  paint.addColorStop(0.6, theme.land);
+  paint.addColorStop(1, theme.landDark);
+  paintCircle(g, x, y, r, paint);
+  g.strokeStyle = 'rgba(220,210,255,0.55)';
+  g.lineWidth = r * 0.12;
+  g.beginPath(); g.ellipse(x, y, r * 1.7, r * 0.42, -0.35, 0.15, Math.PI - 0.15); g.stroke();
+}
+
+// The ground picture for a level. It is SEA_LOOP units tall and repeats without a visible join:
+// anything near the top or bottom edge is painted three times (at y, y - loop and y + loop).
+function paintGround(g, theme, themeNumber) {
+  const L = SEA_LOOP;
+  const random = seededRandom(100 + themeNumber * 17);
+  const copies = [-L, 0, L];
+  g.fillStyle = theme.sea;
+  g.fillRect(0, 0, WORLD_W, L);
+
+  // Soft lighter and darker patches, so the ground is not one flat colour
+  for (let i = 0; i < 46; i++) {
+    const x = random() * WORLD_W, y = random() * L, rx = 30 + random() * 70, ry = 12 + random() * 26;
+    g.globalAlpha = 0.10 + random() * 0.14;
+    for (const dy of copies) paintOval(g, x, y + dy, rx, ry, i % 2 ? theme.seaLight : theme.seaDark);
+  }
+  g.globalAlpha = 1;
+
+  if (theme.ground === 'space') {
+    // Stars: many tiny ones, a few bright ones with a cross sparkle
+    for (let i = 0; i < 230; i++) {
+      const x = random() * WORLD_W, y = random() * L, size = 0.4 + random() * 1.1;
+      g.globalAlpha = 0.35 + random() * 0.65;
+      for (const dy of copies) paintCircle(g, x, y + dy, size, i % 7 === 0 ? '#ffe9a6' : i % 5 === 0 ? '#a6d8ff' : '#ffffff');
+    }
+    g.globalAlpha = 1;
+    g.strokeStyle = 'rgba(255,255,255,0.75)';
+    g.lineWidth = 0.7;
+    for (let i = 0; i < 12; i++) {
+      const x = random() * WORLD_W, y = random() * L;
+      for (const dy of copies) {
+        g.beginPath(); g.moveTo(x - 5, y + dy); g.lineTo(x + 5, y + dy); g.moveTo(x, y + dy - 5); g.lineTo(x, y + dy + 5); g.stroke();
+        paintCircle(g, x, y + dy, 1.5, '#ffffff');
+      }
+    }
+    for (const dy of copies) {
+      paintPlanet(g, ISLANDS[1].x, ISLANDS[1].y + dy, 30, theme);
+      paintPlanet(g, ISLANDS[4].x + 30, ISLANDS[4].y + dy, 18, theme);
+      paintCircle(g, ISLANDS[2].x, ISLANDS[2].y + dy, 9, '#c9c4d6');       // a small moon
+      paintCircle(g, ISLANDS[2].x - 3, ISLANDS[2].y + dy - 2, 2.2, '#a9a3b8');
+      paintCircle(g, ISLANDS[2].x + 3, ISLANDS[2].y + dy + 3, 1.4, '#a9a3b8');
+    }
+    return;
+  }
+
+  if (theme.ground === 'land') {
+    // Jungle: lots of tree tops
+    for (let i = 0; i < 620; i++) {
+      const x = random() * WORLD_W, y = random() * L, size = 3 + random() * 4.5;
+      for (const dy of copies) {
+        paintCircle(g, x + 1, y + dy + 1.5, size, 'rgba(10,40,25,0.45)');
+        paintCircle(g, x, y + dy, size, i % 3 === 0 ? theme.seaLight : theme.sea);
+        paintCircle(g, x - size * 0.3, y + dy - size * 0.3, size * 0.45, 'rgba(150,220,140,0.35)');
+      }
+    }
+  } else if (theme.ground === 'lava') {
+    // Glowing cracks in dark rock
+    for (let i = 0; i < 30; i++) {
+      let x = random() * WORLD_W, y = random() * L;
+      const points = [x, y];
+      for (let j = 0; j < 5; j++) { x += (random() - 0.5) * 60; y += 14 + random() * 22; points.push(x, y); }
+      for (const dy of copies) {
+        for (const pass of [[5, 'rgba(255,90,20,0.16)'], [1.3, 'rgba(255,160,60,0.6)']]) {      // wide soft glow, then the thin bright crack
+          g.lineWidth = pass[0]; g.strokeStyle = pass[1]; g.lineCap = 'round'; g.lineJoin = 'round';
+          g.beginPath(); g.moveTo(points[0], points[1] + dy);
+          for (let k = 2; k < points.length; k += 2) g.lineTo(points[k], points[k + 1] + dy);
+          g.stroke();
+        }
+      }
+    }
+  } else {
+    // Sea: small curved wave marks
+    g.strokeStyle = theme.foam;
+    g.lineWidth = 1.4;
+    g.lineCap = 'round';
+    for (let i = 0; i < 130; i++) {
+      const x = random() * WORLD_W, y = random() * L, w = 8 + random() * 12;
+      for (const dy of copies) {
+        g.beginPath(); g.moveTo(x - w / 2, y + dy); g.quadraticCurveTo(x, y + dy - 3, x + w / 2, y + dy); g.stroke();
+      }
+    }
+    // Ice level: small ice floes drifting between the icebergs
+    if (theme.ground === 'ice') {
+      for (let i = 0; i < 70; i++) {
+        const x = random() * WORLD_W, y = random() * L, size = 4 + random() * 9, turn = random() * TAU;
+        const points = [];
+        for (let k = 0; k < 6; k++) {
+          const a = turn + k / 6 * TAU, d = size * (0.7 + random() * 0.5);
+          points.push(x + Math.cos(a) * d, y + Math.sin(a) * d * 0.8);
+        }
+        for (const dy of copies) {
+          const moved = points.map((v, k) => (k % 2 ? v + dy : v));
+          paintShape(g, moved.map((v, k) => (k % 2 ? v + 1.5 : v + 1)), 'rgba(20,60,100,0.35)');
+          paintShape(g, moved, 'rgba(240,250,255,0.92)');
+        }
+      }
+    }
+  }
+
+  // Islands (the same places as always) and a few tiny rocks
+  for (let i = 0; i < ISLANDS.length; i++) {
+    for (const dy of copies) paintIsland(g, ISLANDS[i].x, ISLANDS[i].y + dy, ISLANDS[i].r, theme, 11 + i * 7 + themeNumber);
+  }
+  for (let i = 0; i < ISLETS.length; i++) {
+    for (const dy of copies) paintIsland(g, ISLETS[i].x, ISLETS[i].y + dy, ISLETS[i].r, theme, 61 + i * 5 + themeNumber);
+  }
+}
+
+// A see-through picture full of clouds that repeats every "loop" units
+function paintClouds(g, theme, loop, count, size, seed) {
+  const random = seededRandom(seed);
+  for (let i = 0; i < count; i++) {
+    const cx = random() * WORLD_W, cy = (i + random() * 0.8) / count * loop, w = size * (36 + random() * 44);
+    // Each cloud is a row of round puffs
+    const puffs = [];
+    for (let k = 0; k < 6; k++) {
+      puffs.push({ x: cx + (k - 2.5) * w * 0.2 + (random() - 0.5) * w * 0.1, y: cy + (random() - 0.5) * w * 0.14, r: w * (0.16 + random() * 0.13) * (k === 0 || k === 5 ? 0.7 : 1) });
+    }
+    for (const dy of [-loop, 0, loop]) {
+      for (const pass of [[theme.cloudShade, w * 0.07], [theme.cloud, 0]]) {      // darker underside first, then the cloud
+        g.fillStyle = pass[0];
+        g.beginPath();
+        for (const p of puffs) { g.moveTo(p.x + p.r, p.y + dy + pass[1]); g.arc(p.x, p.y + dy + pass[1], p.r, 0, TAU); }
+        g.fill();
+      }
+    }
+  }
+}
+
+// Paint the pictures that change with the level: the ground, the clouds and the boss
+function buildLevelArt() {
+  const number = (level - 1) % THEMES.length;
+  const theme = THEMES[number];
+  bg = {};
+  bg.sea = makeSprite(WORLD_W, SEA_LOOP, (g) => paintGround(g, theme, number), Math.min(spriteRes, 1.5), true);
+  // Clouds are soft, so small pictures stretched up look fine (and save memory)
+  bg.far = makeSprite(WORLD_W, FAR_LOOP, (g) => paintClouds(g, theme, FAR_LOOP, 7, 0.75, 31 + number), Math.min(spriteRes, 0.8), true);
+  bg.near = makeSprite(WORLD_W, NEAR_LOOP, (g) => paintClouds(g, theme, NEAR_LOOP, 4, 1.7, 77 + number), Math.min(spriteRes, 0.6), true);
+  if (theme.rain) {
+    bg.rain = makeSprite(WORLD_W, RAIN_LOOP, (g) => {
+      const random = seededRandom(5);
+      g.strokeStyle = 'rgba(210,230,255,0.30)';
+      g.lineWidth = 1;
+      for (let i = 0; i < 110; i++) {
+        const x = random() * (WORLD_W + 20), y = random() * RAIN_LOOP;
+        for (const dy of [-RAIN_LOOP, 0, RAIN_LOOP]) { g.beginPath(); g.moveTo(x, y + dy); g.lineTo(x - 5, y + dy + 22); g.stroke(); }
+      }
+    }, Math.min(spriteRes, 1), true);
+  }
+
+  // The boss for this level
+  const look = BOSS_LOOKS[(level - 1) % BOSS_LOOKS.length];
+  sprites.boss = makeSprite(124, 104, (g) => paintBoss(g, look));
+  sprites.bossWhite = makeSilhouette(sprites.boss, '#ffffff');
+  sprites.bossShadow = makeSilhouette(sprites.boss, 'rgba(4,10,28,0.34)', Math.max(0.3, spriteRes * 0.3));
+  sprites.coreGlow = makeGlow(44, [[0, '#ffffff'], [0.3, withAlpha(look.accent, 0.85)], [1, withAlpha(look.accent, 0)]], Math.min(spriteRes, 1.5));
+  bgLevel = level;
+}
+
+// Draw one scrolling layer twice, one copy above the other, so there is never a gap.
+// "shift" moves the picture up (the islands used to be drawn 120 units higher).
+function drawLayer(tile, scroll, loop, shift) {
+  const snap = dpr * scale;                                        // line up with real screen pixels (no shimmer)
+  let y = ((scroll - shift) % loop + loop) % loop - loop;
+  y = Math.round(y * snap) / snap;
+  ctx.drawImage(tile.canvas, -8, y, WORLD_W + 16, loop + 0.6);     // slightly wider than the screen, for the shake
+  ctx.drawImage(tile.canvas, -8, y + loop, WORLD_W + 16, loop);
+}
+
+// ---------- Drawing ----------
+// Text with an optional dark outline (keeps it readable over any background)
+function drawText(text, x, y, size, color, weight, outline) {
+  ctx.font = (weight || 700) + ' ' + size + 'px system-ui, sans-serif';
+  if (outline) {
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(2, size * 0.2);
+    ctx.strokeStyle = outline;
+    ctx.strokeText(text, x, y);
+  }
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+}
+
+// One enemy plane, with its moving parts
+function drawEnemy(e) {
+  if (e.kind === 'small') {
+    // Lean a little when weaving
+    const lean = e.amp ? Math.abs(Math.cos(e.t * 2.2 + (e.phase || 0))) * 0.18 : 0;
+    stampScaled(e.flash ? sprites.smallWhite : sprites.small, e.x, e.y, 1 - lean, 1);
+  } else if (e.kind === 'zig') {
+    // Little engine flame, and a lean toward the way it is sweeping
+    stampScaled(sprites.flame, e.x, e.y - 17, 0.8, 0.45 + Math.random() * 0.2);
+    stampScaled(e.flash ? sprites.zigWhite : sprites.zig, e.x, e.y, 0.88, 1);
+  } else if (e.kind === 'shooter') {
+    stamp(e.flash ? sprites.shooterWhite : sprites.shooter, e.x, e.y);
+    // Spinning rotor blades
+    ctx.strokeStyle = 'rgba(240,232,255,0.8)';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    for (const side of [-1, 1]) {
+      const a = e.t * 26 * side, cx = e.x + side * 17, cy = e.y - 2;
+      ctx.moveTo(cx - Math.cos(a) * 6, cy - Math.sin(a) * 6);
+      ctx.lineTo(cx + Math.cos(a) * 6, cy + Math.sin(a) * 6);
+    }
+    ctx.stroke();
+    // The gun glows just before it fires (a fair warning)
+    if (e.hover > 0 && e.hover < 5 && e.fireTimer < 0.35) {
+      const grow = 1 - e.fireTimer / 0.35;
+      stampScaled(sprites.redGlow, e.x, e.y + 16, 0.25 + grow * 0.5, 0.25 + grow * 0.5);
+    }
+  } else {
+    drawBoss(e);
+  }
+}
+
+// The boss: body, glowing core, hit flash, charging guns
+function drawBoss(e) {
+  const hurt = e.hp / e.maxHp <= 0.35;
+  // A badly hurt boss trembles
+  const jx = hurt ? rand(-1, 1) : 0, jy = hurt ? rand(-0.6, 0.6) : 0;
+  stamp(sprites.boss, e.x + jx, e.y + jy);
+  // Engine fire at the back of the four engines
+  for (const x of [-39, -21, 21, 39]) stampScaled(sprites.flame, e.x + jx + x, e.y + jy - 21, 0.9, 0.4 + Math.random() * 0.2);
+  // The core pulses (faster and red when badly hurt)
+  const pulse = 0.75 + Math.sin(clock * (hurt ? 16 : 5)) * 0.25;
+  ctx.globalAlpha = pulse;
+  stampScaled(hurt ? sprites.redGlow : sprites.coreGlow, e.x + jx, e.y + jy, hurt ? 1.2 : 1, hurt ? 1.2 : 1);
+  ctx.globalAlpha = 1;
+  // White flash when hit
+  if (e.flash) {
+    ctx.globalAlpha = 0.75;
+    stamp(sprites.bossWhite, e.x + jx, e.y + jy);
+    ctx.globalAlpha = 1;
+  }
+  // The nose guns glow just before they fire
+  if (e.y >= 95 && e.fireTimer < 0.35) {
+    const grow = 1 - e.fireTimer / 0.35;
+    stampScaled(sprites.redGlow, e.x, e.y + 40, 0.3 + grow * 0.6, 0.3 + grow * 0.6);
+  }
+}
+
+// The boss name and health bar at the top of the field
+function drawBossBar(e) {
+  const look = BOSS_LOOKS[(level - 1) % BOSS_LOOKS.length];
+  const left = 60, width = WORLD_W - 120, top = 19;
+  const share = Math.max(0, e.hp / e.maxHp);
+  // The white "just lost" part of the bar shrinks slowly, so you can see how much each burst took off
+  if (e.shownShare === undefined) e.shownShare = 1;
+  e.shownShare = Math.max(share, e.shownShare - 0.006);
+  const slide = clamp((e.y + 80) / 60, 0, 1);                       // the bar slides in as the boss arrives
+  ctx.save();
+  ctx.translate(0, (slide - 1) * 36);
+  // Dark backing plate
+  roundedBox(ctx, left - 12, 3, width + 24, 30, 9);
+  ctx.fillStyle = 'rgba(11,18,32,0.72)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,107,107,0.55)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  drawText(look.name, WORLD_W / 2, 11.5, 10, '#ffd0d0', 800);
+  // Empty bar, white "just lost" part, then the coloured part
+  roundedBox(ctx, left, top, width, 9, 4.5);
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fill();
+  if (e.shownShare > 0.02) { roundedBox(ctx, left, top, width * e.shownShare, 9, 4.5); ctx.fillStyle = '#ffffff'; ctx.fill(); }
+  if (share > 0.02) {
+    const low = share <= 0.35;
+    roundedBox(ctx, left, top, width * share, 9, 4.5);
+    ctx.fillStyle = low && Math.floor(clock * 6) % 2 === 0 ? '#ffb347' : '#ff5a5a';
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';                       // shine along the top of the bar
+    ctx.fillRect(left + 3, top + 1.5, Math.max(0, width * share - 6), 2);
+  }
+  ctx.restore();
+}
+
+// The boss alarm: sliding warning stripes and flashing words
+function drawWarning() {
+  const age = 2 - bossTimer;                                        // seconds since the alarm started
+  const open = clamp(age / 0.25, 0, 1) * clamp(bossTimer / 0.2, 0, 1);   // the band opens, then closes
+  const mid = FIELD_H / 2 - 60, half = 44 * open;
+  const look = BOSS_LOOKS[(level - 1) % BOSS_LOOKS.length];
+  ctx.fillStyle = 'rgba(60,0,10,0.62)';
+  ctx.fillRect(0, mid - half, WORLD_W, half * 2);
+  // Stripes slide in opposite directions along the top and bottom of the band
+  const slide = (clock * 60) % 20;
+  ctx.drawImage(sprites.stripes.canvas, -40 - slide, mid - half - 12, sprites.stripes.w, 12);
+  ctx.drawImage(sprites.stripes.canvas, -60 + slide, mid + half, sprites.stripes.w, 12);
+  if (open < 1) return;
+  // The words blink (same rhythm as before)
+  const bright = Math.floor(clock * 4) % 2 === 0;
+  drawText('WARNING', WORLD_W / 2, mid - 14, 34, bright ? '#ff5a5a' : '#ffd166', 900, '#2a0008');
+  drawText('BOSS INCOMING', WORLD_W / 2, mid + 14, 15, '#ffffff', 800, '#2a0008');
+  drawText(look.name, WORLD_W / 2, mid + 31, 11, '#ffd0d0', 700);
+}
+
+// A rounded dark card for messages
+function drawPanel(cx, cy, w, h, edgeColor) {
+  roundedBox(ctx, cx - w / 2, cy - h / 2, w, h, 18);
+  ctx.fillStyle = 'rgba(13,22,44,0.90)';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = edgeColor;
+  ctx.stroke();
+  roundedBox(ctx, cx - w / 2 + 4, cy - h / 2 + 4, w - 8, h - 8, 14);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.stroke();
+}
+
+// The "Tap to ..." line gently pulses
+function drawTapLine(text, x, y) {
+  const beat = Math.sin(clock * 5);
+  ctx.globalAlpha = 0.82 + beat * 0.18;
+  drawText(text, x, y, 18 + beat * 1.2, '#fff3a6', 800, 'rgba(11,18,32,0.9)');
+  ctx.globalAlpha = 1;
+}
+
+// Title, level clear, game over and win screens
+function drawScreens() {
+  if (screen === 'play') return;
+  const cx = WORLD_W / 2;
+  const age = screenTime - panelDelay;                               // seconds since the panel should appear
+  // Darken the game a little behind the message (fades in)
+  ctx.fillStyle = 'rgba(11,18,32,' + (clamp(age / 0.3, 0, 1) * (screen === 'title' ? 0.38 : 0.55)).toFixed(3) + ')';
+  ctx.fillRect(0, 0, WORLD_W, FIELD_H);
+  // Win screen: the confetti and fireworks go on top of the dark layer, so they stay bright
+  if (screen === 'won') {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, WORLD_W, FIELD_H);
+    ctx.clip();
+    drawEffects();
+    ctx.restore();
+  }
+  if (age <= 0) return;
+  const pop = popCurve(age / 0.4);                                   // the panel "pops" in
+
+  if (screen === 'title') {
+    // Logo, a hovering plane, how to play, and the pulsing start line
+    const bob = Math.sin(clock * 2.2) * 5;
+    stampScaled(sprites.logo, cx, 92, pop, pop);
+    stamp(sprites.heroShadow, cx + 16, 232 + 22);
+    stampScaled(sprites.flame, cx, 216 + bob + 46, 2, 1.5 + Math.random() * 0.5);
+    stamp(sprites.hero, cx, 216 + bob);
+    drawPanel(cx, 372, 300, 124, 'rgba(77,212,172,0.55)');
+    drawText('Slide in the bottom strip to fly', cx, 334, 15.5, '#ffffff', 600);
+    drawText('Your plane shoots by itself', cx, 358, 15.5, '#ffffff', 600);
+    // What the two pick-ups do
+    stampScaled(sprites.power, cx - 124, 398, 0.9, 0.9);
+    drawText('stronger guns', cx - 62, 398, 13.5, '#f4d35e', 600);
+    stampScaled(sprites.life, cx + 28, 398, 0.9, 0.9);
+    drawText('extra life', cx + 76, 398, 13.5, '#ff8fab', 600);
+    drawTapLine('Tap to start', cx, 474);
+    return;
+  }
+
+  ctx.save();
+  ctx.translate(cx, FIELD_H / 2 - 20);
+  ctx.scale(pop, pop);
+  if (screen === 'clear') {
+    drawPanel(0, 0, 290, 190, 'rgba(244,211,94,0.75)');
+    stampScaled(sprites.flame, 0, -52 + 19, 0.9, 0.7 + Math.random() * 0.3);
+    stampScaled(sprites.player, 0, -52 + Math.sin(clock * 3) * 3, 1, 1);
+    drawText('Level ' + level + ' clear!', 0, -10, 28, '#f4d35e', 800, '#3a2a00');
+    drawText('Bonus +' + LEVEL_BONUS * level, 0, 22, 16, '#ffffff', 600);
+    drawText('Score ' + score, 0, 44, 16, 'rgba(255,255,255,0.8)', 600);
+    drawTapLine('Tap for level ' + (level + 1), 0, 72);
+  } else if (screen === 'won') {
+    drawPanel(0, 0, 290, 210, 'rgba(244,211,94,0.9)');
+    stampScaled(sprites.trophy, 0, -58, 1 + Math.sin(clock * 3) * 0.04, 1 + Math.sin(clock * 3) * 0.04);
+    drawText('You win!', 0, -6, 34, '#f4d35e', 900, '#3a2a00');
+    drawText('Score ' + score, 0, 32, 20, '#ffffff', 700);
+    drawTapLine('Tap to play again', 0, 72);
+  } else {
+    drawPanel(0, 0, 290, 150, 'rgba(255,107,107,0.8)');
+    drawText('Game over', 0, -34, 32, '#ff6b6b', 900, '#2a0008');
+    drawText('Score ' + score, 0, 4, 16, 'rgba(255,255,255,0.8)', 600);
+    drawTapLine('Tap to retry level ' + level, 0, 40);
+  }
+  ctx.restore();
+}
+
+// Smoke, explosions, sparks and confetti
+function drawEffects() {
+  // Smoke puffs first (they sit behind the fire)
+  for (const s of sparks) {
+    if (s.kind !== 'smoke') continue;
+    const p = s.t / s.life, size = s.size * (0.6 + p * 1.2) / 64;
+    ctx.globalAlpha = Math.min(1, (1 - p) * 1.4);
+    stampScaled(sprites.smoke, s.x, s.y, size, size);
+  }
+  // Explosions: a solid fireball that grows and fades, a bright white flash at the start, and a thin ring
+  for (const b of blasts) {
+    if (b.t < 0) continue;                                                      // (this one starts a moment later)
+    const p = b.t / b.life;
+    const grow = 1 - (1 - p) * (1 - p);                                         // fast at first, then slowing
+    if (!b.ringOnly) {
+      ctx.globalAlpha = p < 0.45 ? 1 : (1 - p) / 0.55;
+      let size = b.size * (0.5 + grow * 0.6) / 64;
+      stampScaled(sprites.fireball, b.x, b.y, size, size);
+      if (p < 0.25) {
+        ctx.globalAlpha = 1 - p / 0.25;
+        size = b.size * (0.9 + p * 2) / 64;
+        stampScaled(sprites.blastFlash, b.x, b.y, size, size);
+      }
+    }
+    if (!b.noRing) {
+      ctx.globalAlpha = (1 - p) * 0.7;
+      const ring = b.size * (0.5 + grow * 1.3) / 64;
+      stampScaled(sprites.blastRing, b.x, b.y, ring, ring);
+    }
+  }
+  // Sparks and confetti
+  for (const s of sparks) {
+    if (s.kind === 'smoke') continue;
+    const p = s.t / s.life;
+    if (s.kind === 'confetti') {
+      // A paper piece that flips as it falls (its width swings between thin and wide)
+      ctx.globalAlpha = Math.min(1, (1 - p) * 4);
+      ctx.fillStyle = s.color;
+      const wide = s.size * Math.abs(Math.cos(s.t * s.spin));
+      ctx.fillRect(s.x - wide / 2 + Math.sin(s.t * 3 + s.spin) * 6, s.y - s.size * 0.3, wide + 0.8, s.size * 0.6);
+    } else {
+      ctx.globalAlpha = Math.min(1, (1 - p) * 1.6);
+      const size = (s.size || 6) * (1 - p * 0.5) / 12 * 1.6;
+      stampScaled(getDot(s.color), s.x, s.y, size, size);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
 function draw() {
+  // Notice when the screen changed (title -> play -> clear ...) so the pop-in animation can restart
+  if (screen !== shownScreen) {
+    shownScreen = screen;
+    screenTime = 0;
+    // Leave time to watch the boss (or your own plane) blow up before the message pops in
+    panelDelay = (screen === 'clear' || screen === 'won') && wreck ? 1.8 : screen === 'over' ? 0.7 : 0;
+  }
+  // Make sure the level's background and boss pictures are ready
+  if (bgLevel !== level) buildLevelArt();
+  const theme = currentTheme();
+
   // Clear the whole canvas
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = '#0b1220';
@@ -468,6 +2098,8 @@ function draw() {
 
   // From here on, draw in game units (scaled and centred on screen)
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
 
   // Keep all drawing inside the game area
   ctx.save();
@@ -475,127 +2107,152 @@ function draw() {
   ctx.rect(0, 0, WORLD_W, WORLD_H);
   ctx.clip();
 
-  // Sea with islands and wave marks scrolling past
-  ctx.fillStyle = '#1b6ca8';
-  ctx.fillRect(0, 0, WORLD_W, FIELD_H);
-  for (const isl of ISLANDS) {
-    const y = ((isl.y + seaScroll) % SEA_LOOP) - 120;
-    ctx.fillStyle = '#e6d6a0';
-    ctx.beginPath(); ctx.ellipse(isl.x, y, isl.r + 6, isl.r * 0.75 + 6, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#3f8f4f';
-    ctx.beginPath(); ctx.ellipse(isl.x, y, isl.r, isl.r * 0.75, 0, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.fillStyle = 'rgba(255,255,255,0.18)';
-  for (let i = 0; i < 26; i++) {
-    const x = (i * 97) % WORLD_W, y = ((i * 61 + seaScroll * 1.4) % (FIELD_H + 20)) - 10;
-    ctx.fillRect(x, y, 16, 2);
+  // ----- The flying field (this part shakes on big explosions) -----
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, WORLD_W, FIELD_H);
+  ctx.clip();
+  if (shakeTime > 0) ctx.translate(rand(-1, 1) * shakeSize, rand(-1, 1) * shakeSize);
+
+  // Background: the ground far below, then two layers of clouds that scroll faster (closer to you)
+  drawLayer(bg.sea, seaScroll, SEA_LOOP, 120);
+  drawLayer(bg.far, farScroll, FAR_LOOP, 0);
+  drawLayer(bg.near, nearScroll, NEAR_LOOP, 0);
+
+  const showPlayer = screen !== 'title' && screen !== 'over';
+  const blink = safeTimer > 0 && Math.floor(safeTimer * 10) % 2 === 0;
+
+  // Soft shadows on the ground under every plane
+  if (!theme.noShadows) {
+    for (const e of enemies) {
+      const s = sprites[e.kind + 'Shadow'];
+      stampScaled(s, e.x + 9, e.y + 14, 0.85, 0.85);
+    }
+    if (wreck) stampScaled(sprites.bossShadow, wreck.x + 9, wreck.y + 14, 0.85, 0.85);
+    if (showPlayer && !blink) stampScaled(sprites.playerShadow, planeX + 9, PLAYER_Y + 14, 0.85, 0.85);
   }
 
-  // Power-ups
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
+  // Power-ups: spinning rays behind a gently pulsing icon
   for (const d of drops) {
-    ctx.fillStyle = d.kind === 'life' ? '#ff8fab' : '#f4d35e';
-    ctx.beginPath(); ctx.arc(d.x, d.y, 12, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#0b1220';
-    ctx.font = '700 14px system-ui, sans-serif';
-    ctx.fillText(d.kind === 'life' ? '♥' : 'P', d.x, d.y + 1);
+    const beat = 1 + Math.sin(clock * 7) * 0.08;
+    stampTurned(d.kind === 'life' ? sprites.lifeRays : sprites.powerRays, d.x, d.y, clock * 2.2, 1);
+    stampScaled(d.kind === 'life' ? sprites.life : sprites.power, d.x, d.y, beat, beat);
   }
 
   // Enemy planes (they flash white when hit)
-  for (const e of enemies) {
-    const color = e.flash ? '#ffffff'
-      : e.kind === 'boss' ? '#8c3b3b' : e.kind === 'shooter' ? '#b388eb' : e.kind === 'zig' ? '#f79d65' : '#ff6b6b';
-    drawPlane(e.x, e.y, ENEMY[e.kind].size, color, true);
-    if (e.kind === 'boss') {
-      // Boss health bar
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.fillRect(60, 10, WORLD_W - 120, 8);
-      ctx.fillStyle = '#ff6b6b';
-      ctx.fillRect(60, 10, (WORLD_W - 120) * Math.max(0, e.hp / e.maxHp), 8);
+  for (const e of enemies) drawEnemy(e);
+
+  // The boss wreck: shaking, flashing white, sinking
+  if (wreck) {
+    const x = wreck.x + rand(-2.5, 2.5), y = wreck.y + wreck.t * 14 + rand(-2, 2);
+    stamp(sprites.boss, x, y);
+    if (Math.floor(wreck.t * 12) % 2 === 0) { ctx.globalAlpha = 0.6; stamp(sprites.bossWhite, x, y); ctx.globalAlpha = 1; }
+  }
+
+  // Bullets: yours are thin yellow bolts, the enemy's are fat red balls that throb
+  for (const s of shots) stamp(s.vx < 0 ? sprites.shotLeft : s.vx > 0 ? sprites.shotRight : sprites.shot, s.x, s.y - 1);
+  const throb = 1 + Math.sin(clock * 14) * 0.1;
+  for (const s of enemyShots) stampScaled(sprites.enemyShot, s.x, s.y, throb, throb);
+
+  // Your plane (it blinks while protected after a hit)
+  if (showPlayer && !blink) {
+    const lean = Math.abs(tilt);
+    const picture = tilt < -0.3 ? sprites.playerLeft : tilt > 0.3 ? sprites.playerRight : sprites.player;
+    stampScaled(sprites.flame, planeX, PLAYER_Y + 26, 1 - lean * 0.2, 0.75 + Math.random() * 0.4);   // flickering engine flame
+    stampScaled(picture, planeX, PLAYER_Y, 1 - lean * 0.22, 1);
+    if (safeTimer > 0) stamp(sprites.shield, planeX, PLAYER_Y);                 // protective bubble
+    // Gun flash
+    if (muzzleTimer > 0 && screen === 'play') {
+      const size = 0.5 + muzzleTimer / 0.06 * 0.4;
+      if (power !== 2) stampScaled(sprites.muzzle, planeX, PLAYER_Y - 25, size, size);
+      if (power >= 2) {
+        stampScaled(sprites.muzzle, planeX - 8, PLAYER_Y - 18, size * 0.8, size * 0.8);
+        stampScaled(sprites.muzzle, planeX + 8, PLAYER_Y - 18, size * 0.8, size * 0.8);
+      }
     }
   }
 
-  // Bullets
-  ctx.fillStyle = '#fff6b0';
-  for (const s of shots) ctx.fillRect(s.x - 2, s.y - 7, 4, 12);
-  for (const s of enemyShots) {
-    ctx.fillStyle = '#ff3b3b';
-    ctx.beginPath(); ctx.arc(s.x, s.y, 5, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#ffd0d0';
-    ctx.beginPath(); ctx.arc(s.x, s.y, 2, 0, Math.PI * 2); ctx.fill();
+  // Enemy gun flashes
+  for (const f of flashes) {
+    const size = (1 - f.t / f.life) * f.size / 40;
+    stampScaled(sprites.redGlow, f.x, f.y, size, size);
   }
 
-  // Your plane (it blinks while protected after a hit)
-  if (screen !== 'title' && screen !== 'over') {
-    const blink = safeTimer > 0 && Math.floor(safeTimer * 10) % 2 === 0;
-    if (!blink) drawPlane(planeX, PLAYER_Y, 1.25, '#4dd4ac', false);
-  }
+  // Smoke, explosions and sparks (on the win screen they are drawn later, on top of the dark layer)
+  if (screen !== 'won') drawEffects();
 
-  // Explosions
-  for (const s of sparks) {
-    ctx.globalAlpha = 1 - s.t / s.life;
-    ctx.fillStyle = s.color;
-    ctx.beginPath(); ctx.arc(s.x, s.y, 3, 0, Math.PI * 2); ctx.fill();
+  // Ring that grows around your plane when you pick something up
+  for (const r of rings) {
+    const p = r.t / r.life;
+    ctx.globalAlpha = 1 - p;
+    ctx.strokeStyle = r.color;
+    ctx.lineWidth = 4 * (1 - p) + 1;
+    ctx.beginPath(); ctx.arc(planeX, PLAYER_Y, 14 + p * 34, 0, TAU); ctx.stroke();
   }
   ctx.globalAlpha = 1;
 
+  // Weather and mood: rain, darker corners, lightning, and the flashes for big moments
+  if (bg.rain) drawLayer(bg.rain, rainScroll, RAIN_LOOP, 0);
+  ctx.drawImage(sprites.vignette.canvas, -8, -8, WORLD_W + 16, FIELD_H + 16);
+  if (lightning > 0) { ctx.fillStyle = 'rgba(220,235,255,' + (lightning * 0.9).toFixed(3) + ')'; ctx.fillRect(-8, -8, WORLD_W + 16, FIELD_H + 16); }
+  if (redFlash > 0) { ctx.fillStyle = 'rgba(255,60,60,' + redFlash.toFixed(3) + ')'; ctx.fillRect(-8, -8, WORLD_W + 16, FIELD_H + 16); }
+  if (whiteFlash > 0) { ctx.fillStyle = 'rgba(255,255,255,' + Math.min(1, whiteFlash).toFixed(3) + ')'; ctx.fillRect(-8, -8, WORLD_W + 16, FIELD_H + 16); }
+  ctx.restore();                                                                // (end of the part that shakes)
+
+  // Boss name and health bar
+  for (const e of enemies) if (e.kind === 'boss') drawBossBar(e);
+
   // Boss warning
-  if (screen === 'play' && bossState === 'warning' && Math.floor(clock * 4) % 2 === 0) {
-    ctx.fillStyle = '#ff6b6b';
-    ctx.font = '700 26px system-ui, sans-serif';
-    ctx.fillText('BOSS INCOMING', WORLD_W / 2, FIELD_H / 2 - 60);
+  if (screen === 'play' && bossState === 'warning') drawWarning();
+
+  // "LEVEL 3 - Sunset Strait" banner during the calm at the start of a level
+  if (screen === 'play' && levelTime < 2.2) {
+    const pop = popCurve(levelTime / 0.35);
+    ctx.globalAlpha = clamp((2.2 - levelTime) / 0.4, 0, 1);
+    ctx.save();
+    ctx.translate(WORLD_W / 2, 170);
+    ctx.scale(pop, pop);
+    drawText('LEVEL ' + level, 0, 0, 34, '#ffffff', 900, 'rgba(11,18,32,0.85)');
+    drawText(theme.name, 0, 28, 16, '#f4d35e', 700, 'rgba(11,18,32,0.85)');
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   drawControlZone();
 
-  // Floating text
+  // Floating text ("+100", "Power up!") that rises and fades
   for (const e of effects) {
-    ctx.globalAlpha = 1 - e.t / e.life;
-    ctx.fillStyle = e.color;
-    ctx.font = '700 16px system-ui, sans-serif';
-    ctx.fillText(e.text, e.x, e.y - 30 * (e.t / e.life));
+    const p = e.t / e.life;
+    ctx.globalAlpha = Math.min(1, (1 - p) * 2);
+    const size = e.size * (p < 0.15 ? 0.6 + p / 0.15 * 0.4 : 1);                 // quick pop when it appears
+    drawText(e.text, clamp(e.x, 30, WORLD_W - 30), e.y - 30 * p, size, e.color, 800, 'rgba(11,18,32,0.85)');
     ctx.globalAlpha = 1;
   }
 
   // Messages
-  let text = null;
-  if (screen === 'title')      text = ['Sky Strike', 'Slide in the bottom strip to fly', 'Your plane shoots by itself', 'Tap to start'];
-  else if (screen === 'clear') text = ['Level ' + level + ' clear!', 'Tap for level ' + (level + 1)];
-  else if (screen === 'won')   text = ['You win!', 'Score ' + score, 'Tap to play again'];
-  else if (screen === 'over')  text = ['Game over', 'Tap to retry level ' + level];
-  if (text) {
-    ctx.fillStyle = 'rgba(11,18,32,0.78)';
-    ctx.fillRect(0, 0, WORLD_W, FIELD_H);
-    ctx.fillStyle = '#ffffff';
-    const gap = 32;
-    const top = FIELD_H / 2 - (text.length - 1) * gap / 2;
-    for (let i = 0; i < text.length; i++) {
-      ctx.font = i === 0 ? '700 28px system-ui, sans-serif' : '500 17px system-ui, sans-serif';
-      ctx.fillText(text[i], WORLD_W / 2, top + i * gap);
-    }
-  }
+  drawScreens();
   ctx.restore();
 }
 
 // The finger strip at the bottom
 function drawControlZone() {
-  ctx.fillStyle = '#0e1730';
-  ctx.fillRect(0, FIELD_H, WORLD_W, CONTROL_ZONE);
-  ctx.fillStyle = 'rgba(255,255,255,0.12)';
-  ctx.fillRect(0, FIELD_H, WORLD_W, 1);
+  ctx.drawImage(sprites.controlZone.canvas, 0, FIELD_H, WORLD_W, CONTROL_ZONE);
 
   // Small marker showing where your plane is
-  ctx.fillStyle = 'rgba(77,212,172,0.35)';
+  const y = FIELD_H + CONTROL_ZONE / 2 - 6;
+  stamp(sprites.marker, planeX, y);
+  ctx.strokeStyle = 'rgba(140,255,225,0.75)';
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.arc(planeX, FIELD_H + CONTROL_ZONE / 2 - 6, 20, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.arc(planeX, y, 20, 0, TAU);
+  ctx.stroke();
+  ctx.globalAlpha = 0.9;
+  stampScaled(sprites.player, planeX, y, 0.5, 0.5);
+  ctx.globalAlpha = 1;
 
-  ctx.fillStyle = 'rgba(255,255,255,0.45)';
-  ctx.font = '500 13px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('◀  slide here  ▶', WORLD_W / 2, WORLD_H - 14);
+  drawText('◀  slide here  ▶', WORLD_W / 2, WORLD_H - 14, 13, 'rgba(255,255,255,' + (0.5 + Math.sin(clock * 3) * 0.15).toFixed(3) + ')', 500);
 }
 
 // ---------- Fit the game area to the screen ----------
@@ -608,6 +2265,15 @@ function resize() {
   scale = Math.min(screenW / WORLD_W, screenH / WORLD_H);
   offX = (screenW - WORLD_W * scale) / 2;
   offY = (screenH - WORLD_H * scale) / 2;
+
+  // Paint the sprites again at the new size, so they stay sharp (only if the size really changed)
+  const wanted = clamp(dpr * scale, 0.5, 4);
+  if (wanted !== spriteRes || !sprites.player) {
+    spriteRes = wanted;
+    buildSprites();
+    hudShown.lives = null;                       // the life icons use the plane sprite, so redraw them
+    updateHud();
+  }
 }
 
 // ---------- Input: slide to move ----------

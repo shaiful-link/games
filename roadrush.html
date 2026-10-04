@@ -25,23 +25,61 @@
     height: 100dvh;
   }
 
-  /* Top bar: score, level, distance, lives */
+  /* Top bar: score, level, distance, lives, and the sound button in the corner */
   #top {
     display: flex;
     align-items: center;
-    justify-content: space-around;
-    padding: 8px 10px;
+    gap: 6px;
+    padding: 8px 8px;
+    background: linear-gradient(#111b33, #0b1220);
   }
-  .stat { text-align: center; min-width: 60px; }
+  /* Each number sits in its own rounded "pill" box */
+  .stat {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    padding: 4px 2px 5px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.09);
+  }
   .stat span {
     display: block;
-    font-size: 11px;
+    font-size: 10px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: rgba(255,255,255,0.55);
   }
-  .stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
-  .stat b.low { color: #ff6b6b; }               /* last life */
+  .stat b {
+    display: block;
+    font-size: 18px;
+    line-height: 22px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  #score { color: #f4d35e; }                    /* gold, like the coins */
+  #level { color: #9dbcff; }
+  #togo  { color: #4dd4ac; }                    /* same green as your car */
+  #lives { color: #ff6b6b; letter-spacing: 1px; }
+  #lives i { font-style: normal; color: rgba(255,255,255,0.18); }   /* hearts you have lost */
+  #lives.low { animation: lastLife 0.7s ease-in-out infinite; }     /* last life: the heart pulses */
+  @keyframes lastLife { 50% { opacity: 0.45; } }
+
+  /* Sound on/off button (top right corner, far away from the steering strip) */
+  #sound {
+    flex: 0 0 38px;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.10);
+    color: #fff;
+    font-size: 17px;
+    line-height: 38px;
+    touch-action: manipulation;
+  }
+  #sound.off { opacity: .45; }
 
   #stage { flex: 1; min-height: 0; }
   #game { display: block; width: 100%; height: 100%; }
@@ -54,6 +92,7 @@
     <div class="stat"><span>Level</span><b id="level">1/10</b></div>
     <div class="stat"><span>To go</span><b id="togo">0 m</b></div>
     <div class="stat"><span>Lives</span><b id="lives">3</b></div>
+    <button id="sound" aria-label="Sound on or off"></button>
   </div>
   <div id="stage"><canvas id="game"></canvas></div>
 </div>
@@ -62,8 +101,9 @@
 // =====================================================
 // ROAD RUSH - simple racing game, with 10 levels
 // Slide your finger in the strip at the bottom to steer.
-// Overtake the traffic without crashing and reach the finish distance.
+// Overtake the traffic without crashing and reach the finish line.
 // Coins give bonus points. A crash costs a life.
+// Sounds are made by code. The speaker button (top right) turns them on or off.
 // Keyboard (for laptop testing): arrows or A/D steer, Space = start
 // =====================================================
 
@@ -82,6 +122,17 @@ const SAFE_TIME = 1.5;                // seconds you cannot crash again after a 
 const COIN_POINTS = 50;               // multiplied by the level number
 const COIN_CHANCE = 0.35;             // chance of a coin between two rows of traffic
 const LEVEL_BONUS = 300;              // bonus for finishing a level (multiplied by the level number)
+
+// Looks and sound (these do not change how the game plays)
+const SOUND_VOLUME = 0.25;            // 0 = silent, 1 = very loud
+const MAX_PARTICLES = 150;            // most sparks/smoke/confetti bits alive at once (keeps cheap phones fast)
+const SHAKE_TIME = 0.3;               // seconds the screen shakes after a crash
+const SHAKE_SIZE = 5;                 // how far it shakes, in game units
+const SCENERY_H = 480;                // length of the road picture that repeats (must be a multiple of 60)
+const SPRITE_PAD = 10;                // empty space around each car picture (room for wheels and shadow)
+const SPEED_LINES_FROM = 280;         // traffic speed at which speed lines start to show
+const NEAR_MISS_GAP = 12;             // a "close one" is a car that passes this near to your side
+const PLAYER_COLOR = '#4dd4ac';
 
 // ---------- Levels ----------
 // goal  = distance to drive, in metres
@@ -105,6 +156,11 @@ const LEVELS = [
 
 const TRAFFIC_COLORS = ['#ff6b6b', '#5b8def', '#f4d35e', '#b388eb', '#f79d65', '#e8ecf5'];
 
+// The traffic comes in three shapes. They all take up the same space (CAR_W x CAR_H),
+// so the shape is only for looks: a truck is exactly as easy to dodge as a car.
+const TRAFFIC_KINDS = ['car', 'van', 'truck'];
+const CONFETTI_COLORS = ['#ff6b6b', '#f4d35e', '#4dd4ac', '#5b8def', '#b388eb', '#ffffff'];
+
 // ---------- Page elements ----------
 const stage  = document.getElementById('stage');
 const canvas = document.getElementById('game');
@@ -114,6 +170,160 @@ const elLevel = document.getElementById('level');
 const elTogo  = document.getElementById('togo');
 const elLives = document.getElementById('lives');
 
+// ---------- Sound ----------
+// All sounds are made by code (short notes), so there are no sound files to upload.
+// Phones only allow sound after a touch, so the sound engine starts on the first touch.
+// The on/off choice is remembered, and is shared by all the games on this site.
+const btnSound = document.getElementById('sound');
+let audio = null;                // the sound engine (created on first touch)
+let muted = false;
+try { muted = localStorage.getItem('gamesMuted') === '1'; } catch (e) { /* storage blocked: start with sound on */ }
+
+function showSoundButton() {
+  btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
+  btnSound.classList.toggle('off', muted);
+}
+showSoundButton();
+
+function startAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (e) { audio = null; }                                  // no sound support: the game still works
+}
+// Different phones accept different kinds of touch for this, so listen for all of them
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, startAudio, true);
+}
+
+// Play one note.
+//   freq  = pitch in Hz (higher number = higher note)
+//   dur   = length in seconds
+//   type  = 'sine' (soft), 'triangle' (round), 'square' (retro), 'sawtooth' (buzzy)
+//   delay = seconds to wait before it starts (used to build little tunes)
+//   slide = pitch to glide to by the end (optional)
+//   volume = 0 to 1, share of SOUND_VOLUME
+function beep(freq, dur, type = 'sine', delay = 0, slide = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME * volume, t + 0.01);   // quick fade in (no click)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);                   // fade out
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// Play a burst of hiss (for explosions, crashes, whooshes).
+//   dur = length in seconds, tone = how bright it is in Hz (300 = deep boom, 4000 = sharp crack)
+let noiseBuffer = null;
+function noise(dur, tone = 1000, delay = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  if (!noiseBuffer) {                                            // one second of random hiss, made once
+    noiseBuffer = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  const t = audio.currentTime + delay;
+  const src = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const gain = audio.createGain();
+  src.buffer = noiseBuffer;
+  src.loop = true;
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(tone, t);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(60, tone * 0.25), t + dur);
+  gain.gain.setValueAtTime(SOUND_VOLUME * volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(filter).connect(gain).connect(audio.destination);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+}
+
+// Short buzz on Android phones (iPhone does not allow this from a web page)
+function buzz(ms) {
+  if (!muted && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
+}
+
+btnSound.addEventListener('click', () => {
+  muted = !muted;
+  try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {}
+  showSoundButton();
+  startAudio();
+  if (!muted) setTimeout(() => beep(740, 0.05, 'sine', 0, 0, 0.6), 60);   // small note to confirm sound is on
+  btnSound.blur();               // so the Space key on a laptop does not press the button again
+});
+
+// Some sounds could fire many times in a second. This remembers when each one last
+// played, and says "too soon" if it is asked for again within "ms" milliseconds.
+const lastPlayed = {};
+function tooSoon(name, ms) {
+  const now = performance.now();
+  if (lastPlayed[name] && now - lastPlayed[name] < ms) return true;
+  lastPlayed[name] = now;
+  return false;
+}
+
+// The game's sounds: one small function for each thing that happens
+const sfx = {
+  // A level starts: "ready ... go!"
+  start() {
+    beep(523, 0.09, 'triangle', 0, 0, 0.6);
+    beep(784, 0.16, 'triangle', 0.12, 0, 0.7);
+  },
+  // Steering: a quiet swish, at most a few times a second
+  swish() {
+    if (tooSoon('swish', 280)) return;
+    noise(0.09, 1600, 0, 0.22);
+  },
+  // A car passes very close to your side
+  nearMiss() {
+    if (tooSoon('nearMiss', 250)) return;
+    noise(0.22, 2600, 0, 0.45);
+    beep(700, 0.18, 'sine', 0, 260, 0.25);
+  },
+  // Picked up a coin: two quick bright notes
+  coin() {
+    if (tooSoon('coin', 60)) return;
+    beep(988, 0.06, 'triangle', 0, 0, 0.5);
+    beep(1319, 0.12, 'triangle', 0.06, 0, 0.5);
+  },
+  // Crash: a boom of hiss plus a low buzz that slides down
+  crash() {
+    noise(0.45, 700, 0, 1);
+    beep(140, 0.3, 'sawtooth', 0, 50, 0.6);
+    buzz(35);
+  },
+  // Reached the finish line: a short rising tune
+  levelClear() {
+    beep(523, 0.10, 'triangle', 0.00);
+    beep(659, 0.10, 'triangle', 0.11);
+    beep(784, 0.10, 'triangle', 0.22);
+    beep(1047, 0.25, 'triangle', 0.33);
+    buzz(30);
+  },
+  // Finished the last level: a longer happy tune
+  win() {
+    const tune = [523, 659, 784, 659, 784, 1047, 1319];
+    for (let i = 0; i < tune.length; i++) {
+      beep(tune[i], i === tune.length - 1 ? 0.4 : 0.11, 'triangle', i * 0.12);
+    }
+    buzz(40);
+  },
+  // No lives left: a short falling tune (starts a moment after the crash sound)
+  gameOver() {
+    beep(392, 0.16, 'triangle', 0.35, 0, 0.8);
+    beep(330, 0.16, 'triangle', 0.53, 0, 0.8);
+    beep(262, 0.16, 'triangle', 0.71, 0, 0.8);
+    beep(196, 0.35, 'triangle', 0.89, 0, 0.8);
+  }
+};
+
 // ---------- Game state ----------
 let screen = 'title';            // 'title' | 'play' | 'clear' | 'over' | 'won'
 let level = 1, score = 0, levelStartScore = 0;
@@ -121,12 +331,20 @@ let lives = START_LIVES;
 let carX = WORLD_W / 2;          // centre of your car
 let targetX = WORLD_W / 2;       // where your finger wants the car to be
 let distance = 0;                // metres driven in this level
-let traffic = [];                // other cars: { x, y, color }
+let traffic = [];                // other cars: { x, y, color, kind }
 let coins = [];                  // { x, y }
 let effects = [];                // floating text such as "+50"
+let particles = [];              // sparks, smoke, exhaust puffs and confetti
+let speedLines = [];             // faint streaks that show at high speed
 let spawnTimer = 0;
 let safeTimer = 0;               // seconds of crash protection left
-let roadScroll = 0;              // makes the lane markings move
+let roadScroll = 0;              // makes the road and the scenery move
+let clock = 0;                   // seconds since the page opened (for pulsing and spinning)
+let shakeTimer = 0;              // seconds of screen shake left
+let exhaustTimer = 0;            // counts down to the next exhaust puff
+let confettiTimer = 0;           // counts down to the next confetti burst on the "You win" screen
+let carTilt = 0;                 // your car leans a little into a turn (looks only)
+let steerDir = 0;                // -1 = moving left, 1 = moving right, 0 = going straight
 const keys = {};
 
 // Screen fitting
@@ -146,9 +364,13 @@ function startLevel(n) {
   traffic = [];
   coins = [];
   effects = [];
+  particles = [];
   spawnTimer = 1.0;              // short clear run before the first traffic
   safeTimer = 0;
+  shakeTimer = 0;
   screen = 'play';
+  floatText('GO!', WORLD_W / 2, FIELD_H / 2, '#ffffff');
+  sfx.start();
   updateHud();
 }
 
@@ -159,11 +381,26 @@ function advance() {
   else if (screen === 'over') { score = levelStartScore; lives = START_LIVES; startLevel(level); }   // retry same level
 }
 
+// Put new text in a box at the top, but only when it really changed
+// (this runs every frame, and touching the page when nothing changed wastes battery)
+function setText(el, text) {
+  if (el.textContent !== text) el.textContent = text;
+}
+
+let shownLives = -1;             // the number of hearts on screen right now
 function updateHud() {
-  elScore.textContent = Math.floor(score);
-  elLevel.textContent = level + '/' + LEVELS.length;
-  elTogo.textContent = Math.max(0, Math.ceil(LEVELS[level - 1].goal - distance)) + ' m';
-  elLives.textContent = lives;
+  setText(elScore, String(Math.floor(score)));
+  setText(elLevel, level + '/' + LEVELS.length);
+  setText(elTogo, Math.max(0, Math.ceil(LEVELS[level - 1].goal - distance)) + ' m');
+
+  // Lives are shown as hearts: red ones you still have, faint ones you have lost
+  if (lives !== shownLives) {
+    shownLives = lives;
+    const heart = '♥︎';
+    const lost = Math.max(0, START_LIVES - lives);
+    elLives.innerHTML = heart.repeat(lives) + '<i>' + heart.repeat(lost) + '</i>';
+    elLives.setAttribute('aria-label', lives + ' lives');
+  }
   elLives.classList.toggle('low', lives <= 1);
 }
 
@@ -185,7 +422,8 @@ function spawnRow() {
   for (let i = 0; i < count; i++) {
     traffic.push({
       x: laneCentre(lanes[i]), y: -CAR_H,
-      color: TRAFFIC_COLORS[Math.floor(Math.random() * TRAFFIC_COLORS.length)]
+      color: TRAFFIC_COLORS[Math.floor(Math.random() * TRAFFIC_COLORS.length)],
+      kind: TRAFFIC_KINDS[Math.floor(Math.random() * TRAFFIC_KINDS.length)]     // car, van or truck (looks only)
     });
   }
 
@@ -200,10 +438,88 @@ function floatText(text, x, y, color) {
   effects.push({ text, x, y, color, t: 0, life: 0.8 });
 }
 
+// ---------- Particles (sparks, smoke, confetti) ----------
+// Every particle is a small object that moves, fades and then disappears.
+//   kind    = 'spark' (small square), 'smoke' (soft growing circle), 'ring' (growing circle outline),
+//             'confetti' (spinning paper)
+//   gravity = how fast it starts to fall         onTop = draw it above the message card
+function addParticle(kind, x, y, vx, vy, life, size, color, gravity, onTop) {
+  if (particles.length >= MAX_PARTICLES) return;                 // enough already: skip this one
+  particles.push({ kind, x, y, vx, vy, life, size, color, gravity, onTop, t: 0, spin: Math.random() * 6 });
+}
+
+// Crash: a flash ring, a burst of sparks, bits of the other car, and smoke
+function spawnExplosion(x, y, carColor) {
+  addParticle('ring', x, y, 0, 0, 0.35, 10, '#fff3c4', 0, false);
+  for (let i = 0; i < 26; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 80 + Math.random() * 240;
+    const color = i % 3 === 0 ? '#ffffff' : (i % 3 === 1 ? '#ffd166' : '#ff8c42');
+    addParticle('spark', x, y, Math.cos(angle) * speed, Math.sin(angle) * speed,
+                0.35 + Math.random() * 0.35, 2 + Math.random() * 3, color, 200, false);
+  }
+  for (let i = 0; i < 8; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 60 + Math.random() * 120;
+    addParticle('spark', x, y, Math.cos(angle) * speed, Math.sin(angle) * speed,
+                0.6 + Math.random() * 0.3, 4 + Math.random() * 3, carColor, 300, false);
+  }
+  for (let i = 0; i < 8; i++) {
+    addParticle('smoke', x + (Math.random() - 0.5) * 30, y + (Math.random() - 0.5) * 30,
+                (Math.random() - 0.5) * 40, 40 + Math.random() * 60,
+                0.6 + Math.random() * 0.4, 8 + Math.random() * 6, '#2a2f3a', 0, false);
+  }
+}
+
+// Coin picked up: a few gold sparkles fly outward
+function spawnSparkles(x, y) {
+  for (let i = 0; i < 10; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 50 + Math.random() * 110;
+    addParticle('spark', x, y, Math.cos(angle) * speed, Math.sin(angle) * speed,
+                0.3 + Math.random() * 0.3, 2 + Math.random() * 2, i % 2 ? '#f4d35e' : '#fff6c9', 0, false);
+  }
+}
+
+// Confetti: two fountains shoot up from the bottom corners, and some drifts down from the top
+function spawnConfetti(count) {
+  for (let i = 0; i < count; i++) {
+    const color = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
+    const size = 5 + Math.random() * 4;
+    if (i % 3 === 0) {
+      addParticle('confetti', Math.random() * WORLD_W, -10 - Math.random() * 60,
+                  (Math.random() - 0.5) * 60, 70 + Math.random() * 90, 2.6, size, color, 60, true);
+    } else {
+      const fromLeft = i % 2 === 0;
+      addParticle('confetti', fromLeft ? 20 : WORLD_W - 20, FIELD_H - 10,
+                  (fromLeft ? 1 : -1) * (30 + Math.random() * 170), -(280 + Math.random() * 260),
+                  2.2, size, color, 420, true);
+    }
+  }
+}
+
 // ---------- Update: move the whole game forward by dt seconds ----------
 function update(dt) {
+  clock += dt;
+  shakeTimer = Math.max(0, shakeTimer - dt);
+
   for (const e of effects) e.t += dt;
   effects = effects.filter(e => e.t < e.life);
+
+  // Particles: move, fall and get older
+  for (const p of particles) {
+    p.t += dt;
+    p.vy += p.gravity * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+  }
+  particles = particles.filter(p => p.t < p.life);
+
+  // On the "You win" screen the confetti keeps coming
+  if (screen === 'won') {
+    confettiTimer -= dt;
+    if (confettiTimer <= 0) { spawnConfetti(50); confettiTimer = 1.3; }
+  }
 
   if (screen !== 'play') return;
   const def = LEVELS[level - 1];
@@ -213,14 +529,24 @@ function update(dt) {
   if (keys['ArrowRight'] || keys['d']) targetX = carX + 60;
   targetX = clampToRoad(targetX);
   const step = STEER_SPEED * dt;
+  const wanted = targetX - carX;                 // how far the car still has to go sideways
   carX += Math.max(-step, Math.min(step, targetX - carX));
   carX = clampToRoad(carX);
+
+  // Looks and sound only: lean the car into the turn, and swish when a new turn begins
+  const lean = Math.max(-1, Math.min(1, wanted / 50)) * 0.13;
+  carTilt += (lean - carTilt) * Math.min(1, dt * 14);
+  let newDir = steerDir;
+  if (Math.abs(wanted) > 8) newDir = wanted > 0 ? 1 : -1;
+  else if (Math.abs(wanted) < 1) newDir = 0;
+  if (newDir !== 0 && newDir !== steerDir) sfx.swish();
+  steerDir = newDir;
 
   // Distance and score (10 game units = 1 metre)
   const metres = def.speed * dt / 10;
   distance += metres;
   score += metres * level * 0.5;
-  roadScroll = (roadScroll + def.speed * dt) % 60;
+  roadScroll = (roadScroll + def.speed * dt) % SCENERY_H;
   safeTimer = Math.max(0, safeTimer - dt);
 
   // New traffic
@@ -242,8 +568,23 @@ function update(dt) {
         lives--;
         safeTimer = SAFE_TIME;
         floatText('Crash!', carX, PLAYER_Y - 10, '#ff6b6b');
-        if (lives <= 0) { lives = 0; screen = 'over'; }
+        spawnExplosion((c.x + carX) / 2, PLAYER_Y + 8, c.color);
+        shakeTimer = SHAKE_TIME;
+        sfx.crash();
+        if (lives <= 0) { lives = 0; screen = 'over'; sfx.gameOver(); }
         break;
+      }
+    }
+  }
+
+  // Near miss (sound and a word only, no points): a car is right beside you, very close.
+  // Each car is only checked once, at the moment it draws level with your car.
+  for (const c of traffic) {
+    if (!c.passed && !c.hit && c.y >= PLAYER_Y) {
+      c.passed = true;
+      if (safeTimer === 0 && Math.abs(c.x - carX) < CAR_W + NEAR_MISS_GAP) {
+        sfx.nearMiss();
+        floatText('Close!', carX, PLAYER_Y - 34, '#ffffff');
       }
     }
   }
@@ -254,11 +595,30 @@ function update(dt) {
       c.taken = true;
       score += COIN_POINTS * level;
       floatText('+' + COIN_POINTS * level, c.x, PLAYER_Y - 10, '#f4d35e');
+      spawnSparkles(c.x, PLAYER_Y + 6);
+      sfx.coin();
     }
   }
 
   traffic = traffic.filter(c => !c.hit && c.y < FIELD_H + 20);
   coins = coins.filter(c => !c.taken && c.y < FIELD_H + 20);
+
+  // Exhaust: a small grey puff leaves the back of your car every few hundredths of a second
+  exhaustTimer -= dt;
+  if (exhaustTimer <= 0) {
+    exhaustTimer = 0.06;
+    addParticle('smoke', carX + (Math.random() - 0.5) * 14, PLAYER_Y + CAR_H + 2,
+                (Math.random() - 0.5) * 16, def.speed * 0.5, 0.4, 3 + Math.random() * 2, '#cfd6e4', 0, false);
+  }
+
+  // Speed lines rush down the screen, faster than the road
+  for (const s of speedLines) {
+    s.y += def.speed * 2.2 * dt;
+    if (s.y > FIELD_H) {
+      s.y = -s.len - Math.random() * 200;
+      s.x = ROAD_X + 10 + Math.random() * (ROAD_W - 20);
+    }
+  }
 
   // Level finished
   if (screen === 'play' && distance >= def.goal) {
@@ -266,8 +626,397 @@ function update(dt) {
     traffic = [];
     coins = [];
     screen = level === LEVELS.length ? 'won' : 'clear';
+    if (screen === 'won') { sfx.win(); spawnConfetti(110); confettiTimer = 1.3; }
+    else { sfx.levelClear(); spawnConfetti(90); }
   }
   updateHud();
+}
+
+// ---------- Pictures made once (not every frame) ----------
+// Drawing gradients and shadows is slow on cheap phones. So every car, the coin, the road with
+// its scenery and the finish line are painted ONCE onto small hidden canvases ("sprites").
+// Each frame the game only stamps those ready-made pictures onto the screen, which is fast.
+// They are painted again when the screen size changes, so they always stay sharp.
+let sprites = {};                // car pictures, by name: 'car|#ff6b6b', 'truck|#5b8def', 'player', 'coin', 'finish'
+let roadTile = null;             // one long picture of grass + kerbs + road + lane dashes + trees
+let spriteScale = 1;             // screen pixels per game unit
+
+// Make a hidden canvas that is w x h game units big, ready to draw on in game units
+function makeSprite(w, h) {
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.ceil(w * spriteScale));
+  c.height = Math.max(1, Math.ceil(h * spriteScale));
+  const g = c.getContext('2d');
+  g.scale(spriteScale, spriteScale);
+  return { canvas: c, g };
+}
+
+// Trace a box with rounded corners (fill or stroke it afterwards)
+function roundedRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+// Trace a four-cornered shape (used for the slanted car windows)
+function fourCorners(g, x1, y1, x2, y2, x3, y3, x4, y4) {
+  g.beginPath();
+  g.moveTo(x1, y1);
+  g.lineTo(x2, y2);
+  g.lineTo(x3, y3);
+  g.lineTo(x4, y4);
+  g.closePath();
+}
+
+// Make a colour lighter (amount above 0) or darker (amount below 0). amount goes from -1 to 1.
+function shade(hex, amount) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const toward = amount > 0 ? 255 : 0;           // mix with white or with black
+  const k = Math.abs(amount);
+  // Mix one colour part, and write it back as two hex digits (so the result can be shaded again)
+  const mix = (v) => Math.round(v + (toward - v) * k).toString(16).padStart(2, '0');
+  return '#' + mix(r) + mix(g) + mix(b);
+}
+
+// Paint that looks like curved shiny metal: dark at both sides, bright down the middle
+function bodyPaint(g, color) {
+  const paint = g.createLinearGradient(0, 0, CAR_W, 0);
+  paint.addColorStop(0, shade(color, -0.4));
+  paint.addColorStop(0.22, color);
+  paint.addColorStop(0.5, shade(color, 0.3));
+  paint.addColorStop(0.78, color);
+  paint.addColorStop(1, shade(color, -0.4));
+  return paint;
+}
+
+// Fill the shape that was just traced, with a soft shadow on the road underneath it
+function fillWithShadow(g, paint) {
+  g.save();
+  g.shadowColor = 'rgba(0,0,0,0.5)';
+  g.shadowBlur = 5 * spriteScale;
+  g.shadowOffsetX = 2 * spriteScale;
+  g.shadowOffsetY = 3 * spriteScale;
+  g.fillStyle = paint;
+  g.fill();
+  g.restore();
+}
+
+// Two headlights at the front and two red tail lights at the back
+function paintLights(g, frontY, backY, inset) {
+  g.fillStyle = '#fff6c9';
+  roundedRect(g, inset, frontY, 9, 4, 2); g.fill();
+  roundedRect(g, CAR_W - inset - 9, frontY, 9, 4, 2); g.fill();
+  g.fillStyle = '#ff3b3b';
+  roundedRect(g, inset, backY, 9, 3.5, 1.5); g.fill();
+  roundedRect(g, CAR_W - inset - 9, backY, 9, 3.5, 1.5); g.fill();
+}
+
+// Dark glass with a pale streak of reflected light
+function paintGlass(g, x1, y1, x2, y2, x3, y3, x4, y4) {
+  g.fillStyle = '#16223a';
+  fourCorners(g, x1, y1, x2, y2, x3, y3, x4, y4);
+  g.fill();
+  g.fillStyle = 'rgba(255,255,255,0.22)';
+  fourCorners(g, x1 + 2, y1 + 1, x1 + 9, y1 + 1, x4 + 5, y4 - 1, x4 + 1, y4 - 1);
+  g.fill();
+}
+
+// Paint one vehicle seen from above. The front is at the top.
+// It is painted inside a box CAR_W wide and CAR_H tall whose top-left corner is (0, 0).
+//   kind = 'player', 'car', 'van' or 'truck'
+function paintVehicle(g, kind, color) {
+  const w = CAR_W, h = CAR_H;
+
+  // Wheels (they stick out a little at the sides)
+  g.fillStyle = '#15181f';
+  for (const wheelY of [8, h - 22]) {
+    roundedRect(g, -3, wheelY, 7, 14, 2); g.fill();
+    roundedRect(g, w - 4, wheelY, 7, 14, 2); g.fill();
+  }
+
+  if (kind === 'truck') {
+    // Cab at the front, then a long cargo box behind it
+    roundedRect(g, 2, 0, w - 4, 20, 5);
+    fillWithShadow(g, bodyPaint(g, color));
+    paintGlass(g, 6, 5, w - 6, 5, w - 8, 12, 8, 12);
+    roundedRect(g, 0, 17, w, h - 17, 3);
+    fillWithShadow(g, bodyPaint(g, shade(color, -0.12)));
+    // Ridges across the cargo box, and a pale panel on top
+    g.fillStyle = 'rgba(255,255,255,0.16)';
+    roundedRect(g, 4, 21, w - 8, h - 26, 2); g.fill();
+    g.fillStyle = 'rgba(0,0,0,0.18)';
+    for (let y = 28; y < h - 8; y += 8) g.fillRect(4, y, w - 8, 1.2);
+    paintLights(g, 1.5, h - 4.5, 4);
+
+  } else if (kind === 'van') {
+    // A boxy body with the windscreen close to the front
+    roundedRect(g, 0, 0, w, h, 6);
+    fillWithShadow(g, bodyPaint(g, color));
+    paintGlass(g, 5, 8, w - 5, 8, w - 7, 17, 7, 17);
+    // Long roof with three ribs
+    g.fillStyle = 'rgba(255,255,255,0.18)';
+    roundedRect(g, 5, 20, w - 10, h - 30, 3); g.fill();
+    g.fillStyle = 'rgba(0,0,0,0.16)';
+    for (let y = 28; y < h - 14; y += 9) g.fillRect(7, y, w - 14, 1.2);
+    // Small back window
+    g.fillStyle = '#16223a';
+    roundedRect(g, 8, h - 8.5, w - 16, 3.5, 1.5); g.fill();
+    paintLights(g, 1.5, h - 4.5, 3);
+
+  } else {
+    // A car (also used for your own car, which gets racing stripes and a spoiler)
+    const isPlayer = kind === 'player';
+    // Side mirrors
+    g.fillStyle = shade(color, -0.45);
+    roundedRect(g, -2.5, 19, 4, 5, 1.5); g.fill();
+    roundedRect(g, w - 1.5, 19, 4, 5, 1.5); g.fill();
+    // Body
+    roundedRect(g, 0, 0, w, h, isPlayer ? 12 : 10);
+    fillWithShadow(g, bodyPaint(g, color));
+    if (isPlayer) {
+      // Two white racing stripes from nose to tail
+      g.fillStyle = 'rgba(255,255,255,0.9)';
+      g.fillRect(13, 1, 4, h - 2);
+      g.fillRect(21, 1, 4, h - 2);
+    }
+    // Windscreen, roof, back window and thin side windows
+    paintGlass(g, 5, 17, w - 5, 17, w - 8, 27, 8, 27);
+    g.fillStyle = shade(color, isPlayer ? -0.12 : 0.18);
+    roundedRect(g, 8, 27, w - 16, 17, 3); g.fill();
+    if (isPlayer) {
+      g.fillStyle = 'rgba(255,255,255,0.9)';
+      g.fillRect(13, 27, 4, 17);
+      g.fillRect(21, 27, 4, 17);
+    }
+    g.fillStyle = '#16223a';
+    fourCorners(g, 8, 44, w - 8, 44, w - 6, 51, 6, 51); g.fill();
+    g.fillRect(4.5, 28, 2.5, 15);
+    g.fillRect(w - 7, 28, 2.5, 15);
+    paintLights(g, 1.5, h - (isPlayer ? 10 : 4.5), 4);
+    if (isPlayer) {
+      // Spoiler across the back
+      g.fillStyle = shade(color, -0.55);
+      roundedRect(g, 1, h - 6, w - 2, 5, 2); g.fill();
+    }
+  }
+
+  // A thin dark outline keeps every vehicle easy to see on the grey road
+  g.strokeStyle = 'rgba(0,0,0,0.35)';
+  g.lineWidth = 1;
+  if (kind === 'truck') { roundedRect(g, 0, 17, w, h - 17, 3); g.stroke(); }
+  else { roundedRect(g, 0, 0, w, h, kind === 'van' ? 6 : (kind === 'player' ? 12 : 10)); g.stroke(); }
+}
+
+// A gold coin with a rim, a shine and a star in the middle
+function paintCoin(g) {
+  const shine = g.createRadialGradient(-4, -4, 1, 0, 0, 12);
+  shine.addColorStop(0, '#fff6c9');
+  shine.addColorStop(0.5, '#f4d35e');
+  shine.addColorStop(1, '#c9a227');
+  g.save();
+  g.shadowColor = 'rgba(0,0,0,0.45)';
+  g.shadowBlur = 3 * spriteScale;
+  g.shadowOffsetY = 2 * spriteScale;
+  g.fillStyle = shine;
+  g.beginPath(); g.arc(0, 0, 12, 0, Math.PI * 2); g.fill();
+  g.restore();
+  g.strokeStyle = '#a8831a';
+  g.lineWidth = 1.5;
+  g.beginPath(); g.arc(0, 0, 8, 0, Math.PI * 2); g.stroke();
+  // Five-pointed star
+  g.fillStyle = '#a8831a';
+  g.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const radius = i % 2 === 0 ? 5.5 : 2.4;
+    const angle = -Math.PI / 2 + i * Math.PI / 5;
+    g.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
+  }
+  g.closePath();
+  g.fill();
+}
+
+// The finish: a black and white chequered strip across the road, with a banner in front of it
+function paintFinish(g) {
+  const square = 10;
+  // Chequered strip (2 rows of squares) starting 26 units down, leaving room for the banner above
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < ROAD_W / square; col++) {
+      g.fillStyle = (row + col) % 2 === 0 ? '#ffffff' : '#12151c';
+      g.fillRect(10 + col * square, 26 + row * square, square, square);
+    }
+  }
+  // Posts at both sides and the banner between them
+  g.fillStyle = '#e8ecf5';
+  roundedRect(g, 2, 2, 8, 44, 3); g.fill();
+  roundedRect(g, ROAD_W + 10, 2, 8, 44, 3); g.fill();
+  g.fillStyle = '#0e1730';
+  roundedRect(g, 8, 4, ROAD_W + 4, 18, 5); g.fill();
+  g.strokeStyle = '#4dd4ac';
+  g.lineWidth = 1.5;
+  roundedRect(g, 8, 4, ROAD_W + 4, 18, 5); g.stroke();
+  g.fillStyle = '#ffffff';
+  g.font = '800 12px system-ui, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText('F I N I S H', 10 + ROAD_W / 2, 13.5);
+}
+
+// A simple "random" number maker that always gives the same numbers in the same order.
+// The scenery uses it so the trees are in the same places every time the picture is rebuilt.
+let seed = 1;
+function seededRandom() {
+  seed = (seed * 16807) % 2147483647;
+  return (seed - 1) / 2147483646;
+}
+
+// A tree seen from above: a shadow, then three overlapping blobs of leaves
+function paintTree(g, x, y, r) {
+  g.fillStyle = 'rgba(0,0,0,0.28)';
+  g.beginPath(); g.arc(x + 3, y + 4, r, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#1f6b3a';
+  g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#2f8a4c';
+  g.beginPath(); g.arc(x - r * 0.2, y - r * 0.2, r * 0.72, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#58b368';
+  g.beginPath(); g.arc(x - r * 0.35, y - r * 0.35, r * 0.36, 0, Math.PI * 2); g.fill();
+}
+
+// A low bush: a few small round blobs, sometimes with flowers
+function paintBush(g, x, y) {
+  g.fillStyle = 'rgba(0,0,0,0.22)';
+  g.beginPath(); g.arc(x + 2, y + 3, 6, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#3f9a55';
+  g.beginPath(); g.arc(x - 3, y, 5, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.arc(x + 3, y + 1, 5.5, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#6cc47c';
+  g.beginPath(); g.arc(x - 2, y - 2, 2.5, 0, Math.PI * 2); g.fill();
+}
+
+// Paint one long piece of the world: grass, trees, kerbs, the road and its lane dashes.
+// It is SCENERY_H units long and joins up with itself, so it can scroll round and round forever.
+function paintRoadTile(g) {
+  seed = 12345;
+  const sideW = ROAD_X;                          // width of the grass at each side
+
+  // Grass with soft lighter bands
+  g.fillStyle = '#2f5d3a';
+  g.fillRect(0, 0, WORLD_W, SCENERY_H);
+  g.fillStyle = '#356b42';
+  for (let y = 0; y < SCENERY_H; y += 60) {
+    g.fillRect(0, y, sideW, 30);
+    g.fillRect(ROAD_X + ROAD_W, y, sideW, 30);
+  }
+  // Tiny tufts and flowers scattered on the grass
+  for (let i = 0; i < 90; i++) {
+    const onLeft = seededRandom() < 0.5;
+    const x = (onLeft ? 0 : ROAD_X + ROAD_W + 6) + seededRandom() * (sideW - 8);
+    const y = seededRandom() * SCENERY_H;
+    const pick = seededRandom();
+    g.fillStyle = pick < 0.7 ? '#4b8a58' : (pick < 0.85 ? '#f4d35e' : '#ffffff');
+    g.fillRect(x, y, pick < 0.7 ? 2 : 1.6, pick < 0.7 ? 3 : 1.6);
+  }
+
+  // Road surface: darker near the edges, with fine speckles like real tarmac
+  const tarmac = g.createLinearGradient(ROAD_X, 0, ROAD_X + ROAD_W, 0);
+  tarmac.addColorStop(0, '#30343f');
+  tarmac.addColorStop(0.15, '#3d424f');
+  tarmac.addColorStop(0.85, '#3d424f');
+  tarmac.addColorStop(1, '#30343f');
+  g.fillStyle = tarmac;
+  g.fillRect(ROAD_X, 0, ROAD_W, SCENERY_H);
+  for (let i = 0; i < 500; i++) {
+    g.fillStyle = seededRandom() < 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.10)';
+    g.fillRect(ROAD_X + seededRandom() * ROAD_W, seededRandom() * SCENERY_H, 1.5, 1.5);
+  }
+
+  // Red and white kerbs just outside the road, and a white line just inside it
+  for (let y = 0; y < SCENERY_H; y += 30) {
+    g.fillStyle = (y / 30) % 2 === 0 ? '#e5484d' : '#f3f4f7';
+    g.fillRect(ROAD_X - 6, y, 6, 30);
+    g.fillRect(ROAD_X + ROAD_W, y, 6, 30);
+  }
+  g.fillStyle = 'rgba(0,0,0,0.25)';              // thin shadow line where kerb meets grass
+  g.fillRect(ROAD_X - 7, 0, 1, SCENERY_H);
+  g.fillRect(ROAD_X + ROAD_W + 6, 0, 1, SCENERY_H);
+  g.fillStyle = '#ffffff';
+  g.fillRect(ROAD_X, 0, 3, SCENERY_H);
+  g.fillRect(ROAD_X + ROAD_W - 3, 0, 3, SCENERY_H);
+
+  // Lane dashes: 30 long, then a 30 gap
+  g.fillStyle = 'rgba(255,255,255,0.75)';
+  for (let i = 1; i < LANES; i++) {
+    for (let y = 0; y < SCENERY_H; y += 60) {
+      roundedRect(g, ROAD_X + LANE_W * i - 2, y, 4, 30, 2);
+      g.fill();
+    }
+  }
+
+  // Trees and bushes down both sides (kept away from the top and bottom edge so none is cut in half)
+  for (let y = 26; y < SCENERY_H - 26; y += 44) {
+    for (const leftSide of [true, false]) {
+      const x = leftSide ? 15 + seededRandom() * 6 : WORLD_W - 15 - seededRandom() * 6;
+      const jitter = seededRandom() * 16 - 8;
+      const pick = seededRandom();
+      if (pick < 0.55) paintTree(g, x, y + jitter, 10 + seededRandom() * 3.5);
+      else if (pick < 0.85) paintBush(g, x, y + jitter);
+      // otherwise leave a gap, so the roadside does not look like a fence
+    }
+  }
+}
+
+// Build every ready-made picture. Called at the start and whenever the screen size changes.
+function buildSprites() {
+  spriteScale = scale * dpr;
+  sprites = {};
+
+  // Your car, and every colour of every kind of traffic
+  const carW = CAR_W + SPRITE_PAD * 2, carH = CAR_H + SPRITE_PAD * 2;
+  const list = [['player', PLAYER_COLOR, 'player']];
+  for (const kind of TRAFFIC_KINDS) {
+    for (const color of TRAFFIC_COLORS) list.push([kind, color, kind + '|' + color]);
+  }
+  for (const [kind, color, name] of list) {
+    const s = makeSprite(carW, carH);
+    s.g.translate(SPRITE_PAD, SPRITE_PAD);
+    paintVehicle(s.g, kind, color);
+    sprites[name] = s.canvas;
+  }
+
+  // Coin (its centre is the middle of a 32 x 32 picture)
+  const coin = makeSprite(32, 32);
+  coin.g.translate(16, 16);
+  paintCoin(coin.g);
+  sprites.coin = coin.canvas;
+
+  // Finish line with banner
+  const finish = makeSprite(ROAD_W + 20, 48);
+  paintFinish(finish.g);
+  sprites.finish = finish.canvas;
+
+  // The long road picture. Its size is a whole number of screen pixels so that
+  // two copies placed one after the other join with no visible line.
+  roadTile = document.createElement('canvas');
+  roadTile.width = Math.ceil(WORLD_W * spriteScale);
+  roadTile.height = Math.round(SCENERY_H * spriteScale);
+  const g = roadTile.getContext('2d');
+  g.scale(roadTile.width / WORLD_W, roadTile.height / SCENERY_H);
+  paintRoadTile(g);
+
+  // Speed lines start at random places
+  speedLines = [];
+  for (let i = 0; i < 10; i++) {
+    speedLines.push({
+      x: ROAD_X + 10 + Math.random() * (ROAD_W - 20),
+      y: Math.random() * FIELD_H,
+      len: 40 + Math.random() * 40
+    });
+  }
 }
 
 // ---------- Drawing ----------
@@ -276,6 +1025,14 @@ function draw() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = '#0b1220';
   ctx.fillRect(0, 0, screenW, screenH);
+
+  // Screen shake: after a crash the playing field jumps a few units, less and less
+  let shakeX = 0, shakeY = 0;
+  if (shakeTimer > 0) {
+    const strength = SHAKE_SIZE * shakeTimer / SHAKE_TIME;
+    shakeX = (Math.random() * 2 - 1) * strength;
+    shakeY = (Math.random() * 2 - 1) * strength;
+  }
 
   // From here on, draw in game units (scaled and centred on screen)
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
@@ -286,126 +1043,256 @@ function draw() {
   ctx.rect(0, 0, WORLD_W, WORLD_H);
   ctx.clip();
 
-  // Grass with moving stripes (gives the feeling of speed)
-  ctx.fillStyle = '#2f5d3a';
-  ctx.fillRect(0, 0, WORLD_W, FIELD_H);
-  ctx.fillStyle = '#356b42';
-  for (let y = -60 + roadScroll; y < FIELD_H; y += 60) {
-    ctx.fillRect(0, y, ROAD_X, 30);
-    ctx.fillRect(ROAD_X + ROAD_W, y, WORLD_W - ROAD_X - ROAD_W, 30);
+  // Road and scenery: stamp the ready-made picture, shifted down by roadScroll, as many times
+  // as needed to cover the field. This part is placed in whole screen pixels so the copies
+  // join perfectly.
+  const fieldLeft = Math.round(dpr * (offX + shakeX * scale));
+  const fieldTop = dpr * (offY + shakeY * scale);
+  const fieldBottom = fieldTop + FIELD_H * spriteScale;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  for (let y = fieldTop + Math.round(roadScroll * spriteScale) - roadTile.height; y < fieldBottom; y += roadTile.height) {
+    ctx.drawImage(roadTile, fieldLeft, Math.round(y));
   }
 
-  // Road, edges and lane markings
-  ctx.fillStyle = '#3a3f4b';
-  ctx.fillRect(ROAD_X, 0, ROAD_W, FIELD_H);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(ROAD_X, 0, 4, FIELD_H);
-  ctx.fillRect(ROAD_X + ROAD_W - 4, 0, 4, FIELD_H);
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  for (let i = 1; i < LANES; i++) {
-    for (let y = -60 + roadScroll; y < FIELD_H; y += 60) {
-      ctx.fillRect(ROAD_X + LANE_W * i - 2, y, 4, 30);
+  // Back to game units, moved by the shake
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * (offX + shakeX * scale), dpr * (offY + shakeY * scale));
+
+  // Speed lines: the faster the level, the more of them
+  if (screen === 'play') {
+    const speed = LEVELS[level - 1].speed;
+    const count = Math.max(0, Math.min(speedLines.length, Math.round((speed - SPEED_LINES_FROM) / 22) + 1));
+    if (speed >= SPEED_LINES_FROM) {
+      ctx.fillStyle = 'rgba(255,255,255,0.16)';
+      for (let i = 0; i < count; i++) {
+        ctx.fillRect(speedLines[i].x, speedLines[i].y, 1.5, speedLines[i].len);
+      }
     }
   }
 
-  // Coins
-  for (const c of coins) {
-    ctx.fillStyle = '#f4d35e';
-    ctx.beginPath(); ctx.arc(c.x, c.y, 12, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#c9a227';
-    ctx.beginPath(); ctx.arc(c.x, c.y, 7, 0, Math.PI * 2); ctx.fill();
+  // Finish line: it comes into view as you get close, and reaches your car's nose at the goal
+  if (screen === 'play' || screen === 'clear' || screen === 'won') {
+    const metresLeft = LEVELS[level - 1].goal - distance;
+    const lineY = PLAYER_Y - metresLeft * 10;    // 10 game units = 1 metre
+    if (lineY > -60 && lineY < FIELD_H + 60) {
+      ctx.drawImage(sprites.finish, ROAD_X - 10, lineY - 46, ROAD_W + 20, 48);
+    }
   }
 
+  // Coins (they look like they spin: the picture is squeezed and stretched sideways)
+  for (const c of coins) {
+    const squeeze = 0.35 + 0.65 * Math.abs(Math.cos(clock * 4 + c.x));
+    ctx.drawImage(sprites.coin, c.x - 16 * squeeze, c.y - 16, 32 * squeeze, 32);
+  }
+
+  // Smoke and exhaust go under the cars
+  drawParticles(false, 'smoke');
+
   // Traffic, then your car (it blinks while protected after a crash)
-  for (const c of traffic) drawCar(c.x, c.y, c.color);
+  for (const c of traffic) drawCar(c.x, c.y, sprites[(c.kind || 'car') + '|' + c.color]);
   if (screen !== 'title') {
     const blink = safeTimer > 0 && Math.floor(safeTimer * 10) % 2 === 0;
-    if (!blink) drawCar(carX, PLAYER_Y, '#4dd4ac');
+    if (!blink) drawPlayer();
+  }
+
+  // Sparks fly over the cars
+  drawParticles(false, 'spark');
+  drawParticles(false, 'ring');
+
+  // A quick red flash over the field at the moment of a crash
+  if (shakeTimer > 0) {
+    ctx.fillStyle = 'rgba(255,80,80,' + (0.22 * shakeTimer / SHAKE_TIME).toFixed(3) + ')';
+    ctx.fillRect(-10, -10, WORLD_W + 20, FIELD_H + 20);
   }
 
   // Progress bar along the top of the road
-  if (screen === 'play') {
-    const done = Math.min(1, distance / LEVELS[level - 1].goal);
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillRect(ROAD_X, 6, ROAD_W, 8);
-    ctx.fillStyle = '#4dd4ac';
-    ctx.fillRect(ROAD_X, 6, ROAD_W * done, 8);
-  }
+  if (screen === 'play') drawProgressBar();
+
+  // The rest does not shake
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
 
   drawControlZone();
 
-  // Floating text
+  // Floating text: it pops up a little bigger, drifts upward and fades away
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
   for (const e of effects) {
-    ctx.globalAlpha = 1 - e.t / e.life;
+    const k = e.t / e.life;                      // 0 at the start, 1 at the end
+    const size = Math.round(20 + 6 * Math.max(0, 1 - k * 5));
+    ctx.globalAlpha = 1 - k;
+    ctx.font = '800 ' + size + 'px system-ui, sans-serif';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(11,18,32,0.85)';     // dark outline so it reads on any background
+    ctx.strokeText(e.text, e.x, e.y - 40 * k);
     ctx.fillStyle = e.color;
-    ctx.font = '700 18px system-ui, sans-serif';
-    ctx.fillText(e.text, e.x, e.y - 40 * (e.t / e.life));
+    ctx.fillText(e.text, e.x, e.y - 40 * k);
     ctx.globalAlpha = 1;
   }
 
   // Messages
   let text = null;
-  if (screen === 'title')      text = ['Road Rush', 'Slide in the bottom strip to steer', 'Pass the traffic, do not crash', 'Tap to start'];
-  else if (screen === 'clear') text = ['Level ' + level + ' clear!', 'Tap for level ' + (level + 1)];
-  else if (screen === 'won')   text = ['You win!', 'Score ' + Math.floor(score), 'Tap to play again'];
-  else if (screen === 'over')  text = ['Game over', 'Tap to retry level ' + level];
-  if (text) {
-    ctx.fillStyle = 'rgba(11,18,32,0.78)';
-    ctx.fillRect(0, 0, WORLD_W, FIELD_H);
-    ctx.fillStyle = '#ffffff';
-    const gap = 32;
-    const top = FIELD_H / 2 - (text.length - 1) * gap / 2;
-    for (let i = 0; i < text.length; i++) {
-      ctx.font = i === 0 ? '700 28px system-ui, sans-serif' : '500 17px system-ui, sans-serif';
-      ctx.fillText(text[i], WORLD_W / 2, top + i * gap);
-    }
-  }
+  let accent = '#4dd4ac';                        // colour of the big first line and the card's edge
+  if (screen === 'title')      { text = ['Road Rush', 'Slide in the bottom strip to steer', 'Pass the traffic, do not crash', 'Tap to start']; }
+  else if (screen === 'clear') { text = ['Level ' + level + ' clear!', 'Tap for level ' + (level + 1)]; }
+  else if (screen === 'won')   { text = ['You win!', 'Score ' + Math.floor(score), 'Tap to play again']; accent = '#f4d35e'; }
+  else if (screen === 'over')  { text = ['Game over', 'Tap to retry level ' + level]; accent = '#ff6b6b'; }
+  if (text) drawMessage(text, accent);
+
+  // Confetti falls in front of the message
+  drawParticles(true, 'confetti');
+
   ctx.restore();
 }
 
-// A car seen from above: x is the centre of the car, y is its top edge
-function drawCar(x, y, color) {
-  const w = CAR_W, h = CAR_H, left = x - w / 2;
-  // Wheels
-  ctx.fillStyle = '#15181f';
-  ctx.fillRect(left - 3, y + 8, 6, 14);
-  ctx.fillRect(left + w - 3, y + 8, 6, 14);
-  ctx.fillRect(left - 3, y + h - 22, 6, 14);
-  ctx.fillRect(left + w - 3, y + h - 22, 6, 14);
-  // Body with rounded corners
-  ctx.fillStyle = color;
-  const r = 9;
-  ctx.beginPath();
-  ctx.moveTo(left + r, y);
-  ctx.arcTo(left + w, y, left + w, y + h, r);
-  ctx.arcTo(left + w, y + h, left, y + h, r);
-  ctx.arcTo(left, y + h, left, y, r);
-  ctx.arcTo(left, y, left + w, y, r);
-  ctx.closePath();
+// Stamp a ready-made car picture: x is the centre of the car, y is its top edge
+function drawCar(x, y, sprite) {
+  ctx.drawImage(sprite, x - CAR_W / 2 - SPRITE_PAD, y - SPRITE_PAD, CAR_W + SPRITE_PAD * 2, CAR_H + SPRITE_PAD * 2);
+}
+
+// Your car leans a little into the turn (the picture is turned around its middle)
+function drawPlayer() {
+  ctx.save();
+  ctx.translate(carX, PLAYER_Y + CAR_H / 2);
+  ctx.rotate(screen === 'play' ? carTilt : 0);
+  drawCar(0, -CAR_H / 2, sprites.player);
+  ctx.restore();
+}
+
+// Draw the particles of one kind. onTop picks the ones that belong above the message card.
+function drawParticles(onTop, kind) {
+  for (const p of particles) {
+    if (p.kind !== kind || p.onTop !== onTop) continue;
+    const k = p.t / p.life;                      // 0 = new, 1 = finished
+    if (kind === 'spark') {
+      ctx.globalAlpha = 1 - k;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    } else if (kind === 'smoke') {
+      ctx.globalAlpha = 0.4 * (1 - k);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * (1 + k * 1.5), 0, Math.PI * 2);
+      ctx.fill();
+    } else if (kind === 'ring') {
+      ctx.globalAlpha = 1 - k;
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 4 * (1 - k) + 1;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size + 55 * k, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      // Confetti: a small piece of paper that looks like it tumbles (its width grows and shrinks)
+      const turn = Math.abs(Math.cos(p.spin + p.t * 9));
+      ctx.globalAlpha = Math.min(1, (1 - k) * 3);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size * turn / 2, p.y, p.size * turn, p.size * 0.6);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Progress bar: a rounded track that fills up, a white knob at your position, a small flag at the end
+function drawProgressBar() {
+  const x = ROAD_X + 10, y = 6, w = ROAD_W - 20, h = 10;
+  const done = Math.min(1, distance / LEVELS[level - 1].goal);
+  // Track
+  ctx.fillStyle = 'rgba(11,18,32,0.72)';
+  roundedRect(ctx, x - 2, y - 2, w + 4, h + 4, 7);
   ctx.fill();
-  // Windows
-  ctx.fillStyle = 'rgba(11,18,32,0.75)';
-  ctx.fillRect(left + 5, y + 14, w - 10, 12);
-  ctx.fillRect(left + 5, y + h - 20, w - 10, 9);
+  // Filled part, with a pale strip along its top to look rounded
+  const filled = Math.max(h, w * done);
+  ctx.fillStyle = '#4dd4ac';
+  roundedRect(ctx, x, y, filled, h, 5);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  roundedRect(ctx, x + 2, y + 1.5, filled - 4, 3, 1.5);
+  ctx.fill();
+  // Small chequered flag at the far end
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 2; col++) {
+      ctx.fillStyle = (row + col) % 2 === 0 ? '#ffffff' : '#12151c';
+      ctx.fillRect(x + w - 11 + col * 4, y + 1 + row * 4, 4, 4);
+    }
+  }
+  // Knob
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(x + filled - h / 2, y + h / 2, 3.2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// The message card: dims the field, then shows the lines of text on a rounded card.
+// The first line is big. The last line ("Tap to ...") gently pulses.
+function drawMessage(text, accent) {
+  ctx.fillStyle = 'rgba(11,18,32,0.72)';
+  ctx.fillRect(0, 0, WORLD_W, FIELD_H);
+
+  const gap = 32;
+  const cardW = 316;
+  const cardH = text.length * gap + 54;
+  const cardX = (WORLD_W - cardW) / 2;
+  const cardY = FIELD_H / 2 - cardH / 2;
+
+  // Card with a coloured edge and a strip of chequered flag along its top
+  ctx.fillStyle = '#121c36';
+  roundedRect(ctx, cardX, cardY, cardW, cardH, 18);
+  ctx.fill();
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 2;
+  roundedRect(ctx, cardX, cardY, cardW, cardH, 18);
+  ctx.stroke();
+  for (let col = 0; col < 28; col++) {
+    for (let row = 0; row < 2; row++) {
+      ctx.fillStyle = (row + col) % 2 === 0 ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.08)';
+      ctx.fillRect(cardX + 18 + col * 10, cardY + 12 + row * 5, 10, 5);
+    }
+  }
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const top = cardY + 54;
+  for (let i = 0; i < text.length; i++) {
+    const isTitle = i === 0;
+    const isLast = i === text.length - 1;
+    ctx.font = isTitle ? '800 30px system-ui, sans-serif' : (isLast ? '700 17px system-ui, sans-serif' : '500 16px system-ui, sans-serif');
+    ctx.fillStyle = isTitle ? accent : '#ffffff';
+    if (isLast) ctx.globalAlpha = 0.65 + 0.35 * Math.sin(clock * 5);       // gentle pulse
+    ctx.fillText(text[i], WORLD_W / 2, top + i * gap + (isTitle ? 0 : 6));
+    ctx.globalAlpha = 1;
+  }
 }
 
 // The finger strip at the bottom
 function drawControlZone() {
   ctx.fillStyle = '#0e1730';
   ctx.fillRect(0, FIELD_H, WORLD_W, CONTROL_ZONE);
-  ctx.fillStyle = 'rgba(255,255,255,0.12)';
-  ctx.fillRect(0, FIELD_H, WORLD_W, 1);
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';      // soft lighter band at the top of the strip
+  ctx.fillRect(0, FIELD_H, WORLD_W, 26);
+  ctx.fillStyle = 'rgba(77,212,172,0.55)';       // thin green edge line
+  ctx.fillRect(0, FIELD_H, WORLD_W, 2);
 
-  // Small marker showing where your car is
-  ctx.fillStyle = 'rgba(77,212,172,0.35)';
-  ctx.beginPath();
-  ctx.arc(carX, FIELD_H + CONTROL_ZONE / 2 - 6, 20, 0, Math.PI * 2);
+  // A rail for the marker to slide along
+  const railY = FIELD_H + CONTROL_ZONE / 2 - 6;
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  roundedRect(ctx, ROAD_X, railY - 3, ROAD_W, 6, 3);
   ctx.fill();
 
-  ctx.fillStyle = 'rgba(255,255,255,0.45)';
-  ctx.font = '500 13px system-ui, sans-serif';
+  // Marker showing where your car is: a soft halo, a ring and a bright middle
+  ctx.fillStyle = 'rgba(77,212,172,0.22)';
+  ctx.beginPath();
+  ctx.arc(carX, railY, 22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(77,212,172,0.55)';
+  ctx.beginPath();
+  ctx.arc(carX, railY, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#d9fff3';
+  ctx.beginPath();
+  ctx.arc(carX, railY, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '600 13px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('◀  slide here  ▶', WORLD_W / 2, WORLD_H - 14);
@@ -421,6 +1308,7 @@ function resize() {
   scale = Math.min(screenW / WORLD_W, screenH / WORLD_H);
   offX = (screenW - WORLD_W * scale) / 2;
   offY = (screenH - WORLD_H * scale) / 2;
+  if (scale > 0) buildSprites();                 // repaint the ready-made pictures at the new size
 }
 
 // ---------- Input: slide to steer ----------
@@ -463,7 +1351,7 @@ function loop(time) {
   const dt = Math.min((time - lastTime) / 1000, 0.05);
   lastTime = time;
   update(dt);
-  draw();
+  if (roadTile) draw();                          // (nothing to draw until the pictures are built)
   requestAnimationFrame(loop);
 }
 

@@ -34,8 +34,8 @@
     justify-content: space-between;
     gap: 12px;
     padding: 8px 12px 12px;
-    background: #0e1730;
-    border-top: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(#131e3d, #0c1428);
+    border-top: 1px solid rgba(255,255,255,0.10);
   }
   .pad {
     display: grid;
@@ -43,22 +43,55 @@
     grid-template-rows: 46px 46px;
     gap: 6px;
   }
+  /* Each button has a soft top-to-bottom shade, a thin highlight on top and a dark "lip" below,
+     so it looks like a raised key */
   #controls button {
     border: 0;
     border-radius: 12px;
-    background: #1c2742;
+    background: linear-gradient(#2b3a63, #1c2742);
     color: #ffffff;
     font-size: 15px;
     font-weight: 700;
     font-family: inherit;
+    letter-spacing: 0.3px;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.45);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 3px 0 rgba(0,0,0,0.38);
     touch-action: none;
   }
-  #controls button.down { background: #34467a; }
+  /* A pressed button sinks a little and lights up */
+  #controls button.down {
+    filter: brightness(1.45);
+    transform: translateY(2px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 1px 0 rgba(0,0,0,0.38);
+  }
   #btnJump  { grid-column: 1 / 3; }
-  #btnPunch { background: #2a6f5c; }
-  #btnKick  { background: #2a6f5c; }
-  #btnFire  { background: #8a5a1f; }
+  /* Action buttons each have their own colour ("#controls" in front makes these win over the plain button colour above) */
+  #controls #btnPunch { background: linear-gradient(#3c9e82, #2a6f5c); }
+  #controls #btnKick  { background: linear-gradient(#3c9e82, #2a6f5c); }
+  #controls #btnBlock { background: linear-gradient(#4a72c4, #2f4b8c); }
+  #controls #btnFire  { background: linear-gradient(#cf8a34, #8a5a1f); }
   #btnFire.wait { opacity: 0.45; }
+
+  /* Sound on/off button. It sits in the top right corner of the screen, outside the arena.
+     (If the arena fills the whole screen, the game moves it to just under the timer instead.) */
+  #sound {
+    position: fixed;
+    top: calc(6px + env(safe-area-inset-top, 0px));
+    right: calc(6px + env(safe-area-inset-right, 0px));
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.10);
+    color: #ffffff;
+    font-size: 17px;
+    line-height: 36px;
+    font-family: inherit;
+    touch-action: manipulation;
+  }
+  #sound.off { opacity: .45; }
+  #sound.middle { right: auto; }
 </style>
 </head>
 <body>
@@ -78,6 +111,7 @@
     </div>
   </div>
 </div>
+<button id="sound" aria-label="Sound on or off"></button>
 
 <script>
 // =====================================================
@@ -89,6 +123,8 @@
 // Turn the phone sideways for a bigger view.
 // Keyboard (for laptop testing): A/D or arrows move, W or Up = jump,
 //          J = punch, K = kick, L = block, I = fire, Space = start
+// Sound: all sounds are made by code. The speaker button (top right) turns them on or off.
+// Looks: every opponent has their own colours and headgear, and the arena changes every 2 opponents.
 // =====================================================
 
 // ---------- Settings (change these to experiment) ----------
@@ -101,6 +137,10 @@ const JUMP_SPEED = 520, GRAVITY = 1500;
 const BLOCK_SHARE = 0.2;              // share of damage that gets through a block
 const STUN_TIME = 0.3;                // seconds a fighter is stunned after being hit, or after being blocked
 const FIRE_RECHARGE = 3;              // seconds before Fire can be used again
+const SOUND_VOLUME = 0.25;            // 0 = silent, 1 = very loud
+const MAX_PARTICLES = 150;            // most little stars/dots/confetti on screen at once (keeps cheap phones fast)
+const POSE_SPEED = 28;                // how quickly arms and legs glide to a new pose (higher = snappier). Looks only.
+const SHAKE_PIXELS = 4;               // how far the picture shakes on a heavy hit (0 = no shake)
 
 // Each attack: how long it takes, when it can hit, how far it reaches, how much it hurts
 const ATTACKS = {
@@ -127,11 +167,197 @@ const LEVELS = [
   { name: 'Champion', color: '#e8ecf5', hp: 140, power: 1.20, speed: 180, think: 0.24, aggro: 0.75, block: 0.45, fire: 0.55 }    // 10
 ];
 
+// ---------- Looks (drawing only: these do not change how anyone fights) ----------
+// skin  = face and hand colour       hair = hair (or helmet / crown) colour
+// band  = headband and belt colour   extra = what is on the head
+// bulk  = how thick the body is drawn (1 = normal)
+// One line per opponent, in the same order as LEVELS. A missing line falls back to the first one.
+const PLAYER_LOOK = { skin: '#f2c49b', hair: '#3b2a20', band: '#ffffff', extra: 'spiky', bulk: 1 };
+const LOOKS = [
+  { skin: '#f2c49b', hair: '#6b4226', band: '#ffe066', extra: 'hair',     bulk: 1 },      // 1 Rookie
+  { skin: '#d9a066', hair: '#7a2be0', band: '#2b2d42', extra: 'mohawk',   bulk: 1.1 },    // 2 Brawler
+  { skin: '#f2c49b', hair: '#2b2118', band: '#e85d04', extra: 'ponytail', bulk: 1 },      // 3 Kicker
+  { skin: '#c68642', hair: '#aab4c8', band: '#ffd166', extra: 'helmet',   bulk: 1.1 },    // 4 Guard
+  { skin: '#f2c49b', hair: '#f4d35e', band: '#ffe066', extra: 'spiky',    bulk: 1 },      // 5 Striker
+  { skin: '#d9a066', hair: '#2a2f45', band: '#e63946', extra: 'mask',     bulk: 0.95 },   // 6 Shadow
+  { skin: '#b97a4a', hair: '#2b2118', band: '#7a1f1f', extra: 'bald',     bulk: 1.35 },   // 7 Tank
+  { skin: '#f2c49b', hair: '#1b4332', band: '#1b4332', extra: 'topknot',  bulk: 0.95 },   // 8 Viper
+  { skin: '#e0ac7e', hair: '#f4f4f4', band: '#6a040f', extra: 'beard',    bulk: 1 },      // 9 Master
+  { skin: '#f2c49b', hair: '#e2ac3f', band: '#e2ac3f', extra: 'crown',    bulk: 1.1 }     // 10 Champion
+];
+const OUTLINE = '#141a2e';            // the dark line drawn around body parts
+
 // ---------- Page elements ----------
 const stage  = document.getElementById('stage');
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
 const btnFire = document.getElementById('btnFire');
+
+// ---------- Sound ----------
+// All sounds are made by code (short notes), so there are no sound files to upload.
+// Phones only allow sound after a touch, so the sound engine starts on the first touch.
+// The on/off choice is remembered, and is shared by all the games on this site.
+const btnSound = document.getElementById('sound');
+let audio = null;                // the sound engine (created on first touch)
+let muted = false;
+try { muted = localStorage.getItem('gamesMuted') === '1'; } catch (e) { /* storage blocked: start with sound on */ }
+
+function showSoundButton() {
+  btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
+  btnSound.classList.toggle('off', muted);
+}
+showSoundButton();
+
+function startAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (e) { audio = null; }                                  // no sound support: the game still works
+}
+// Different phones accept different kinds of touch for this, so listen for all of them
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, startAudio, true);
+}
+
+// Play one note.
+//   freq  = pitch in Hz (higher number = higher note)
+//   dur   = length in seconds
+//   type  = 'sine' (soft), 'triangle' (round), 'square' (retro), 'sawtooth' (buzzy)
+//   delay = seconds to wait before it starts (used to build little tunes)
+//   slide = pitch to glide to by the end (optional)
+//   volume = 0 to 1, share of SOUND_VOLUME
+function beep(freq, dur, type = 'sine', delay = 0, slide = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME * volume, t + 0.01);   // quick fade in (no click)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);                   // fade out
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// Play a burst of hiss (for explosions, crashes, whooshes).
+//   dur = length in seconds, tone = how bright it is in Hz (300 = deep boom, 4000 = sharp crack)
+let noiseBuffer = null;
+function noise(dur, tone = 1000, delay = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  if (!noiseBuffer) {                                            // one second of random hiss, made once
+    noiseBuffer = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  const t = audio.currentTime + delay;
+  const src = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const gain = audio.createGain();
+  src.buffer = noiseBuffer;
+  src.loop = true;
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(tone, t);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(60, tone * 0.25), t + dur);
+  gain.gain.setValueAtTime(SOUND_VOLUME * volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(filter).connect(gain).connect(audio.destination);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+}
+
+// Short buzz on Android phones (iPhone does not allow this from a web page)
+function buzz(ms) {
+  if (!muted && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
+}
+
+btnSound.addEventListener('click', () => {
+  muted = !muted;
+  try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {}
+  showSoundButton();
+  startAudio();
+  btnSound.blur();                                               // so the Space key does not press it again
+  if (!muted) setTimeout(() => beep(740, 0.05, 'sine', 0, 0, 0.6), 60);   // small note to confirm sound is on
+});
+
+// Some sounds can happen many times a second (both fighters swinging at once).
+// This says "yes" only if the same sound has not played in the last few milliseconds.
+const lastPlayed = {};
+function notTooSoon(name, gapMs = 70) {
+  const now = performance.now();
+  if (lastPlayed[name] && now - lastPlayed[name] < gapMs) return false;
+  lastPlayed[name] = now;
+  return true;
+}
+
+// The game's sounds: one small function per event
+const sfx = {
+  // Tapping a "Tap to..." screen
+  tap() { beep(520, 0.06, 'triangle', 0, 0, 0.5); },
+  // Punch: a short, bright whoosh
+  punch() { if (notTooSoon('punch')) noise(0.07, 2600, 0, 0.35); },
+  // Kick: a longer, deeper whoosh
+  kick() { if (notTooSoon('kick')) { noise(0.13, 1500, 0, 0.4); beep(240, 0.1, 'sine', 0, 120, 0.2); } },
+  // Fireball leaving the hands: rising buzz plus hiss
+  fire() { if (notTooSoon('fire')) { beep(260, 0.22, 'sawtooth', 0, 700, 0.3); noise(0.22, 1800, 0, 0.35); } },
+  // Two fireballs cancel out
+  fizz() { if (notTooSoon('fizz', 150)) { noise(0.15, 3200, 0, 0.4); beep(900, 0.12, 'sine', 0, 300, 0.3); } },
+  // Jump and landing: quiet
+  jump() { if (notTooSoon('jump')) beep(300, 0.1, 'sine', 0, 520, 0.3); },
+  land() { if (notTooSoon('land')) noise(0.05, 320, 0, 0.3); },
+  // A hit that lands: low thud plus a crack of hiss. Kicks and fireballs sound heavier.
+  hit(heavy) {
+    if (!notTooSoon('hit')) return;
+    beep(heavy ? 120 : 170, heavy ? 0.18 : 0.1, 'sine', 0, 55, 1);
+    noise(heavy ? 0.14 : 0.07, heavy ? 900 : 1500, 0, heavy ? 0.7 : 0.5);
+  },
+  // A blocked hit: metallic tick
+  block() {
+    if (!notTooSoon('block')) return;
+    beep(1500, 0.05, 'square', 0, 0, 0.25);
+    beep(2250, 0.08, 'triangle', 0.01, 0, 0.3);
+  },
+  // "Round 1": two calm beeps
+  round() { beep(523, 0.12, 'triangle', 0, 0, 0.6); beep(523, 0.12, 'triangle', 0.22, 0, 0.6); },
+  // "Fight!": a gong-like note (a low note with two ringing notes on top)
+  fight() {
+    beep(196, 0.8, 'sine', 0, 0, 0.9);
+    beep(294, 0.6, 'triangle', 0, 0, 0.45);
+    beep(415, 0.4, 'sine', 0, 0, 0.25);
+  },
+  // Last five seconds of a round
+  tick() { beep(880, 0.05, 'sine', 0, 0, 0.35); },
+  // Knock out: falling notes, then a low buzz
+  ko() {
+    const notes = [660, 520, 390, 260];
+    for (let i = 0; i < notes.length; i++) beep(notes[i], 0.13, 'triangle', i * 0.1, 0, 0.8);
+    beep(95, 0.35, 'sawtooth', 0.42, 55, 0.45);
+    buzz(35);
+  },
+  // The clock ran out
+  timeUp() { beep(440, 0.18, 'square', 0, 0, 0.35); beep(440, 0.3, 'square', 0.25, 0, 0.35); },
+  // You beat an opponent: short rising tune
+  win() {
+    const notes = [523, 659, 784, 1047];
+    for (let i = 0; i < notes.length; i++) beep(notes[i], 0.16, 'triangle', i * 0.12, 0, 0.8);
+  },
+  // The opponent beat you: short falling tune
+  lose() {
+    const notes = [392, 330, 262, 196];
+    for (let i = 0; i < notes.length; i++) beep(notes[i], 0.22, 'triangle', i * 0.17, 0, 0.7);
+  },
+  // You beat all 10: a longer fanfare with a held last chord
+  champion() {
+    const notes = [523, 523, 523, 659, 784, 659, 784, 1047];
+    const times = [0, 0.14, 0.28, 0.42, 0.6, 0.78, 0.92, 1.1];
+    for (let i = 0; i < notes.length; i++) beep(notes[i], i === notes.length - 1 ? 0.6 : 0.15, 'triangle', times[i], 0, 0.8);
+    beep(659, 0.6, 'sine', 1.1, 0, 0.5);
+    beep(784, 0.6, 'sine', 1.1, 0, 0.5);
+    buzz(40);
+  }
+};
 
 // ---------- Game state ----------
 let screen = 'title';            // 'title' | 'fight' | 'clear' | 'over' | 'won'
@@ -140,11 +366,19 @@ let phaseTimer = 0;
 let level = 1, score = 0, levelStartScore = 0;
 let me = null, foe = null;       // the two fighters
 let fireballs = [];              // { x, h, dir, owner, damage }
-let sparks = [];                 // hit flashes
+let sparks = [];                 // hit flashes: a cartoon star with a word, or a blue ring for a block
 let roundNo = 1, myWins = 0, foeWins = 0;
 let timeLeft = ROUND_TIME;
 let roundText = '';
 let clock = 0;
+
+// Extra state used only for looks (it never changes the fight)
+let particles = [];              // little stars, dots and confetti: { x, y, vx, vy, t, life, size, color, kind, spin }
+let shakeTime = 0;               // seconds of screen shake left
+let shakePower = 0;              // how strong the current shake is, in game units
+let bannerAge = 0;               // seconds since the round message ("Round 1", "K.O.") changed: used for its pop
+let screenAge = 0;               // seconds since the screen changed: used for the pop of the result card
+let lastScreen = 'title';
 
 // What each fighter is trying to do.
 // Held: left, right, block (true or false).
@@ -161,8 +395,62 @@ let foeThink = 0;                // time until the computer makes its next decis
 // Screen fitting
 let dpr = 1, scale = 1, offX = 0, offY = 0, screenW = 0, screenH = 0;
 
+// ---------- Small helpers ----------
+// Make a colour darker (amount below 0) or lighter (amount above 0). amount goes from -1 to 1.
+function shade(hex, amount) {
+  const target = amount < 0 ? 0 : 255;
+  const share = Math.abs(amount);
+  let out = '#';
+  for (let i = 1; i < 7; i += 2) {
+    const part = parseInt(hex.slice(i, i + 2), 16);
+    const mixed = Math.round(part + (target - part) * share);
+    out += mixed.toString(16).padStart(2, '0');
+  }
+  return out;
+}
+
+// A "pop" curve: goes from 0 to 1, overshooting a little on the way (k goes from 0 to 1)
+function popCurve(k) {
+  const back = k - 1;
+  return 1 + 2.7 * back * back * back + 1.7 * back * back;
+}
+
+// Outline of a box with rounded corners (c is the canvas to draw on)
+function roundedRect(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.lineTo(x + w - r, y);
+  c.quadraticCurveTo(x + w, y, x + w, y + r);
+  c.lineTo(x + w, y + h - r);
+  c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  c.lineTo(x + r, y + h);
+  c.quadraticCurveTo(x, y + h, x, y + h - r);
+  c.lineTo(x, y + r);
+  c.quadraticCurveTo(x, y, x + r, y);
+  c.closePath();
+}
+
+// Outline of a star. points = number of spikes, outer/inner = spike tip and dip distances, turn = rotation
+function starPath(c, x, y, points, outer, inner, turn) {
+  c.beginPath();
+  for (let i = 0; i < points * 2; i++) {
+    const r = i % 2 === 0 ? outer : inner;
+    const a = turn + i * Math.PI / points;
+    c.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+  }
+  c.closePath();
+}
+
+// Random numbers that come out the same every time (so the stars and windows of a background
+// do not jump around when it is drawn again after the phone is turned)
+let seed = 1;
+function seededRandom() {
+  seed = (seed * 16807) % 2147483647;
+  return seed / 2147483647;
+}
+
 // ---------- Fighters ----------
-function makeFighter(x, facing, stats, color, name) {
+function makeFighter(x, facing, stats, color, name, look) {
   return {
     x, h: 0, vy: 0,              // h = height above the floor
     facing,                      // 1 = facing right, -1 = facing left
@@ -172,20 +460,40 @@ function makeFighter(x, facing, stats, color, name) {
     timer: 0,                    // time spent in the current attack or hit
     landed: false,               // has the current attack already hit?
     recharge: 0,                 // seconds until Fire is ready again
-    slide: 0                     // being pushed back after a hit
+    slide: 0,                    // being pushed back after a hit
+
+    // Looks only
+    look: look || LOOKS[0],
+    dark: shade(color, -0.3),    // darker suit colour for the arm and leg at the back
+    light: shade(color, 0.35),   // lighter suit colour for the highlight
+    shownHp: stats.hp,           // the pale "trail" on the health bar, which catches up after a hit
+    trailWait: 0,                // seconds before the trail starts to shrink
+    pose: { handF: [16, -70], handB: [8, -66], footF: [12, 0], footB: [-12, 0] }   // where hands and feet are drawn now
   };
+}
+
+// Two fighters that just stand behind the title screen
+const demoMe  = makeFighter(210, 1, PLAYER, '#4dd4ac', 'You', PLAYER_LOOK);
+const demoFoe = makeFighter(WORLD_W - 210, -1, LEVELS[0], LEVELS[0].color, LEVELS[0].name, LOOKS[0]);
+
+// Change the big message in the middle and restart its pop animation
+function setBanner(text) {
+  roundText = text;
+  bannerAge = 0;
 }
 
 function startRound() {
   const def = LEVELS[level - 1];
-  me  = makeFighter(200, 1, PLAYER, '#4dd4ac', 'You');
-  foe = makeFighter(WORLD_W - 200, -1, def, def.color, def.name);
+  me  = makeFighter(200, 1, PLAYER, '#4dd4ac', 'You', PLAYER_LOOK);
+  foe = makeFighter(WORLD_W - 200, -1, def, def.color, def.name, LOOKS[level - 1]);
   fireballs = [];
   sparks = [];
+  particles = [];
   timeLeft = ROUND_TIME;
   phase = 'intro';
   phaseTimer = 1.4;
-  roundText = 'Round ' + roundNo;
+  setBanner('Round ' + roundNo);
+  sfx.round();
   foeThink = 0.5;
   foeInput.left = foeInput.right = foeInput.block = false;
   clearPresses(foeInput);
@@ -199,11 +507,13 @@ function startLevel(n) {
   myWins = 0;
   foeWins = 0;
   screen = 'fight';
+  buildBackground();             // each pair of opponents has its own arena
   startRound();
 }
 
 // Tap or Space: what happens depends on the current screen
 function advance() {
+  sfx.tap();
   if (screen === 'title' || screen === 'won') { score = 0; startLevel(1); }
   else if (screen === 'clear') startLevel(level + 1);
   else if (screen === 'over') { score = levelStartScore; startLevel(level); }   // retry same opponent
@@ -230,6 +540,7 @@ function updateFighter(f, inp, other, dt) {
       if (!f.landed && f.timer >= a.from) {
         f.landed = true;
         fireballs.push({ x: f.x + f.facing * 30, h: 62, dir: f.facing, owner: f, damage: a.damage * f.power });
+        sfx.fire();
       }
     } else if (!f.landed && f.timer >= a.from && f.timer <= a.to) {
       // Does the attack reach the other fighter? (it misses if they have jumped high)
@@ -260,7 +571,7 @@ function updateFighter(f, inp, other, dt) {
       if (onFloor) f.state = dir !== 0 ? 'walk' : 'idle';
 
       // A press is used up as soon as it turns into an action
-      if (onFloor && inp.jump > 0) { f.vy = JUMP_SPEED; f.state = 'jump'; inp.jump = 0; }
+      if (onFloor && inp.jump > 0) { f.vy = JUMP_SPEED; f.state = 'jump'; inp.jump = 0; sfx.jump(); }
       else if (onFloor && inp.punch > 0) { beginAttack(f, 'punch'); clearPresses(inp); }
       else if (onFloor && inp.kick > 0) { beginAttack(f, 'kick'); clearPresses(inp); }
       else if (onFloor && inp.fire > 0 && f.recharge === 0) { beginAttack(f, 'fire'); f.recharge = FIRE_RECHARGE; clearPresses(inp); }
@@ -277,6 +588,9 @@ function updateFighter(f, inp, other, dt) {
       f.h = 0;
       f.vy = 0;
       if (f.state === 'jump') f.state = 'idle';
+      // Landing: a soft thump and a puff of dust
+      sfx.land();
+      addBurst(f.x, GROUND - 2, 5, ['rgba(255,255,255,0.55)'], 'dot', 70);
     }
   }
   f.x = Math.max(30, Math.min(WORLD_W - 30, f.x));
@@ -286,6 +600,9 @@ function beginAttack(f, kind) {
   f.state = kind;
   f.timer = 0;
   f.landed = false;
+  // The "whoosh" of the swing (the fireball makes its own sound when it leaves the hands)
+  if (kind === 'punch') sfx.punch();
+  else if (kind === 'kick') sfx.kick();
 }
 
 // An attack or fireball reaches "target"
@@ -296,9 +613,139 @@ function strike(attacker, target, damage, push) {
   target.hp = Math.max(0, target.hp - dealt);
   target.slide = dir * push * (blocked ? 2 : 5);
   if (!blocked) { target.state = 'hit'; target.timer = 0; }
-  sparks.push({ x: target.x - dir * 14, y: GROUND - 62 - target.h, t: 0, life: 0.25, color: blocked ? '#8fd0ff' : '#f4d35e' });
   if (attacker === me) score += Math.round(dealt * 10);
   if (target.hp <= 0) { target.state = 'ko'; target.timer = 0; }
+
+  // ----- From here on: looks and sound only -----
+  // Which attack was it? Kicks and fireballs are "heavy" (the push value tells them apart).
+  const heavy = push !== ATTACKS.punch.push;
+  let word = 'POW!';
+  if (push === ATTACKS.kick.push) word = 'BAM!';
+  else if (push === ATTACKS.fire.push) word = 'BOOM!';
+  const x = target.x - dir * 14, y = GROUND - 62 - target.h;
+  target.trailWait = 0.35;                         // the pale health trail waits a moment, then shrinks
+
+  if (blocked) {
+    // Blue ring with sparks flying off, and a metallic tick
+    sparks.push({ x, y, t: 0, life: 0.25, color: '#8fd0ff', blocked: true });
+    addBurst(x, y, 5, ['#8fd0ff', '#ffffff'], 'dot', 150);
+    sfx.block();
+  } else {
+    // Cartoon star with a word in it, little stars flying off, a thud, and a shake for heavy hits
+    sparks.push({ x, y, t: 0, life: heavy ? 0.45 : 0.35, color: '#f4d35e', blocked: false,
+                  word, size: heavy ? 27 : 21, turn: Math.random() * 0.6 - 0.3 });
+    addBurst(x, y, heavy ? 9 : 6, ['#f4d35e', '#ffffff', '#ffb347'], 'star', heavy ? 210 : 160);
+    sfx.hit(heavy);
+    if (heavy) addShake(1, 0.16);
+    if (target === me) buzz(heavy ? 15 : 10);
+  }
+  if (target.hp <= 0) {
+    // Knock out: a bigger shake, more stars and the K.O. sound
+    addShake(1.6, 0.3);
+    addBurst(x, y, 14, ['#f4d35e', '#ffffff', '#ff8fab', '#8fd0ff'], 'star', 260);
+    sfx.ko();
+  }
+}
+
+// ---------- Effects: particles and screen shake (looks only) ----------
+// Add one particle, unless there are already too many
+function addParticle(p) {
+  if (particles.length < MAX_PARTICLES) particles.push(p);
+}
+
+// A burst of particles flying out in all directions from one spot
+function addBurst(x, y, count, colors, kind, speed) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const fast = speed * (0.4 + Math.random() * 0.6);
+    addParticle({
+      x, y,
+      vx: Math.cos(angle) * fast,
+      vy: Math.sin(angle) * fast - speed * 0.3,    // a little extra upward
+      t: 0, life: 0.35 + Math.random() * 0.3,
+      size: kind === 'star' ? 3 + Math.random() * 3 : 1.5 + Math.random() * 2,
+      color: colors[i % colors.length],
+      kind, spin: Math.random() * 6
+    });
+  }
+}
+
+// Shake the picture for a moment. power 1 = SHAKE_PIXELS
+function addShake(power, seconds) {
+  shakePower = Math.max(shakePower, power * SHAKE_PIXELS);
+  shakeTime = Math.max(shakeTime, seconds);
+}
+
+// Where a fighter's hands and feet want to be for what it is doing now.
+// (x to the front, y up is negative. These are the same poses the game has always used.)
+function poseFor(f, other) {
+  const pose = { handF: [16, -70], handB: [8, -66], footF: [12, 0], footB: [-12, 0] };
+  if (f.state === 'jump' || f.h > 0) { pose.footF = [12, -16]; pose.footB = [-10, -10]; }
+  else if (f.state === 'punch') { pose.handF = [50, -76]; }
+  else if (f.state === 'kick') { pose.footF = [72, -52]; pose.handF = [10, -74]; pose.handB = [-10, -64]; }
+  else if (f.state === 'fire') { pose.handF = [40, -66]; pose.handB = [36, -58]; }
+  else if (f.state === 'block') { pose.handF = [14, -88]; pose.handB = [10, -80]; }
+  else if (f.state === 'hit') { pose.handF = [-6, -60]; pose.handB = [-14, -58]; }
+  else if (other.state === 'ko' && f.state !== 'ko') { pose.handF = [16, -120]; pose.handB = [-12, -118]; }   // arms up: I won!
+  return pose;
+}
+
+// Glide the hands and feet toward the pose they want, and let the health trail catch up
+const POSE_PARTS = ['handF', 'handB', 'footF', 'footB'];
+function updateLooks(f, other, dt) {
+  const want = poseFor(f, other);
+  const step = 1 - Math.exp(-POSE_SPEED * dt);     // share of the remaining distance covered this frame
+  for (const part of POSE_PARTS) {
+    f.pose[part][0] += (want[part][0] - f.pose[part][0]) * step;
+    f.pose[part][1] += (want[part][1] - f.pose[part][1]) * step;
+  }
+  if (f.shownHp > f.hp) {
+    f.trailWait -= dt;
+    if (f.trailWait <= 0) f.shownHp = Math.max(f.hp, f.shownHp - f.maxHp * 0.6 * dt);
+  } else {
+    f.shownHp = f.hp;
+  }
+}
+
+// Move all the effects forward by dt seconds. This runs on every screen.
+function updateEffects(dt) {
+  bannerAge += dt;
+  if (screen !== lastScreen) { lastScreen = screen; screenAge = 0; }
+  screenAge += dt;
+  shakeTime = Math.max(0, shakeTime - dt);
+  if (shakeTime === 0) shakePower = 0;
+
+  for (const s of sparks) s.t += dt;
+  sparks = sparks.filter(s => s.t < s.life);
+
+  for (const p of particles) {
+    p.t += dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    if (p.kind === 'confetti') p.vx += Math.sin(clock * 5 + p.spin) * 60 * dt;   // flutter from side to side
+    else p.vy += 420 * dt;                                                       // fall back down
+  }
+  particles = particles.filter(p => p.t < p.life);
+
+  // Fireballs leave a few glowing dots behind them
+  for (const b of fireballs) {
+    if (Math.random() < dt * 30) {
+      addParticle({ x: b.x - b.dir * 8, y: GROUND - b.h + Math.random() * 10 - 5, vx: -b.dir * 40, vy: -40,
+                    t: 0, life: 0.3, size: 2 + Math.random() * 2, color: '#ffb347', kind: 'dot', spin: 0 });
+    }
+  }
+
+  // Confetti keeps falling on the "You are the champion!" screen
+  if (screen === 'won' && Math.random() < dt * 40) {
+    const colors = ['#4dd4ac', '#f4d35e', '#ff6b6b', '#5b8def', '#b388eb', '#ffffff'];
+    addParticle({ x: Math.random() * WORLD_W, y: -8, vx: Math.random() * 40 - 20, vy: 70 + Math.random() * 70,
+                  t: 0, life: 4, size: 4 + Math.random() * 3, color: colors[Math.floor(Math.random() * colors.length)],
+                  kind: 'confetti', spin: Math.random() * 6 });
+  }
+
+  // Fighters: glide into their poses
+  if (me) { updateLooks(me, foe, dt); updateLooks(foe, me, dt); }
+  else { updateLooks(demoMe, demoFoe, dt); updateLooks(demoFoe, demoMe, dt); }
 }
 
 // ---------- Computer opponent ----------
@@ -345,14 +792,13 @@ function think() {
 // ---------- Update: move the whole game forward by dt seconds ----------
 function update(dt) {
   clock += dt;
-  for (const s of sparks) s.t += dt;
-  sparks = sparks.filter(s => s.t < s.life);
+  updateEffects(dt);
 
   if (screen !== 'fight') return;
 
   if (phase === 'intro') {
     phaseTimer -= dt;
-    if (phaseTimer < 0.5) roundText = 'Fight!';
+    if (phaseTimer < 0.5 && roundText !== 'Fight!') { setBanner('Fight!'); sfx.fight(); }
     if (phaseTimer <= 0) phase = 'fight';
     return;
   }
@@ -368,7 +814,9 @@ function update(dt) {
   }
 
   // Fighting
+  const secondsBefore = Math.ceil(timeLeft);
   timeLeft = Math.max(0, timeLeft - dt);
+  if (Math.ceil(timeLeft) !== secondsBefore && timeLeft > 0 && timeLeft <= 5) sfx.tick();   // last 5 seconds
   foeThink -= dt;
   if (foeThink <= 0) { think(); foeThink = LEVELS[level - 1].think; }
 
@@ -406,7 +854,14 @@ function update(dt) {
   }
   // Two fireballs that meet cancel each other out
   for (const a of fireballs) for (const b of fireballs) {
-    if (a !== b && a.owner !== b.owner && Math.abs(a.x - b.x) < 18) { a.gone = b.gone = true; }
+    if (a !== b && a.owner !== b.owner && Math.abs(a.x - b.x) < 18) {
+      a.gone = b.gone = true;
+      // A puff of sparks and a fizz where they met (each pair is seen twice here, so only do it once)
+      if (a.owner === me) {
+        addBurst((a.x + b.x) / 2, GROUND - a.h, 10, ['#ffb347', '#fff3c4'], 'dot', 170);
+        sfx.fizz();
+      }
+    }
   }
   fireballs = fireballs.filter(b => !b.gone);
 
@@ -420,8 +875,9 @@ function update(dt) {
 
     if (winner === me) myWins++;
     else if (winner === foe) foeWins++;
-    roundText = (me.hp <= 0 || foe.hp <= 0) ? 'K.O.' : 'Time up';
-    if (winner === null) roundText = 'Draw';
+    setBanner((me.hp <= 0 || foe.hp <= 0) ? 'K.O.' : 'Time up');
+    if (winner === null) setBanner('Draw');
+    if (me.hp > 0 && foe.hp > 0) sfx.timeUp();     // (a knock out already played its own sound)
     phase = 'roundEnd';
     phaseTimer = 2;
     fireballs = [];
@@ -432,24 +888,455 @@ function afterRound() {
   if (myWins >= ROUNDS_TO_WIN) {
     score += 500 * level;
     screen = level === LEVELS.length ? 'won' : 'clear';
+    if (screen === 'won') sfx.champion(); else sfx.win();
+    // A burst of stars to celebrate
+    addBurst(WORLD_W / 2, 110, 24, ['#f4d35e', '#ffffff', '#4dd4ac'], 'star', 280);
   } else if (foeWins >= ROUNDS_TO_WIN) {
     screen = 'over';
+    sfx.lose();
   } else {
     roundNo++;
     startRound();
   }
 }
 
+// ---------- Arena backgrounds ----------
+// The background is a detailed picture, so it is painted ONCE onto a hidden canvas
+// (and again only when the screen size or the opponent changes). Every frame just stamps that picture.
+// It is painted a little bigger than the arena (BG_MARGIN on every side) so a screen shake never shows an edge.
+const BG_MARGIN = 8;
+const bgCanvas = document.createElement('canvas');
+const fireCanvas = document.createElement('canvas');     // the glowing fireball, also painted once
+const FIRE_SIZE = 56;                                    // width of the fireball picture in game units
+
+// Floor: shaded boards with lines that spread toward the viewer, and a bright edge at the back
+function paintFloor(g, topColor, bottomColor) {
+  const boards = g.createLinearGradient(0, GROUND, 0, WORLD_H);
+  boards.addColorStop(0, topColor);
+  boards.addColorStop(1, bottomColor);
+  g.fillStyle = boards;
+  g.fillRect(-BG_MARGIN, GROUND, WORLD_W + BG_MARGIN * 2, WORLD_H - GROUND + BG_MARGIN);
+  g.strokeStyle = 'rgba(0,0,0,0.22)';
+  g.lineWidth = 1.5;
+  for (let x = -128; x <= WORLD_W + 128; x += 64) {
+    const fromMiddle = x - WORLD_W / 2;
+    g.beginPath();
+    g.moveTo(WORLD_W / 2 + fromMiddle * 0.85, GROUND);
+    g.lineTo(WORLD_W / 2 + fromMiddle * 1.3, WORLD_H + BG_MARGIN);
+    g.stroke();
+  }
+  g.fillStyle = 'rgba(255,255,255,0.25)';
+  g.fillRect(-BG_MARGIN, GROUND, WORLD_W + BG_MARGIN * 2, 2);
+}
+
+// Sky (or wall): one colour at the top fading to another at the floor
+function paintSky(g, topColor, bottomColor) {
+  const sky = g.createLinearGradient(0, 0, 0, GROUND);
+  sky.addColorStop(0, topColor);
+  sky.addColorStop(1, bottomColor);
+  g.fillStyle = sky;
+  g.fillRect(-BG_MARGIN, -BG_MARGIN, WORLD_W + BG_MARGIN * 2, GROUND + BG_MARGIN);
+}
+
+// A round light with a soft glow around it (sun, moon, lantern light)
+function paintGlow(g, x, y, radius, color) {
+  const glow = g.createRadialGradient(x, y, 0, x, y, radius);
+  glow.addColorStop(0, color);
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = glow;
+  g.beginPath(); g.arc(x, y, radius, 0, Math.PI * 2); g.fill();
+}
+
+// A paper lantern hanging from the ceiling. "drop" = how far down it hangs.
+function paintLantern(g, x, drop, color) {
+  g.strokeStyle = '#1a1210';
+  g.lineWidth = 1.5;
+  g.beginPath(); g.moveTo(x, -BG_MARGIN); g.lineTo(x, drop); g.stroke();
+  paintGlow(g, x, drop + 18, 46, 'rgba(255,190,90,0.38)');
+  const body = g.createLinearGradient(x - 13, 0, x + 13, 0);
+  body.addColorStop(0, shade(color, -0.25));
+  body.addColorStop(0.45, shade(color, 0.35));
+  body.addColorStop(1, shade(color, -0.35));
+  g.fillStyle = body;
+  g.beginPath(); g.ellipse(x, drop + 18, 13, 16, 0, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = 'rgba(0,0,0,0.25)';
+  g.lineWidth = 1;
+  g.beginPath(); g.ellipse(x, drop + 18, 6, 16, 0, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = '#e2ac3f';
+  g.fillRect(x - 7, drop, 14, 4);
+  g.fillRect(x - 7, drop + 32, 14, 4);
+  g.fillRect(x - 1, drop + 36, 2, 9);              // tassel
+}
+
+// Arena 1 (opponents 1-2): sunset over the hills, with a gate on the hilltop
+function paintSunset(g) {
+  paintSky(g, '#2a2350', '#c96a5a');
+  paintGlow(g, 480, 150, 110, 'rgba(255,217,160,0.55)');
+  g.fillStyle = '#ffd9a0';
+  g.beginPath(); g.arc(480, 150, 34, 0, Math.PI * 2); g.fill();
+  // Thin clouds
+  g.fillStyle = 'rgba(255,205,190,0.22)';
+  for (const [x, y, w] of [[90, 60, 70], [250, 95, 90], [560, 70, 60], [400, 45, 50]]) {
+    g.beginPath(); g.ellipse(x, y, w, 7, 0, 0, Math.PI * 2); g.fill();
+  }
+  // Far hills, then near hills
+  g.fillStyle = '#6a4672';
+  g.beginPath();
+  g.moveTo(-BG_MARGIN, GROUND); g.lineTo(-BG_MARGIN, 185); g.lineTo(70, 172); g.lineTo(200, 138); g.lineTo(330, 180);
+  g.lineTo(470, 148); g.lineTo(600, 176); g.lineTo(WORLD_W + BG_MARGIN, 160); g.lineTo(WORLD_W + BG_MARGIN, GROUND);
+  g.fill();
+  g.fillStyle = '#3a2b55';
+  g.beginPath();
+  g.moveTo(-BG_MARGIN, GROUND); g.lineTo(-BG_MARGIN, 194); g.lineTo(120, 150); g.lineTo(260, 200);
+  g.lineTo(400, 160); g.lineTo(540, 205); g.lineTo(WORLD_W + BG_MARGIN, 168); g.lineTo(WORLD_W + BG_MARGIN, GROUND);
+  g.fill();
+  // Gate on the left hilltop
+  g.fillStyle = '#241a3a';
+  g.fillRect(107, 120, 4, 40);
+  g.fillRect(129, 120, 4, 40);
+  g.fillRect(98, 116, 44, 5);
+  g.fillRect(103, 127, 34, 3);
+  paintFloor(g, '#7a5a44', '#3a2b22');
+}
+
+// Arena 2 (opponents 3-4): inside the dojo, with paper screens and lanterns
+function paintDojo(g) {
+  paintSky(g, '#3b3050', '#2a2238');
+  // Paper screens along the wall
+  for (let x = -40; x < WORLD_W + 40; x += 104) {
+    const paper = g.createLinearGradient(0, 70, 0, GROUND - 18);
+    paper.addColorStop(0, '#e9d3a4');
+    paper.addColorStop(1, '#b98f5c');
+    g.fillStyle = paper;
+    g.fillRect(x, 70, 88, GROUND - 88);
+    g.strokeStyle = '#3a281c';
+    g.lineWidth = 3;
+    g.strokeRect(x, 70, 88, GROUND - 88);
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.moveTo(x + 29, 70); g.lineTo(x + 29, GROUND - 18);
+    g.moveTo(x + 59, 70); g.lineTo(x + 59, GROUND - 18);
+    for (let y = 110; y < GROUND - 20; y += 40) { g.moveTo(x, y); g.lineTo(x + 88, y); }
+    g.stroke();
+  }
+  // Wooden beam along the top and a board along the bottom of the wall
+  g.fillStyle = '#2a1c14';
+  g.fillRect(-BG_MARGIN, 44, WORLD_W + BG_MARGIN * 2, 14);
+  g.fillStyle = '#33241a';
+  g.fillRect(-BG_MARGIN, GROUND - 18, WORLD_W + BG_MARGIN * 2, 18);
+  paintLantern(g, 112, 54, '#d94848');
+  paintLantern(g, 320, 50, '#d94848');
+  paintLantern(g, 528, 54, '#d94848');
+  paintFloor(g, '#a8845a', '#5e4630');
+}
+
+// Arena 3 (opponents 5-6): a rooftop in the city at night
+function paintCity(g) {
+  paintSky(g, '#0b1030', '#4a3478');
+  seed = 7;
+  g.fillStyle = '#ffffff';
+  for (let i = 0; i < 60; i++) {
+    g.globalAlpha = 0.3 + seededRandom() * 0.6;
+    g.fillRect(seededRandom() * WORLD_W, seededRandom() * 150, 1.5, 1.5);
+  }
+  g.globalAlpha = 1;
+  paintGlow(g, 130, 68, 70, 'rgba(243,239,216,0.35)');
+  g.fillStyle = '#f3efd8';
+  g.beginPath(); g.arc(130, 68, 24, 0, Math.PI * 2); g.fill();
+  g.fillStyle = 'rgba(160,160,190,0.35)';
+  g.beginPath(); g.arc(122, 62, 5, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.arc(138, 76, 4, 0, Math.PI * 2); g.fill();
+  // Far buildings (plain), then near buildings (with lit windows)
+  g.fillStyle = '#272d5a';
+  for (let x = -BG_MARGIN; x < WORLD_W + BG_MARGIN; ) {
+    const w = 30 + seededRandom() * 30, h = 70 + seededRandom() * 80;
+    g.fillRect(x, GROUND - h, w, h);
+    x += w + 4;
+  }
+  for (let x = -BG_MARGIN; x < WORLD_W + BG_MARGIN; ) {
+    const w = 44 + seededRandom() * 36, h = 40 + seededRandom() * 70;
+    g.fillStyle = '#141a38';
+    g.fillRect(x, GROUND - h, w, h);
+    g.fillStyle = '#ffd36b';
+    for (let wy = GROUND - h + 8; wy < GROUND - 10; wy += 12) {
+      for (let wx = x + 6; wx < x + w - 8; wx += 10) {
+        if (seededRandom() < 0.45) { g.globalAlpha = 0.5 + seededRandom() * 0.4; g.fillRect(wx, wy, 5, 6); }
+      }
+    }
+    g.globalAlpha = 1;
+    x += w + 3;
+  }
+  paintFloor(g, '#565e80', '#2a2f48');
+}
+
+// Arena 4 (opponents 7-8): snowy mountains at dawn
+function paintPeaks(g) {
+  paintSky(g, '#26386b', '#f2b59c');
+  // One mountain with a snow cap. x = middle, w = half width, top = height of the peak
+  const mountain = (x, w, top, color) => {
+    const h = GROUND - top;
+    g.fillStyle = color;
+    g.beginPath(); g.moveTo(x - w, GROUND); g.lineTo(x, top); g.lineTo(x + w, GROUND); g.fill();
+    g.fillStyle = '#f4f7ff';
+    g.beginPath();
+    g.moveTo(x, top);
+    g.lineTo(x - w * 0.3, top + h * 0.3);
+    g.lineTo(x - w * 0.12, top + h * 0.22);
+    g.lineTo(x, top + h * 0.32);
+    g.lineTo(x + w * 0.14, top + h * 0.2);
+    g.lineTo(x + w * 0.3, top + h * 0.3);
+    g.fill();
+  };
+  mountain(90, 150, 80, '#7384b5');
+  mountain(360, 190, 55, '#7384b5');
+  mountain(600, 140, 95, '#7384b5');
+  mountain(220, 150, 120, '#4a5a90');
+  mountain(500, 160, 110, '#4a5a90');
+  // A row of pine trees in front
+  seed = 11;
+  g.fillStyle = '#1f2d4a';
+  for (let x = -BG_MARGIN; x < WORLD_W + BG_MARGIN; x += 18 + seededRandom() * 14) {
+    const h = 22 + seededRandom() * 22;
+    g.beginPath(); g.moveTo(x - 8, GROUND); g.lineTo(x, GROUND - h); g.lineTo(x + 8, GROUND); g.fill();
+  }
+  // Snowflakes
+  g.fillStyle = '#ffffff';
+  for (let i = 0; i < 50; i++) {
+    g.globalAlpha = 0.35 + seededRandom() * 0.5;
+    g.beginPath(); g.arc(seededRandom() * WORLD_W, seededRandom() * GROUND, 1 + seededRandom(), 0, Math.PI * 2); g.fill();
+  }
+  g.globalAlpha = 1;
+  paintFloor(g, '#a9b9d4', '#5d6c8c');
+}
+
+// Arena 5 (opponents 9-10): the champion's hall, with curtains, pillars and spotlights
+function paintHall(g) {
+  paintSky(g, '#3a1026', '#1c0a18');
+  // Curtain folds
+  for (let x = -BG_MARGIN, i = 0; x < WORLD_W + BG_MARGIN; x += 32, i++) {
+    g.fillStyle = i % 2 === 0 ? '#7a1730' : '#5c1026';
+    g.fillRect(x, -BG_MARGIN, 32, GROUND - 2);
+  }
+  // Darker toward the floor, so the fighters stand out
+  const dim = g.createLinearGradient(0, 60, 0, GROUND);
+  dim.addColorStop(0, 'rgba(20,6,20,0)');
+  dim.addColorStop(1, 'rgba(20,6,20,0.7)');
+  g.fillStyle = dim;
+  g.fillRect(-BG_MARGIN, 60, WORLD_W + BG_MARGIN * 2, GROUND - 60);
+  // Gold trim along the top
+  g.fillStyle = '#e2ac3f';
+  g.fillRect(-BG_MARGIN, -BG_MARGIN, WORLD_W + BG_MARGIN * 2, BG_MARGIN + 14);
+  for (let x = 0; x <= WORLD_W; x += 32) { g.beginPath(); g.arc(x, 14, 9, 0, Math.PI); g.fill(); }
+  // A big star emblem in the middle
+  g.fillStyle = 'rgba(226,172,63,0.5)';
+  starPath(g, WORLD_W / 2, 118, 5, 40, 17, -Math.PI / 2);
+  g.fill();
+  // Pillars
+  for (const x of [46, WORLD_W - 72]) {
+    const pillar = g.createLinearGradient(x, 0, x + 26, 0);
+    pillar.addColorStop(0, '#8a6424');
+    pillar.addColorStop(0.4, '#f0cc7a');
+    pillar.addColorStop(1, '#6e4e1a');
+    g.fillStyle = pillar;
+    g.fillRect(x, 14, 26, GROUND - 14);
+    g.fillStyle = '#5a3f14';
+    g.fillRect(x - 4, GROUND - 10, 34, 10);
+    g.fillRect(x - 4, 14, 34, 8);
+  }
+  // Spotlights
+  g.fillStyle = 'rgba(255,240,200,0.07)';
+  g.beginPath(); g.moveTo(190, 0); g.lineTo(110, GROUND); g.lineTo(330, GROUND); g.fill();
+  g.beginPath(); g.moveTo(450, 0); g.lineTo(310, GROUND); g.lineTo(530, GROUND); g.fill();
+  paintLantern(g, 150, 52, '#e2ac3f');
+  paintLantern(g, 490, 52, '#e2ac3f');
+  paintFloor(g, '#6a3a56', '#2a1626');
+}
+
+// The arenas in order: each one is used for two opponents
+const ARENAS = [paintSunset, paintDojo, paintCity, paintPeaks, paintHall];
+
+// Paint the arena for the current opponent onto the hidden canvas, at the sharpness of this screen
+function buildBackground() {
+  const pixels = Math.max(0.01, scale * dpr);      // screen pixels for one game unit
+  bgCanvas.width  = Math.max(1, Math.round((WORLD_W + BG_MARGIN * 2) * pixels));
+  bgCanvas.height = Math.max(1, Math.round((WORLD_H + BG_MARGIN * 2) * pixels));
+  const g = bgCanvas.getContext('2d');
+  g.setTransform(pixels, 0, 0, pixels, BG_MARGIN * pixels, BG_MARGIN * pixels);
+  const paint = ARENAS[Math.floor((level - 1) / 2) % ARENAS.length];
+  paint(g);
+}
+
+// Paint the glowing fireball once (a soft orange glow with a bright middle)
+function buildFireball() {
+  const pixels = Math.max(0.01, scale * dpr);
+  fireCanvas.width = fireCanvas.height = Math.max(1, Math.round(FIRE_SIZE * pixels));
+  const g = fireCanvas.getContext('2d');
+  g.setTransform(pixels, 0, 0, pixels, 0, 0);
+  const mid = FIRE_SIZE / 2;
+  paintGlow(g, mid, mid, mid, 'rgba(255,150,50,0.6)');
+  g.fillStyle = '#ffb347';
+  g.beginPath(); g.arc(mid, mid, 11, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#ffd98a';
+  g.beginPath(); g.arc(mid, mid, 8, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#fff3c4';
+  g.beginPath(); g.arc(mid, mid, 5, 0, Math.PI * 2); g.fill();
+}
+
+// Health bar colours (top-to-bottom shades). Made once and reused every frame.
+const barGreen = ctx.createLinearGradient(0, 16, 0, 30);
+barGreen.addColorStop(0, '#8ff0cf');
+barGreen.addColorStop(0.5, '#4dd4ac');
+barGreen.addColorStop(1, '#2a9f7c');
+const barRed = ctx.createLinearGradient(0, 16, 0, 30);
+barRed.addColorStop(0, '#ffb0a8');
+barRed.addColorStop(0.5, '#ff6b6b');
+barRed.addColorStop(1, '#c9403f');
+
 // ---------- Drawing ----------
-// One fighter as a simple figure. Everything is drawn facing right, then flipped if needed.
+// One arm or leg: from "a" through the elbow/knee "mid" to "b", with a dark outline around it
+function drawLimb(a, mid, b, width, color) {
+  ctx.beginPath();
+  ctx.moveTo(a[0], a[1]);
+  ctx.lineTo(mid[0], mid[1]);
+  ctx.lineTo(b[0], b[1]);
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = width + 4;
+  ctx.stroke();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.stroke();
+}
+
+// A filled circle with a dark outline (hands, hair knots)
+function drawBall(x, y, r, color) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+// The head: face, hair or headgear, headband with flying tails, eye and mouth.
+// (hx, hy) is the middle of the head. Drawn facing right.
+function drawHead(f, hx, hy) {
+  const look = f.look;
+  const wave = Math.sin(clock * 9 + f.x * 0.05) * 3;
+  const hurt = f.state === 'hit' || f.state === 'ko';
+  const attacking = f.state === 'punch' || f.state === 'kick' || f.state === 'fire';
+  ctx.lineCap = 'round';
+
+  // Headband tails flying behind the head
+  ctx.strokeStyle = look.band;
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(hx - 10, hy - 7); ctx.quadraticCurveTo(hx - 19, hy - 11 + wave, hx - 27, hy - 4 - wave); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(hx - 10, hy - 7); ctx.quadraticCurveTo(hx - 18, hy - 2 - wave, hx - 24, hy + 5 + wave); ctx.stroke();
+
+  // Ponytail (behind the head)
+  if (look.extra === 'ponytail') {
+    ctx.strokeStyle = look.hair;
+    ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.moveTo(hx - 10, hy - 2); ctx.quadraticCurveTo(hx - 22, hy + 2, hx - 20 + wave, hy + 16); ctx.stroke();
+  }
+
+  // Face
+  ctx.beginPath(); ctx.arc(hx, hy, 13, 0, Math.PI * 2);
+  ctx.fillStyle = look.skin; ctx.fill();
+  ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2; ctx.stroke();
+
+  // Hair: a cap over the top of the head (some fighters have none)
+  const hairy = ['hair', 'spiky', 'ponytail', 'topknot', 'beard', 'mask'].includes(look.extra);
+  if (hairy) {
+    ctx.fillStyle = look.hair;
+    ctx.beginPath(); ctx.arc(hx, hy, 13, Math.PI + 0.2, Math.PI * 2 - 0.2); ctx.closePath(); ctx.fill();
+  }
+  if (look.extra === 'spiky') {
+    ctx.fillStyle = look.hair;
+    for (const [x, tip] of [[-8, -4], [-1, -2], [6, 1]]) {
+      ctx.beginPath(); ctx.moveTo(hx + x - 4, hy - 10); ctx.lineTo(hx + x + tip, hy - 22); ctx.lineTo(hx + x + 5, hy - 10); ctx.fill();
+    }
+  } else if (look.extra === 'topknot') {
+    drawBall(hx - 2, hy - 16, 5, look.hair);
+  } else if (look.extra === 'mohawk') {
+    ctx.strokeStyle = look.hair;
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'butt';
+    ctx.beginPath(); ctx.arc(hx, hy, 15, Math.PI + 0.5, Math.PI * 2 - 0.3); ctx.stroke();
+    ctx.lineCap = 'round';
+  }
+
+  // Headband across the forehead
+  ctx.strokeStyle = look.band;
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'butt';
+  ctx.beginPath(); ctx.moveTo(hx - 11, hy - 7); ctx.lineTo(hx + 11, hy - 7); ctx.stroke();
+  ctx.lineCap = 'round';
+
+  // Headgear that sits on top of the headband
+  if (look.extra === 'helmet') {
+    ctx.fillStyle = look.hair;
+    ctx.beginPath(); ctx.arc(hx, hy - 3, 15, Math.PI, Math.PI * 2); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = look.band;
+    ctx.fillRect(hx - 2, hy - 22, 4, 5);
+  } else if (look.extra === 'crown') {
+    ctx.fillStyle = look.hair;
+    ctx.beginPath();
+    ctx.moveTo(hx - 10, hy - 9); ctx.lineTo(hx - 12, hy - 22); ctx.lineTo(hx - 5, hy - 15); ctx.lineTo(hx, hy - 24);
+    ctx.lineTo(hx + 5, hy - 15); ctx.lineTo(hx + 12, hy - 22); ctx.lineTo(hx + 10, hy - 9);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+
+  // Eye: open normally, squeezed shut (like ">") when hurt
+  const ex = hx + 6, ey = hy + 1;
+  if (hurt) {
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.moveTo(ex - 3, ey - 3); ctx.lineTo(ex + 2, ey); ctx.lineTo(ex - 3, ey + 3); ctx.stroke();
+  } else {
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.ellipse(ex, ey, 3.2, 3.8, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = OUTLINE;
+    ctx.beginPath(); ctx.arc(ex + 1.2, ey, 1.8, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Lower face: mask, beard or mouth
+  if (look.extra === 'mask') {
+    ctx.fillStyle = look.hair;
+    ctx.beginPath(); ctx.arc(hx, hy, 13, 0.4, Math.PI - 0.4); ctx.closePath(); ctx.fill();
+  } else {
+    if (look.extra === 'beard') {
+      ctx.fillStyle = look.hair;
+      ctx.beginPath(); ctx.moveTo(hx - 4, hy + 11); ctx.lineTo(hx + 12, hy + 6); ctx.lineTo(hx + 7, hy + 24); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+    }
+    if (hurt || attacking) {
+      // Open mouth: "ooh!" when hurt, a shout when attacking
+      ctx.fillStyle = '#5a1a1a';
+      ctx.beginPath(); ctx.arc(hx + 6, hy + 8, hurt ? 2 : 2.6, 0, Math.PI * 2); ctx.fill();
+    } else {
+      // Small smile
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(hx + 5, hy + 5, 4, 0.5, 1.9); ctx.stroke();
+    }
+  }
+}
+
+// One fighter. Everything is drawn facing right, then flipped if needed.
 function drawFighter(f) {
   const floor = GROUND - f.h;
+  const look = f.look;
+  const bulk = look.bulk;
   ctx.save();
   ctx.translate(f.x, floor);
 
-  // Shadow on the floor
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
-  ctx.beginPath(); ctx.ellipse(0, f.h, 26, 6, 0, 0, Math.PI * 2); ctx.fill();
+  // Shadow on the floor (it shrinks while the fighter is in the air)
+  const shadow = 1 - Math.min(0.45, f.h / 200);
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
+  ctx.beginPath(); ctx.ellipse(0, f.h, 28 * shadow, 6 * shadow, 0, 0, Math.PI * 2); ctx.fill();
 
   ctx.scale(f.facing, 1);
   if (f.state === 'ko') {
@@ -461,83 +1348,224 @@ function drawFighter(f) {
     ctx.rotate(-0.18);
   }
 
-  // Body points (x to the front, y up is negative)
-  const hip = [0, -46], neck = [0, -84];
-  let handF = [16, -70], handB = [8, -66];        // front and back hand
-  let footF = [12, 0], footB = [-12, 0];          // front and back foot
-  const swing = Math.sin(clock * 12) * 10;
-
-  if (f.state === 'walk') { footF = [12 + swing, 0]; footB = [-12 - swing, 0]; }
-  else if (f.state === 'jump' || f.h > 0) { footF = [12, -16]; footB = [-10, -10]; }
-  else if (f.state === 'punch') { handF = [50, -76]; }
-  else if (f.state === 'kick') { footF = [72, -52]; handF = [10, -74]; handB = [-10, -64]; }
-  else if (f.state === 'fire') { handF = [40, -66]; handB = [36, -58]; }
-  else if (f.state === 'block') { handF = [14, -88]; handB = [10, -80]; }
-  else if (f.state === 'hit') { handF = [-6, -60]; handB = [-14, -58]; }
-
-  ctx.strokeStyle = f.color;
-  ctx.lineWidth = 9;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  const limb = (a, mid, b) => { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(mid[0], mid[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); };
+  // Body points (x to the front, y up is negative). Hands and feet glide between poses (see poseFor).
+  const standing = f.state === 'idle' || f.state === 'walk' || f.state === 'block';
+  const bob = standing ? Math.sin(clock * 4 + f.x * 0.02) * 1.3 : 0;   // gentle breathing
+  const hip = [0, -46], neck = [0, -84 + bob];
+  const handF = [f.pose.handF[0], f.pose.handF[1] + bob];
+  const handB = [f.pose.handB[0], f.pose.handB[1] + bob];
+  let footF = f.pose.footF, footB = f.pose.footB;
+  if (f.state === 'walk') {
+    const swing = Math.sin(clock * 12) * 10;
+    footF = [footF[0] + swing, footF[1]];
+    footB = [footB[0] - swing, footB[1]];
+  }
   const half = (a, b, bend) => [(a[0] + b[0]) / 2 + bend[0], (a[1] + b[1]) / 2 + bend[1]];   // elbow or knee
 
-  limb(hip, half(hip, footB, [-4, -6]), footB);                 // back leg
-  limb(neck, half(neck, handB, [-6, 8]), handB);                // back arm
-  ctx.lineWidth = 12;
-  ctx.beginPath(); ctx.moveTo(hip[0], hip[1]); ctx.lineTo(neck[0], neck[1]); ctx.stroke();   // body
-  ctx.lineWidth = 9;
-  limb(hip, half(hip, footF, [6, -8]), footF);                  // front leg
-  limb(neck, half(neck, handF, [2, 10]), handF);                // front arm
+  // The suit flashes white for an instant when the fighter is hit
+  const flash = f.state === 'hit' && f.timer < 0.07;
+  const suit = flash ? '#ffffff' : f.color;
+  const suitBack = flash ? '#ffffff' : f.dark;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
 
-  // Head with a headband
-  ctx.fillStyle = f.color;
-  ctx.beginPath(); ctx.arc(2, -98, 13, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#0b1220';
-  ctx.fillRect(-11, -104, 26, 5);
-  ctx.beginPath(); ctx.arc(8, -96, 2, 0, Math.PI * 2); ctx.fill();   // eye
+  // Back leg and back arm (darker, so they look further away)
+  drawLimb(hip, half(hip, footB, [-4, -6]), footB, 9 * bulk, suitBack);
+  ctx.fillStyle = OUTLINE;
+  ctx.beginPath(); ctx.ellipse(footB[0] + 2, footB[1] - 1, 8, 4.5, 0, 0, Math.PI * 2); ctx.fill();   // shoe
+  drawLimb(neck, half(neck, handB, [-6, 8]), handB, 8 * bulk, suitBack);
+  drawBall(handB[0], handB[1], 5, shade(look.skin, -0.15));
 
-  // Shield glow while blocking
+  // Body, with a lighter stripe down the front
+  drawLimb(hip, hip, neck, 15 * bulk, suit);
+  if (!flash) {
+    ctx.strokeStyle = f.light;
+    ctx.lineWidth = 4 * bulk;
+    ctx.beginPath(); ctx.moveTo(4 * bulk, -54); ctx.lineTo(4 * bulk, -80 + bob); ctx.stroke();
+  }
+
+  // Front leg
+  drawLimb(hip, half(hip, footF, [6, -8]), footF, 9 * bulk, suit);
+  ctx.fillStyle = OUTLINE;
+  ctx.beginPath(); ctx.ellipse(footF[0] + 2, footF[1] - 1, 8, 4.5, 0, 0, Math.PI * 2); ctx.fill();   // shoe
+
+  // Belt in the fighter's own accent colour, with a knot hanging down
+  ctx.lineCap = 'butt';
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 8;
+  ctx.beginPath(); ctx.moveTo(-9.5 * bulk, -50); ctx.lineTo(9.5 * bulk, -50); ctx.stroke();
+  ctx.strokeStyle = look.band;
+  ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(-8.5 * bulk, -50); ctx.lineTo(8.5 * bulk, -50); ctx.stroke();
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(4, -48); ctx.lineTo(7, -39); ctx.stroke();
+
+  // Head, then the front arm on top (so a blocking arm covers the face)
+  drawHead(f, 2, -98 + bob);
+  drawLimb(neck, half(neck, handF, [2, 10]), handF, 8 * bulk, suit);
+  drawBall(handF[0], handF[1], 5.5, look.skin);
+
+  // A fireball growing between the hands just before it is thrown
+  if (f.state === 'fire' && !f.landed) {
+    const grow = 16 + 24 * Math.min(1, f.timer / ATTACKS.fire.from);
+    ctx.drawImage(fireCanvas, handF[0] + 6 - grow / 2, handF[1] + 4 - grow / 2, grow, grow);
+  }
+
+  // Shield glow while blocking: a soft wide arc with a bright thin arc on top
   if (f.state === 'block') {
-    ctx.strokeStyle = 'rgba(143,208,255,0.8)';
+    const pulse = 0.65 + Math.sin(clock * 14) * 0.2;
+    ctx.strokeStyle = 'rgba(143,208,255,' + (pulse * 0.35) + ')';
+    ctx.lineWidth = 9;
+    ctx.beginPath(); ctx.arc(8, -62, 46, -1.1, 1.1); ctx.stroke();
+    ctx.strokeStyle = 'rgba(190,230,255,' + pulse + ')';
     ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(8, -62, 46, -1.1, 1.1); ctx.stroke();
   }
   ctx.restore();
+
+  // Dizzy stars circling over a knocked-out fighter's head
+  if (f.state === 'ko' && f.timer > 0.35) {
+    const headX = Math.max(20, Math.min(WORLD_W - 20, f.x - f.facing * 98));
+    for (let i = 0; i < 3; i++) {
+      const a = clock * 4 + i * Math.PI * 2 / 3;
+      starPath(ctx, headX + Math.cos(a) * 14, GROUND - 34 + Math.sin(a) * 4, 5, 4.5, 2, a);
+      ctx.fillStyle = '#f4d35e';
+      ctx.fill();
+    }
+  }
+}
+
+// White text with a dark edge, so it can be read on any background
+function drawLabel(text, x, y) {
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(8,12,26,0.85)';
+  ctx.lineWidth = 3;
+  ctx.strokeText(text, x, y);
+  ctx.fillText(text, x, y);
 }
 
 function drawBars() {
   const barW = 240, barH = 14, y = 16;
   // Your health on the left (empties toward the middle), opponent's on the right
   for (const [f, x, fromRight] of [[me, 20, false], [foe, WORLD_W - 20 - barW, true]]) {
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(x, y, barW, barH);
-    const w = barW * (f.hp / f.maxHp);
-    ctx.fillStyle = f.hp / f.maxHp > 0.3 ? '#4dd4ac' : '#ff6b6b';
-    ctx.fillRect(fromRight ? x + barW - w : x, y, w, barH);
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    // Dark rounded frame with a light rim
+    roundedRect(ctx, x - 3, y - 3, barW + 6, barH + 6, 6);
+    ctx.fillStyle = 'rgba(8,12,26,0.8)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(x, y, barW, barH);
+    ctx.stroke();
+
+    // Pale trail: shows the health that was just lost, then shrinks away
+    const trailW = barW * (f.shownHp / f.maxHp);
+    ctx.fillStyle = '#fff1b8';
+    ctx.fillRect(fromRight ? x + barW - trailW : x, y, trailW, barH);
+
+    // The health itself: green, or red when it is low
+    const w = barW * (f.hp / f.maxHp);
+    const left = fromRight ? x + barW - w : x;
+    ctx.fillStyle = f.hp / f.maxHp > 0.3 ? barGreen : barRed;
+    ctx.fillRect(left, y, w, barH);
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';      // shine along the top
+    ctx.fillRect(left, y + 1.5, w, 3);
   }
   ctx.fillStyle = '#ffffff';
   ctx.textBaseline = 'middle';
-  ctx.font = '600 13px system-ui, sans-serif';
+  ctx.font = '700 13px system-ui, sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText(me.name, 20, y + 26);
+  drawLabel(me.name, 20, y + 27);
   ctx.textAlign = 'right';
-  ctx.fillText(foe.name + '  (' + level + '/' + LEVELS.length + ')', WORLD_W - 20, y + 26);
+  drawLabel(foe.name + '  (' + level + '/' + LEVELS.length + ')', WORLD_W - 20, y + 27);
 
-  // Timer in the middle
+  // Timer in the middle, on a dark pill. It turns red for the last 10 seconds.
+  roundedRect(ctx, WORLD_W / 2 - 25, y - 7, 50, 30, 10);
+  ctx.fillStyle = 'rgba(8,12,26,0.8)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
   ctx.textAlign = 'center';
   ctx.font = '700 22px system-ui, sans-serif';
-  ctx.fillText(Math.ceil(timeLeft), WORLD_W / 2, y + 8);
+  ctx.fillStyle = timeLeft <= 10 ? '#ff8a8a' : '#ffffff';
+  ctx.fillText(Math.ceil(timeLeft), WORLD_W / 2, y + 9);
 
-  // Round wins: small dots under the bars
+  // Round wins: small gold dots under the bars
   for (let i = 0; i < ROUNDS_TO_WIN; i++) {
-    ctx.fillStyle = i < myWins ? '#f4d35e' : 'rgba(255,255,255,0.25)';
-    ctx.beginPath(); ctx.arc(110 + i * 16, y + 26, 5, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = i < foeWins ? '#f4d35e' : 'rgba(255,255,255,0.25)';
-    ctx.beginPath(); ctx.arc(WORLD_W - 190 - i * 16, y + 26, 5, 0, Math.PI * 2); ctx.fill();
+    for (const [won, x] of [[i < myWins, 110 + i * 16], [i < foeWins, WORLD_W - 190 - i * 16]]) {
+      ctx.beginPath(); ctx.arc(x, y + 26, 5, 0, Math.PI * 2);
+      ctx.fillStyle = won ? '#f4d35e' : 'rgba(8,12,26,0.55)';
+      ctx.fill();
+      ctx.strokeStyle = won ? '#ffffff' : 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+  }
+}
+
+// Little stars, dots and confetti
+function drawParticles(confetti) {
+  for (const p of particles) {
+    if ((p.kind === 'confetti') !== confetti) continue;
+    const k = p.t / p.life;
+    ctx.globalAlpha = k < 0.7 ? 1 : (1 - k) / 0.3;       // fade out at the end
+    ctx.fillStyle = p.color;
+    if (p.kind === 'star') {
+      starPath(ctx, p.x, p.y, 5, p.size, p.size * 0.45, p.spin + p.t * 8);
+      ctx.fill();
+    } else if (p.kind === 'confetti') {
+      // A small paper square that seems to turn over as it falls
+      const turn = Math.cos(clock * 6 + p.spin);
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size * turn / 2, p.size, p.size * turn);
+    } else {
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Hit flashes: a cartoon star with a word for a hit, a blue ring with sparks for a block
+function drawSparks() {
+  for (const s of sparks) {
+    const k = s.t / s.life;
+    if (s.blocked) {
+      ctx.globalAlpha = 1 - k;
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(s.x, s.y, 6 + 22 * k, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = i * Math.PI / 3 + 0.4;
+        ctx.moveTo(s.x + Math.cos(a) * (10 + 20 * k), s.y + Math.sin(a) * (10 + 20 * k));
+        ctx.lineTo(s.x + Math.cos(a) * (18 + 26 * k), s.y + Math.sin(a) * (18 + 26 * k));
+      }
+      ctx.stroke();
+    } else {
+      // The star pops out quickly, stays a moment, then fades
+      const size = s.size * (0.4 + 0.6 * popCurve(Math.min(1, k * 3)));
+      ctx.globalAlpha = k < 0.6 ? 1 : (1 - k) / 0.4;
+      ctx.lineJoin = 'round';
+      starPath(ctx, s.x, s.y, 9, size, size * 0.62, s.turn);
+      ctx.fillStyle = s.color;
+      ctx.fill();
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      starPath(ctx, s.x, s.y, 9, size * 0.72, size * 0.45, s.turn);
+      ctx.fillStyle = '#fff8dc';
+      ctx.fill();
+      ctx.font = '900 italic ' + Math.round(size * 0.5) + 'px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3;
+      ctx.strokeText(s.word, s.x, s.y);
+      ctx.fillStyle = '#d6332a';
+      ctx.fillText(s.word, s.x, s.y);
+    }
+    ctx.globalAlpha = 1;
   }
 }
 
@@ -554,75 +1582,83 @@ function draw() {
   ctx.rect(0, 0, WORLD_W, WORLD_H);
   ctx.clip();
 
-  // Arena: evening sky, far hills, floor
-  const sky = ctx.createLinearGradient(0, 0, 0, GROUND);
-  sky.addColorStop(0, '#2a2350');
-  sky.addColorStop(1, '#c96a5a');
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, WORLD_W, GROUND);
-  ctx.fillStyle = '#ffd9a0';
-  ctx.beginPath(); ctx.arc(480, 150, 34, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#3a2b55';
-  ctx.beginPath();
-  ctx.moveTo(0, GROUND); ctx.lineTo(0, 190); ctx.lineTo(120, 150); ctx.lineTo(260, 200);
-  ctx.lineTo(400, 160); ctx.lineTo(540, 205); ctx.lineTo(640, 170); ctx.lineTo(640, GROUND);
-  ctx.fill();
-  ctx.fillStyle = '#4a3a2e';
-  ctx.fillRect(0, GROUND, WORLD_W, WORLD_H - GROUND);
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  for (let x = 0; x < WORLD_W; x += 64) ctx.fillRect(x, GROUND, 2, WORLD_H - GROUND);
-
-  if (me) {
-    drawFighter(foe);
-    drawFighter(me);
-
-    // Fireballs
-    for (const b of fireballs) {
-      const y = GROUND - b.h;
-      ctx.fillStyle = 'rgba(255,160,60,0.45)';
-      ctx.beginPath(); ctx.arc(b.x - b.dir * 10, y, 10, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#ffb347';
-      ctx.beginPath(); ctx.arc(b.x, y, 11, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#fff3c4';
-      ctx.beginPath(); ctx.arc(b.x, y, 5, 0, Math.PI * 2); ctx.fill();
-    }
-    // Hit flashes
-    for (const s of sparks) {
-      const k = s.t / s.life;
-      ctx.globalAlpha = 1 - k;
-      ctx.strokeStyle = s.color;
-      ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.arc(s.x, s.y, 6 + 22 * k, 0, Math.PI * 2); ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-    drawBars();
+  // Screen shake: the arena and fighters jump a few pixels for a moment (the health bars stay still)
+  ctx.save();
+  if (shakeTime > 0) {
+    ctx.translate((Math.random() * 2 - 1) * shakePower, (Math.random() * 2 - 1) * shakePower);
   }
 
-  // Round messages ("Round 1", "Fight!", "K.O.")
+  // Arena: stamp the picture that was painted earlier
+  ctx.drawImage(bgCanvas, -BG_MARGIN, -BG_MARGIN, WORLD_W + BG_MARGIN * 2, WORLD_H + BG_MARGIN * 2);
+
+  // Fighters (before the first game, two fighters just stand there behind the title)
+  drawFighter(foe || demoFoe);
+  drawFighter(me || demoMe);
+
+  // Fireballs: the glowing picture, flickering a little in size
+  for (const b of fireballs) {
+    const size = FIRE_SIZE * (0.9 + Math.sin(clock * 30 + b.x) * 0.1);
+    ctx.drawImage(fireCanvas, b.x - size / 2, GROUND - b.h - size / 2, size, size);
+  }
+  drawParticles(false);
+  drawSparks();
+  ctx.restore();                                   // end of the shaken part
+
+  if (me) drawBars();
+
+  // Round messages ("Round 1", "Fight!", "K.O."): they pop in, with a dark edge
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   if (screen === 'fight' && phase !== 'fight') {
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '700 40px system-ui, sans-serif';
-    ctx.fillText(roundText, WORLD_W / 2, 120);
+    const size = 0.4 + 0.6 * popCurve(Math.min(1, bannerAge / 0.25));
+    ctx.save();
+    ctx.translate(WORLD_W / 2, 120);
+    ctx.scale(size, size);
+    ctx.font = '800 44px system-ui, sans-serif';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#0b1220';
+    ctx.lineWidth = 9;
+    ctx.strokeText(roundText, 0, 0);
+    ctx.fillStyle = roundText === 'K.O.' ? '#ff7b6b' : (roundText === 'Fight!' ? '#f4d35e' : '#ffffff');
+    ctx.fillText(roundText, 0, 0);
+    ctx.restore();
   }
 
   // Start and result screens
-  let text = null;
+  let text = null, titleColor = '#f4d35e';
   if (screen === 'title')      text = ['Duel Fighters', 'Win 2 rounds to beat each of the 10 opponents', 'Tap to start'];
-  else if (screen === 'clear') text = ['You beat ' + LEVELS[level - 1].name + '!', 'Next: ' + LEVELS[level].name, 'Tap to continue'];
+  else if (screen === 'clear') { text = ['You beat ' + LEVELS[level - 1].name + '!', 'Next: ' + LEVELS[level].name, 'Tap to continue']; titleColor = '#4dd4ac'; }
   else if (screen === 'won')   text = ['You are the champion!', 'Score ' + score, 'Tap to play again'];
-  else if (screen === 'over')  text = [LEVELS[level - 1].name + ' wins', 'Tap to try again'];
+  else if (screen === 'over')  { text = [LEVELS[level - 1].name + ' wins', 'Tap to try again']; titleColor = '#ff8a8a'; }
   if (text) {
-    ctx.fillStyle = 'rgba(11,18,32,0.8)';
+    // Dim the arena, then show a card that pops in
+    ctx.fillStyle = 'rgba(11,18,32,0.62)';
     ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-    ctx.fillStyle = '#ffffff';
+    drawParticles(true);                           // confetti falls behind the card
+    if (screen !== 'title') drawParticles(false);  // celebration stars
+
     const gap = 34;
-    const top = WORLD_H / 2 - (text.length - 1) * gap / 2;
+    const cardW = 470, cardH = text.length * gap + 34;
+    const size = 0.5 + 0.5 * popCurve(Math.min(1, screenAge / 0.3));
+    ctx.save();
+    ctx.translate(WORLD_W / 2, WORLD_H / 2);
+    ctx.scale(size, size);
+    roundedRect(ctx, -cardW / 2, -cardH / 2, cardW, cardH, 18);
+    ctx.fillStyle = 'rgba(14,23,48,0.92)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    const top = -(text.length - 1) * gap / 2;
     for (let i = 0; i < text.length; i++) {
-      ctx.font = i === 0 ? '700 30px system-ui, sans-serif' : '500 17px system-ui, sans-serif';
-      ctx.fillText(text[i], WORLD_W / 2, top + i * gap);
+      const last = i === text.length - 1;
+      ctx.font = i === 0 ? '800 30px system-ui, sans-serif' : (last ? '700 17px system-ui, sans-serif' : '500 17px system-ui, sans-serif');
+      ctx.fillStyle = i === 0 ? titleColor : '#ffffff';
+      if (last) ctx.globalAlpha = 0.78 + 0.22 * Math.sin(clock * 5);    // the "Tap to..." line pulses gently
+      ctx.fillText(text[i], 0, top + i * gap);
+      ctx.globalAlpha = 1;
     }
+    ctx.restore();
   }
   ctx.restore();
 
@@ -650,6 +1686,27 @@ function resize() {
   scale = Math.min(screenW / WORLD_W, screenH / WORLD_H);
   offX = (screenW - WORLD_W * scale) / 2;
   offY = (screenH - WORLD_H * scale) / 2;
+
+  // The pre-painted pictures depend on the screen size, so paint them again
+  buildBackground();
+  buildFireball();
+  placeSoundButton();
+}
+
+// The sound button lives in the top right corner, in the empty strip beside (or above) the arena.
+// If the arena fills the whole screen there is no empty strip, so it goes just under the timer instead,
+// between the two name labels, where it covers neither the health bars nor the fighters on the floor.
+function placeSoundButton() {
+  const room = 36 + 6 + 4;                         // button size plus its gap from the corner
+  if (offX >= room || offY >= room) {
+    btnSound.classList.remove('middle');
+    btnSound.style.left = '';
+    btnSound.style.top = '';
+  } else {
+    btnSound.classList.add('middle');
+    btnSound.style.left = Math.round(screenW / 2 - 18) + 'px';
+    btnSound.style.top = Math.round(offY + 42 * scale) + 'px';
+  }
 }
 
 // ---------- Input: buttons (several can be held at once) ----------

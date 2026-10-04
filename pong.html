@@ -21,17 +21,39 @@
     user-select: none;
     -webkit-user-select: none;
   }
+  /* Sound on/off button, top right corner (above the computer's paddle, far from your finger) */
+  #sound {
+    position: fixed;
+    top: 6px;
+    right: 8px;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.10);
+    color: #ffffff;
+    font-size: 17px;
+    line-height: 34px;
+    text-align: center;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #sound:active { background: rgba(255,255,255,0.22); }
+  #sound.off { opacity: 0.45; }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
+<button id="sound" aria-label="Sound on or off"></button>
 
 <script>
 // =====================================================
 // PONG - portrait layout for phones
-// You = bottom paddle, Computer = top paddle
+// You = bottom paddle (green), Computer = top paddle (red)
 // Slide your finger in the strip at the bottom of the screen.
 // The paddle sits above the strip, so your finger never covers the game.
+// Sounds are made by code. The speaker button (top right) turns them on or off.
 // =====================================================
 
 // ---------- Settings (change these to experiment) ----------
@@ -46,15 +68,169 @@ const AI_SPEED      = 0.85;   // computer paddle speed (share of screen width pe
                               // lower = easier, higher = harder
 const CONTROL_ZONE  = 120;    // height of the finger strip at the bottom, in pixels
                               // bigger = more room for your finger, smaller = bigger playing field
+const SOUND_VOLUME  = 0.25;   // 0 = silent, 1 = very loud
+
+// Settings for the looks only (they do not change how the game plays)
+const TRAIL_LENGTH  = 10;     // how many "ghost" dots follow the ball
+const MAX_PARTICLES = 150;    // most sparks/confetti pieces alive at once (keeps cheap phones fast)
+const SHAKE_TIME    = 0.3;    // seconds the screen shakes when you lose a point
+const SHAKE_SIZE    = 5;      // how far it shakes, in pixels
+const POP_TIME      = 0.45;   // seconds a score number "pops" bigger after a point
+const COLOR_PLAYER  = '#4dd4ac';
+const COLOR_AI      = '#ff6b6b';
+
+// ---------- Sound ----------
+// All sounds are made by code (short notes), so there are no sound files to upload.
+// Phones only allow sound after a touch, so the sound engine starts on the first touch.
+// The on/off choice is remembered, and is shared by all the games on this site.
+const btnSound = document.getElementById('sound');
+let audio = null;                // the sound engine (created on first touch)
+let muted = false;
+try { muted = localStorage.getItem('gamesMuted') === '1'; } catch (e) { /* storage blocked: start with sound on */ }
+
+function showSoundButton() {
+  btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
+  btnSound.classList.toggle('off', muted);
+}
+showSoundButton();
+
+function startAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (e) { audio = null; }                                  // no sound support: the game still works
+}
+// Different phones accept different kinds of touch for this, so listen for all of them
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, startAudio, true);
+}
+
+// Play one note.
+//   freq  = pitch in Hz (higher number = higher note)
+//   dur   = length in seconds
+//   type  = 'sine' (soft), 'triangle' (round), 'square' (retro), 'sawtooth' (buzzy)
+//   delay = seconds to wait before it starts (used to build little tunes)
+//   slide = pitch to glide to by the end (optional)
+//   volume = 0 to 1, share of SOUND_VOLUME
+function beep(freq, dur, type = 'sine', delay = 0, slide = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME * volume, t + 0.01);   // quick fade in (no click)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);                   // fade out
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// Play a burst of hiss (for explosions, crashes, whooshes).
+//   dur = length in seconds, tone = how bright it is in Hz (300 = deep boom, 4000 = sharp crack)
+let noiseBuffer = null;
+function noise(dur, tone = 1000, delay = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  if (!noiseBuffer) {                                            // one second of random hiss, made once
+    noiseBuffer = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  const t = audio.currentTime + delay;
+  const src = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const gain = audio.createGain();
+  src.buffer = noiseBuffer;
+  src.loop = true;
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(tone, t);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(60, tone * 0.25), t + dur);
+  gain.gain.setValueAtTime(SOUND_VOLUME * volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(filter).connect(gain).connect(audio.destination);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+}
+
+// Short buzz on Android phones (iPhone does not allow this from a web page)
+function buzz(ms) {
+  if (!muted && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
+}
+
+btnSound.addEventListener('click', () => {
+  muted = !muted;
+  try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {}
+  showSoundButton();
+  startAudio();
+  if (!muted) setTimeout(() => beep(740, 0.05, 'sine', 0, 0, 0.6), 60);   // small note to confirm sound is on
+});
+
+// Bounce sounds can happen many times a second, so each one is skipped
+// if the same sound played less than 60 milliseconds ago.
+const lastPlayed = {};
+function notTooSoon(name) {
+  const now = performance.now();
+  if (lastPlayed[name] && now - lastPlayed[name] < 60) return false;
+  lastPlayed[name] = now;
+  return true;
+}
+
+// The sounds used in this game (one small function per game event)
+const sfx = {
+  // Tapping to go back to the start after a game ends
+  tap: () => beep(600, 0.05, 'sine', 0, 0, 0.5),
+  // The ball is launched: a quick rising "whip"
+  serve: () => beep(520, 0.09, 'triangle', 0, 760, 0.7),
+  // Ball bounces off a side wall: quiet and very short
+  wall: () => {
+    if (notTooSoon('wall')) beep(300, 0.04, 'triangle', 0, 0, 0.4);
+  },
+  // Your paddle hits the ball: a bright "pock" and a tiny buzz
+  hitPlayer: () => {
+    if (!notTooSoon('hitPlayer')) return;
+    beep(660, 0.07, 'square', 0, 0, 0.45);
+    beep(990, 0.05, 'sine', 0, 0, 0.3);
+    buzz(12);
+  },
+  // The computer's paddle hits the ball: a lower "pock"
+  hitAi: () => {
+    if (!notTooSoon('hitAi')) return;
+    beep(440, 0.07, 'square', 0, 0, 0.45);
+  },
+  // You scored a point: two happy rising notes
+  pointWon: () => {
+    beep(660, 0.10, 'triangle');
+    beep(880, 0.16, 'triangle', 0.10);
+  },
+  // You lost a point: a soft falling note with a small thud
+  pointLost: () => {
+    beep(330, 0.22, 'triangle', 0, 160, 0.8);
+    noise(0.16, 500, 0, 0.5);
+    buzz(35);
+  },
+  // You won the game: a short rising tune
+  win: () => {
+    [523, 659, 784, 1047].forEach((f, i) => beep(f, 0.18, 'triangle', i * 0.13));
+    beep(1319, 0.30, 'sine', 0.52, 0, 0.7);
+    buzz(40);
+  },
+  // The computer won the game: a short falling tune
+  lose: () => {
+    [392, 330, 262, 196].forEach((f, i) => beep(f, 0.22, 'triangle', i * 0.16, 0, 0.8));
+  },
+};
 
 // ---------- Canvas setup ----------
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 let W = 0, H = 0;             // screen size in CSS pixels
 let fieldH = 0;               // height of the playing field (screen minus the finger strip)
+let dpr = 1;                  // how many real pixels per CSS pixel (2 or 3 on most phones)
 
 function resize() {
-  const dpr = window.devicePixelRatio || 1;   // keep drawing sharp on phone screens
+  dpr = window.devicePixelRatio || 1;         // keep drawing sharp on phone screens
   W = window.innerWidth;
   H = window.innerHeight;
   // On very short screens, shrink the strip so the field keeps most of the space
@@ -63,16 +239,20 @@ function resize() {
   canvas.height = Math.round(H * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   layout();
+  buildSprites();             // the pre-drawn pictures depend on the screen size
 }
 
 // ---------- Game objects ----------
-const player = { x: 0, y: 0, w: 0, score: 0 };
-const ai     = { x: 0, y: 0, w: 0, score: 0 };
+// "flash" and "pop" are only for looks: flash = paddle lights up after a hit,
+// pop = the score number grows for a moment after a point.
+const player = { x: 0, y: 0, w: 0, score: 0, flash: 0, pop: 0 };
+const ai     = { x: 0, y: 0, w: 0, score: 0, flash: 0, pop: 0 };
 const ball   = { x: 0, y: 0, vx: 0, vy: 0 };
 
 let state = 'ready';          // 'ready' | 'playing' | 'over'
 let serveDirection = -1;      // -1 = ball goes up (to computer), 1 = down (to you)
-let message = 'Tap to start';
+let message = 'Tap to start'; // the pulsing "Tap to..." line
+let title = '';               // big line shown above the message when the game is over
 
 // Position paddles for the current screen size
 function layout() {
@@ -101,6 +281,8 @@ function serve() {
   ball.vx = speed * Math.sin(angle);
   ball.vy = speed * Math.cos(angle) * serveDirection;
   state = 'playing';
+  sfx.serve();
+  addRing(ball.x, ball.y, '#ffffff');                 // small ring to show the launch
 }
 
 function newGame() {
@@ -119,6 +301,7 @@ function movePlayer(clientX) {
 }
 
 canvas.addEventListener('pointerdown', (e) => {
+  startAudio();               // phones need a touch before sound is allowed
   movePlayer(e.clientX);
   if (state === 'ready') {
     serve();
@@ -126,6 +309,9 @@ canvas.addEventListener('pointerdown', (e) => {
     newGame();
     state = 'ready';
     message = 'Tap to start';
+    title = '';
+    particles.length = 0;     // clear any confetti still falling
+    sfx.tap();
   }
 });
 
@@ -145,9 +331,13 @@ function update(dt) {
   if (ball.x < BALL_RADIUS) {
     ball.x = BALL_RADIUS;
     ball.vx = Math.abs(ball.vx);
+    sfx.wall();
+    addSparks(0, ball.y, 4, '#9cc8ff', 1, 0);          // a few sparks flying right
   } else if (ball.x > W - BALL_RADIUS) {
     ball.x = W - BALL_RADIUS;
     ball.vx = -Math.abs(ball.vx);
+    sfx.wall();
+    addSparks(W, ball.y, 4, '#9cc8ff', -1, 0);         // a few sparks flying left
   }
 
   // Computer paddle follows the ball, limited by AI_SPEED
@@ -160,6 +350,10 @@ function update(dt) {
   // Paddle collisions
   if (ball.vy > 0 && hitsPaddle(player)) bounce(player, -1);
   if (ball.vy < 0 && hitsPaddle(ai))     bounce(ai, 1);
+
+  // Remember where the ball has been, for the glowing trail
+  trail.push({ x: ball.x, y: ball.y });
+  if (trail.length > TRAIL_LENGTH) trail.shift();
 
   // Scoring: ball left the playing field
   if (ball.y < -BALL_RADIUS * 2) {
@@ -192,101 +386,557 @@ function bounce(p, directionY) {
 
   // Move the ball out of the paddle so it cannot hit twice
   ball.y = directionY < 0 ? p.y - BALL_RADIUS : p.y + PADDLE_HEIGHT + BALL_RADIUS;
+
+  // Looks and sound: the paddle lights up, sparks fly off, a ring spreads out
+  const color = (p === player) ? COLOR_PLAYER : COLOR_AI;
+  p.flash = 1;
+  addSparks(ball.x, ball.y, 10, color, 0, directionY);
+  addRing(ball.x, ball.y, color);
+  if (p === player) sfx.hitPlayer(); else sfx.hitAi();
 }
 
 function pointScored(nextDirection) {
   serveDirection = nextDirection;
+
+  // Looks: the winner's score pops, a "+1" floats up, sparks burst where the ball left.
+  // Losing a point also gives the screen a short shake.
+  const youScored = (nextDirection === 1);
+  const edgeX = Math.max(20, Math.min(W - 20, ball.x));
+  if (youScored) {
+    player.pop = 1;
+    addSparks(edgeX, 0, 16, COLOR_PLAYER, 0, 1);
+    addFloater('+1', W / 2 + 48, fieldH / 2 + 70, COLOR_PLAYER);
+  } else {
+    ai.pop = 1;
+    addSparks(edgeX, fieldH, 16, COLOR_AI, 0, -1);
+    addFloater('+1', W / 2 + 48, fieldH / 2 - 70, COLOR_AI);
+    shakeLeft = SHAKE_TIME;
+  }
+
   resetBall();
   if (player.score >= WIN_SCORE) {
     state = 'over';
-    message = 'You win! Tap to play again';
+    title = 'You win!';
+    message = 'Tap to play again';
+    sfx.win();
+    addConfetti();
   } else if (ai.score >= WIN_SCORE) {
     state = 'over';
-    message = 'Computer wins. Tap to play again';
+    title = 'Computer wins';
+    message = 'Tap to play again';
+    sfx.lose();
   } else {
     state = 'ready';
     message = 'Tap to serve';
+    if (nextDirection === 1) sfx.pointWon(); else sfx.pointLost();   // 1 = you scored
   }
+}
+
+// ---------- Effects (looks only: sparks, confetti, rings, floating text, shake) ----------
+const particles = [];         // sparks and confetti pieces
+const rings = [];             // expanding circles on paddle hits
+const floaters = [];          // floating "+1" texts
+const trail = [];             // the last few ball positions
+let shakeLeft = 0;            // seconds of screen shake still to go
+const CONFETTI_COLORS = ['#4dd4ac', '#ffd166', '#ff6b6b', '#6ea8ff', '#c792ea', '#ffffff'];
+
+// Add one particle, throwing away the oldest one if there are too many
+function addParticle(p) {
+  if (particles.length >= MAX_PARTICLES) particles.shift();
+  particles.push(p);
+}
+
+// A burst of small sparks at (x, y).
+// dirX / dirY push the burst one way (for example dirY = -1 sends it upward).
+function addSparks(x, y, count, color, dirX, dirY) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 60 + Math.random() * 160;
+    addParticle({
+      x: x,
+      y: y,
+      vx: Math.cos(angle) * speed + dirX * 120,
+      vy: Math.sin(angle) * speed + dirY * 120,
+      gravity: 0,
+      size: 2 + Math.random() * 3,
+      color: (i % 3 === 0) ? '#ffffff' : color,
+      life: 0.3 + Math.random() * 0.3,
+      maxLife: 0.6,
+      confetti: false,
+      spin: 0,
+    });
+  }
+}
+
+// Coloured paper pieces falling from the top of the screen (when you win)
+function addConfetti() {
+  for (let i = 0; i < 120; i++) {
+    addParticle({
+      x: Math.random() * W,
+      y: -Math.random() * H * 0.35,
+      vx: (Math.random() - 0.5) * 80,
+      vy: 80 + Math.random() * 160,
+      gravity: 120,
+      size: 5 + Math.random() * 5,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      life: 2.5 + Math.random() * 1.5,
+      maxLife: 4,
+      confetti: true,
+      spin: Math.random() * 6,
+    });
+  }
+}
+
+function addRing(x, y, color) {
+  if (rings.length >= 6) rings.shift();
+  rings.push({ x: x, y: y, color: color, life: 1 });
+}
+
+function addFloater(text, x, y, color) {
+  if (floaters.length >= 4) floaters.shift();
+  floaters.push({ text: text, x: x, y: y, color: color, life: 1 });
+}
+
+// Move the effects forward by dt seconds (runs all the time, even while waiting for a tap)
+function updateEffects(dt) {
+  // Sparks and confetti: move, fall, fade, and remove the finished ones
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.vy += p.gravity * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.spin += dt * 8;
+    p.life -= dt;
+    if (p.life <= 0 || p.y > H + 20) particles.splice(i, 1);
+  }
+
+  // Rings grow and fade in about a third of a second
+  for (let i = rings.length - 1; i >= 0; i--) {
+    rings[i].life -= dt * 3;
+    if (rings[i].life <= 0) rings.splice(i, 1);
+  }
+
+  // Floating texts drift up and fade in about one second
+  for (let i = floaters.length - 1; i >= 0; i--) {
+    floaters[i].life -= dt * 1.1;
+    floaters[i].y -= 34 * dt;
+    if (floaters[i].life <= 0) floaters.splice(i, 1);
+  }
+
+  // Timers count down to zero
+  player.flash = Math.max(0, player.flash - dt * 6);
+  ai.flash     = Math.max(0, ai.flash - dt * 6);
+  player.pop   = Math.max(0, player.pop - dt / POP_TIME);
+  ai.pop       = Math.max(0, ai.pop - dt / POP_TIME);
+  shakeLeft    = Math.max(0, shakeLeft - dt);
+
+  // When the ball is not moving, the trail shrinks away
+  if (state !== 'playing' && trail.length > 0) trail.shift();
+}
+
+// ---------- Pre-drawn pictures ("sprites") ----------
+// Glows, gradients and shadows are slow to draw, so each picture is drawn ONCE
+// onto its own hidden canvas, and then stamped onto the screen every frame (fast).
+// They are rebuilt when the screen size changes.
+const PADDLE_PAD = 12;        // extra room around the paddle picture for its glow
+let bgSprite = null;          // the court: background, stars, centre line
+let stripSprite = null;       // the finger strip at the bottom
+let ballSprite = null;        // the glowing ball
+let trailSprite = null;       // one soft dot of the ball's trail
+let thumbSprite = null;       // the round marker in the finger strip
+let playerSprite = null;      // your paddle
+let aiSprite = null;          // the computer's paddle
+
+// Make a hidden canvas of w x h CSS pixels and let "paint" draw on it
+function makeSprite(w, h, paint) {
+  const c = document.createElement('canvas');
+  c.width  = Math.max(1, Math.ceil(w * dpr));
+  c.height = Math.max(1, Math.ceil(h * dpr));
+  const g = c.getContext('2d');
+  g.scale(dpr, dpr);          // so the sprite is as sharp as the screen
+  paint(g);
+  return { canvas: c, w: w, h: h };
+}
+
+// Stamp a sprite with its centre at (cx, cy). scale 1 = normal size.
+function stamp(sprite, cx, cy, scale = 1) {
+  const w = sprite.w * scale;
+  const h = sprite.h * scale;
+  ctx.drawImage(sprite.canvas, cx - w / 2, cy - h / 2, w, h);
+}
+
+// Trace a rectangle with rounded corners (then call fill() or stroke())
+function roundedRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+function buildSprites() {
+  const stripH = H - fieldH;
+
+  // --- The court ---
+  bgSprite = makeSprite(W, H, (g) => {
+    // Dark navy, a little lighter in the middle
+    const sky = g.createLinearGradient(0, 0, 0, fieldH);
+    sky.addColorStop(0,   '#0d1630');
+    sky.addColorStop(0.5, '#111d3c');
+    sky.addColorStop(1,   '#0d1630');
+    g.fillStyle = sky;
+    g.fillRect(0, 0, W, H);
+
+    // Soft red light at the computer's end, soft green light at your end
+    const redEnd = g.createLinearGradient(0, 0, 0, fieldH * 0.3);
+    redEnd.addColorStop(0, 'rgba(255,107,107,0.16)');
+    redEnd.addColorStop(1, 'rgba(255,107,107,0)');
+    g.fillStyle = redEnd;
+    g.fillRect(0, 0, W, fieldH * 0.3);
+    const greenEnd = g.createLinearGradient(0, fieldH, 0, fieldH * 0.7);
+    greenEnd.addColorStop(0, 'rgba(77,212,172,0.16)');
+    greenEnd.addColorStop(1, 'rgba(77,212,172,0)');
+    g.fillStyle = greenEnd;
+    g.fillRect(0, fieldH * 0.7, W, fieldH * 0.3);
+
+    // A sprinkle of faint stars
+    for (let i = 0; i < 55; i++) {
+      g.fillStyle = 'rgba(255,255,255,' + (0.05 + Math.random() * 0.18).toFixed(2) + ')';
+      g.beginPath();
+      g.arc(Math.random() * W, Math.random() * fieldH, 0.6 + Math.random() * 1.1, 0, Math.PI * 2);
+      g.fill();
+    }
+
+    // Glowing rails down the left and right walls
+    const rail = g.createLinearGradient(0, 0, 0, fieldH);
+    rail.addColorStop(0,   'rgba(255,107,107,0.55)');
+    rail.addColorStop(0.5, 'rgba(130,170,255,0.45)');
+    rail.addColorStop(1,   'rgba(77,212,172,0.55)');
+    g.fillStyle = rail;
+    g.fillRect(0, 0, 3, fieldH);
+    g.fillRect(W - 3, 0, 3, fieldH);
+
+    // Centre line: a wide faint glow with bright rounded dashes on top
+    const midY = fieldH / 2;
+    g.strokeStyle = 'rgba(130,170,255,0.10)';
+    g.lineWidth = 10;
+    g.beginPath();
+    g.moveTo(0, midY);
+    g.lineTo(W, midY);
+    g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,0.34)';
+    g.lineWidth = 3;
+    g.lineCap = 'round';
+    g.setLineDash([10, 12]);
+    g.beginPath();
+    g.moveTo(8, midY);
+    g.lineTo(W - 8, midY);
+    g.stroke();
+    g.setLineDash([]);
+
+    // Centre circle with a dot, like a real court
+    g.fillStyle = '#111d3c';
+    g.beginPath();
+    g.arc(W / 2, midY, 26, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = 'rgba(255,255,255,0.30)';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(W / 2, midY, 26, 0, Math.PI * 2);
+    g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.35)';
+    g.beginPath();
+    g.arc(W / 2, midY, 4, 0, Math.PI * 2);
+    g.fill();
+  });
+
+  // --- The finger strip ---
+  stripSprite = makeSprite(W, stripH, (g) => {
+    // Panel, a little lighter at the top
+    const panel = g.createLinearGradient(0, 0, 0, stripH);
+    panel.addColorStop(0, '#18244a');
+    panel.addColorStop(1, '#0c1430');
+    g.fillStyle = panel;
+    g.fillRect(0, 0, W, stripH);
+
+    // Bright green rim along the top edge (this is the line the ball must not cross)
+    const rim = g.createLinearGradient(0, 0, 0, 8);
+    rim.addColorStop(0, 'rgba(77,212,172,0.35)');
+    rim.addColorStop(1, 'rgba(77,212,172,0)');
+    g.fillStyle = rim;
+    g.fillRect(0, 0, W, 8);
+    g.fillStyle = 'rgba(143,240,210,0.75)';
+    g.fillRect(0, 0, W, 2);
+
+    // A sunken groove that the round marker slides along
+    const cy = stripH / 2;
+    const grooveH = Math.min(30, stripH * 0.3);
+    g.fillStyle = 'rgba(0,0,0,0.30)';
+    roundedRect(g, 12, cy - grooveH / 2, W - 24, grooveH, grooveH / 2);
+    g.fill();
+    g.strokeStyle = 'rgba(255,255,255,0.10)';
+    g.lineWidth = 1;
+    roundedRect(g, 12.5, cy - grooveH / 2 + 0.5, W - 25, grooveH - 1, grooveH / 2);
+    g.stroke();
+
+    // "slide here" with a small arrow on each side
+    const textY = stripH - 16;
+    g.fillStyle = 'rgba(255,255,255,0.55)';
+    g.font = '600 13px system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('slide here', W / 2, textY);
+    g.beginPath();                                  // left arrow
+    g.moveTo(W / 2 - 62, textY);
+    g.lineTo(W / 2 - 52, textY - 6);
+    g.lineTo(W / 2 - 52, textY + 6);
+    g.closePath();
+    g.fill();
+    g.beginPath();                                  // right arrow
+    g.moveTo(W / 2 + 62, textY);
+    g.lineTo(W / 2 + 52, textY - 6);
+    g.lineTo(W / 2 + 52, textY + 6);
+    g.closePath();
+    g.fill();
+  });
+
+  // --- The ball: a soft blue glow with a shiny white ball on top ---
+  const ballSize = (BALL_RADIUS + 12) * 2;
+  ballSprite = makeSprite(ballSize, ballSize, (g) => {
+    const c = ballSize / 2;
+    const glow = g.createRadialGradient(c, c, BALL_RADIUS * 0.6, c, c, c);
+    glow.addColorStop(0, 'rgba(140,200,255,0.60)');
+    glow.addColorStop(1, 'rgba(140,200,255,0)');
+    g.fillStyle = glow;
+    g.fillRect(0, 0, ballSize, ballSize);
+    const body = g.createRadialGradient(c - 3, c - 3, 1, c, c, BALL_RADIUS);
+    body.addColorStop(0,   '#ffffff');
+    body.addColorStop(0.6, '#f2f8ff');
+    body.addColorStop(1,   '#b9d6ff');
+    g.fillStyle = body;
+    g.beginPath();
+    g.arc(c, c, BALL_RADIUS, 0, Math.PI * 2);
+    g.fill();
+  });
+
+  // --- One soft dot of the trail ---
+  const dotSize = BALL_RADIUS * 2 + 4;
+  trailSprite = makeSprite(dotSize, dotSize, (g) => {
+    const c = dotSize / 2;
+    const dot = g.createRadialGradient(c, c, 0, c, c, c);
+    dot.addColorStop(0,   'rgba(190,225,255,0.95)');
+    dot.addColorStop(0.6, 'rgba(140,200,255,0.55)');
+    dot.addColorStop(1,   'rgba(140,200,255,0)');
+    g.fillStyle = dot;
+    g.fillRect(0, 0, dotSize, dotSize);
+  });
+
+  // --- The round marker in the finger strip (shows where the paddle is) ---
+  thumbSprite = makeSprite(64, 64, (g) => {
+    const glow = g.createRadialGradient(32, 32, 14, 32, 32, 32);
+    glow.addColorStop(0, 'rgba(77,212,172,0.40)');
+    glow.addColorStop(1, 'rgba(77,212,172,0)');
+    g.fillStyle = glow;
+    g.fillRect(0, 0, 64, 64);
+    const disc = g.createRadialGradient(27, 25, 2, 32, 32, 22);
+    disc.addColorStop(0, 'rgba(170,250,225,0.75)');
+    disc.addColorStop(1, 'rgba(77,212,172,0.40)');
+    g.fillStyle = disc;
+    g.beginPath();
+    g.arc(32, 32, 22, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = 'rgba(190,255,235,0.80)';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(32, 32, 21, 0, Math.PI * 2);
+    g.stroke();
+    // Two small arrows inside: "I move left and right"
+    g.strokeStyle = 'rgba(255,255,255,0.85)';
+    g.lineWidth = 2.5;
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    g.beginPath();
+    g.moveTo(27, 26); g.lineTo(21, 32); g.lineTo(27, 38);
+    g.moveTo(37, 26); g.lineTo(43, 32); g.lineTo(37, 38);
+    g.stroke();
+  });
+
+  // --- The two paddles ---
+  playerSprite = makePaddleSprite(player.w, '#8ff0d2', COLOR_PLAYER, '#2aa784');
+  aiSprite     = makePaddleSprite(ai.w,     '#ffa7a7', COLOR_AI,     '#d94a4a');
+}
+
+// A shaded paddle: glow behind, light-to-dark body, shiny stripe, thin rim
+function makePaddleSprite(w, light, base, dark) {
+  const pad = PADDLE_PAD;
+  return makeSprite(w + pad * 2, PADDLE_HEIGHT + pad * 2, (g) => {
+    const r = PADDLE_HEIGHT / 2;
+    // Glow (shadowBlur is slow, but here it is only drawn once)
+    g.shadowColor = base;
+    g.shadowBlur = 10;
+    const body = g.createLinearGradient(0, pad, 0, pad + PADDLE_HEIGHT);
+    body.addColorStop(0,    light);
+    body.addColorStop(0.45, base);
+    body.addColorStop(1,    dark);
+    g.fillStyle = body;
+    roundedRect(g, pad, pad, w, PADDLE_HEIGHT, r);
+    g.fill();
+    g.shadowBlur = 0;
+    g.shadowColor = 'transparent';
+    // Shiny stripe near the top
+    g.fillStyle = 'rgba(255,255,255,0.45)';
+    roundedRect(g, pad + 6, pad + 2.5, w - 12, 3, 1.5);
+    g.fill();
+    // Thin light rim
+    g.strokeStyle = 'rgba(255,255,255,0.35)';
+    g.lineWidth = 1;
+    roundedRect(g, pad + 0.5, pad + 0.5, w - 1, PADDLE_HEIGHT - 1, r - 0.5);
+    g.stroke();
+  });
 }
 
 // ---------- Draw ----------
-function draw() {
-  // Background
+function draw(time) {
+  // Plain dark fill first, so nothing shows at the edges while the screen shakes
   ctx.fillStyle = '#0b1220';
   ctx.fillRect(0, 0, W, H);
 
-  // Centre dashed line
-  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([10, 12]);
-  ctx.beginPath();
-  ctx.moveTo(0, fieldH / 2);
-  ctx.lineTo(W, fieldH / 2);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  // Screen shake: nudge the whole field a few pixels, getting weaker as it runs out
+  ctx.save();
+  if (shakeLeft > 0) {
+    const strength = SHAKE_SIZE * (shakeLeft / SHAKE_TIME);
+    ctx.translate((Math.random() * 2 - 1) * strength, (Math.random() * 2 - 1) * strength);
+  }
 
-  // Scores (computer above the line, you below)
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.font = 'bold 56px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(ai.score, W / 2, fieldH / 2 - 70);
-  ctx.fillText(player.score, W / 2, fieldH / 2 + 70);
+  // Court (pre-drawn)
+  ctx.drawImage(bgSprite.canvas, 0, 0, W, H);
+
+  // Scores (computer above the line in red, you below in green)
+  drawScore(ai.score, fieldH / 2 - 70, ai.pop, '255,140,140');
+  drawScore(player.score, fieldH / 2 + 70, player.pop, '120,230,195');
+
+  // Rings spreading out from paddle hits
+  ctx.lineWidth = 2;
+  for (const ring of rings) {
+    ctx.globalAlpha = ring.life * 0.7;
+    ctx.strokeStyle = ring.color;
+    ctx.beginPath();
+    ctx.arc(ring.x, ring.y, BALL_RADIUS + (1 - ring.life) * 26, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Ball trail: older dots are smaller and fainter
+  for (let i = 0; i < trail.length; i++) {
+    const share = (i + 1) / (trail.length + 1);       // 0 = oldest, 1 = newest
+    ctx.globalAlpha = share * 0.5;
+    stamp(trailSprite, trail[i].x, trail[i].y, 0.4 + share * 0.6);
+  }
+  ctx.globalAlpha = 1;
 
   // Paddles
-  ctx.fillStyle = '#ff6b6b';
-  drawPaddle(ai);
-  ctx.fillStyle = '#4dd4ac';
-  drawPaddle(player);
+  drawPaddle(ai, aiSprite, -1);
+  drawPaddle(player, playerSprite, 1);
 
   // Ball
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
-  ctx.fill();
+  stamp(ballSprite, ball.x, ball.y);
 
-  // Message when waiting
+  ctx.restore();
+
+  // Messages when waiting: a big title (only when the game is over) and the pulsing "Tap to..." line
   if (state !== 'playing') {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    let messageY = fieldH / 2 + 150;
+    if (title) {
+      ctx.fillStyle = (title === 'You win!') ? '#8ff0d2' : '#ffa7a7';
+      ctx.font = '800 28px system-ui, sans-serif';
+      ctx.fillText(title, W / 2, fieldH / 2 + 124);
+      messageY = fieldH / 2 + 156;
+    }
+    const pulse = 0.5 + 0.5 * Math.sin(time / 280);    // goes smoothly between 0 and 1
+    ctx.globalAlpha = 0.6 + 0.4 * pulse;
     ctx.fillStyle = '#ffffff';
-    ctx.font = '600 20px system-ui, sans-serif';
-    ctx.fillText(message, W / 2, fieldH / 2 + 150);
+    ctx.font = '600 ' + (title ? 17 : 20) + 'px system-ui, sans-serif';
+    ctx.save();
+    ctx.translate(W / 2, messageY);
+    ctx.scale(1 + 0.04 * pulse, 1 + 0.04 * pulse);
+    ctx.fillText(message, 0, 0);
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   drawControlZone();
+  drawParticles();
+  drawFloaters();
 }
 
-// The finger strip at the bottom (drawn last so the ball disappears behind it)
-function drawControlZone() {
-  ctx.fillStyle = '#0e1730';
-  ctx.fillRect(0, fieldH, W, H - fieldH);
-  ctx.fillStyle = 'rgba(255,255,255,0.12)';
-  ctx.fillRect(0, fieldH, W, 1);
-
-  // Small marker showing where the paddle is
-  const cy = fieldH + (H - fieldH) / 2;
-  ctx.fillStyle = 'rgba(77,212,172,0.35)';
-  ctx.beginPath();
-  ctx.arc(player.x, cy, 22, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = 'rgba(255,255,255,0.45)';
-  ctx.font = '500 13px system-ui, sans-serif';
+// One big score number. "pop" (1 down to 0) makes it bigger and brighter for a moment.
+function drawScore(score, y, pop, rgb) {
+  const scale = 1 + 0.5 * pop;
+  ctx.save();
+  ctx.translate(W / 2, y);
+  ctx.scale(scale, scale);
+  ctx.fillStyle = 'rgba(' + rgb + ',' + (0.5 + 0.5 * pop).toFixed(2) + ')';
+  ctx.font = 'bold 56px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('◀  slide here  ▶', W / 2, H - 16);
+  ctx.fillText(score, 0, 0);
+  ctx.restore();
 }
 
-function drawPaddle(p) {
-  const x = p.x - p.w / 2;
-  const r = PADDLE_HEIGHT / 2;
-  ctx.beginPath();
-  ctx.moveTo(x + r, p.y);
-  ctx.arcTo(x + p.w, p.y, x + p.w, p.y + PADDLE_HEIGHT, r);
-  ctx.arcTo(x + p.w, p.y + PADDLE_HEIGHT, x, p.y + PADDLE_HEIGHT, r);
-  ctx.arcTo(x, p.y + PADDLE_HEIGHT, x, p.y, r);
-  ctx.arcTo(x, p.y, x + p.w, p.y, r);
-  ctx.closePath();
-  ctx.fill();
+// The finger strip at the bottom (drawn after the field so the ball disappears behind it)
+function drawControlZone() {
+  ctx.drawImage(stripSprite.canvas, 0, fieldH, W, H - fieldH);
+
+  // Round marker showing where the paddle is
+  const cy = fieldH + (H - fieldH) / 2;
+  stamp(thumbSprite, player.x, cy);
+}
+
+// Stamp a paddle picture. "away" is the direction away from the field (-1 = up, 1 = down):
+// right after a hit the paddle is drawn pushed back a little and lit up white.
+// (Only the picture moves, the real paddle used for collisions stays put.)
+function drawPaddle(p, sprite, away) {
+  const kick = p.flash * 3 * away;
+  ctx.drawImage(sprite.canvas, p.x - p.w / 2 - PADDLE_PAD, p.y - PADDLE_PAD + kick, sprite.w, sprite.h);
+  if (p.flash > 0) {
+    ctx.globalAlpha = p.flash * 0.6;
+    ctx.fillStyle = '#ffffff';
+    roundedRect(ctx, p.x - p.w / 2, p.y + kick, p.w, PADDLE_HEIGHT, PADDLE_HEIGHT / 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// Sparks are small squares. Confetti pieces are flat rectangles that seem to flutter
+// because their width changes as they "spin".
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, p.life / (p.maxLife * 0.4)));
+    ctx.fillStyle = p.color;
+    if (p.confetti) {
+      const w = p.size * (0.3 + 0.7 * Math.abs(Math.cos(p.spin)));
+      ctx.fillRect(p.x - w / 2, p.y - p.size * 0.3, w, p.size * 0.6);
+    } else {
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawFloaters() {
+  ctx.font = '800 22px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const f of floaters) {
+    ctx.globalAlpha = Math.min(1, f.life * 1.5);
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
 }
 
 // ---------- Main loop ----------
@@ -296,7 +946,8 @@ function loop(time) {
   const dt = Math.min((time - lastTime) / 1000, 0.033);
   lastTime = time;
   update(dt);
-  draw();
+  updateEffects(dt);
+  draw(time);
   requestAnimationFrame(loop);
 }
 

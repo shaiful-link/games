@@ -18,6 +18,19 @@
     -webkit-user-select: none;
     touch-action: manipulation;
   }
+  /* Night-sky background: a soft glow at the top plus a few faint stars (drawn once by the browser) */
+  body {
+    background:
+      radial-gradient(1.5px 1.5px at 12% 18%, rgba(255,255,255,0.55) 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 81% 9%,  rgba(255,255,255,0.45) 50%, transparent 51%),
+      radial-gradient(1px 1px at 33% 42%,     rgba(255,255,255,0.40) 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 67% 58%, rgba(255,255,255,0.35) 50%, transparent 51%),
+      radial-gradient(1px 1px at 91% 77%,     rgba(255,255,255,0.45) 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 8% 86%,  rgba(255,255,255,0.35) 50%, transparent 51%),
+      radial-gradient(1px 1px at 48% 93%,     rgba(255,255,255,0.40) 50%, transparent 51%),
+      radial-gradient(120% 60% at 50% 0%, #1b2a55 0%, rgba(27,42,85,0) 70%),
+      linear-gradient(180deg, #0e1730 0%, #0b1220 60%, #080d18 100%);
+  }
   #app {
     display: flex;
     flex-direction: column;
@@ -27,22 +40,58 @@
     gap: 10px;
   }
 
-  /* Top bar: score, level, moves left */
+  /* Top bar: score, level, moves left, and the sound button */
   #top {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     justify-content: space-around;
+    gap: 6px;
   }
-  .stat { text-align: center; min-width: 70px; }
+  /* Each number sits in its own rounded "pill" box */
+  .stat {
+    flex: 1;
+    text-align: center;
+    min-width: 70px;
+    padding: 5px 4px 6px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04));
+    border: 1px solid rgba(255,255,255,0.10);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+  }
   .stat span {
     display: block;
-    font-size: 11px;
-    letter-spacing: 0.08em;
+    font-size: 10px;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.55);
+    white-space: nowrap;
+    color: rgba(255,255,255,0.6);
   }
-  .stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
-  .stat b.low { color: #ff6b6b; }               /* moves nearly used up */
+  .stat b { display: inline-block; font-size: 20px; font-variant-numeric: tabular-nums; }
+  #score { color: #ffd966; }                    /* gold score */
+  #level { color: #7fd4ff; }                    /* blue level */
+  #moves { color: #4dd4ac; }                    /* green moves */
+  .stat b.low, #moves.low { color: #ff6b6b; animation: lowPulse 0.8s ease-in-out infinite; }   /* moves nearly used up */
+  .stat b.bump { animation: bump 0.3s ease-out; }                                  /* number just changed */
+  @keyframes bump     { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
+  @keyframes lowPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+
+  /* Sound on/off button (sits at the right end of the top bar, away from the cards) */
+  #sound {
+    flex: 0 0 auto;
+    align-self: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.10);
+    color: #fff;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  #sound.off { opacity: .45; }
 
   /* Card area takes all remaining space; the grid is centred inside */
   #boardWrap {
@@ -54,6 +103,14 @@
     justify-content: center;
   }
   #board { display: grid; gap: 8px; }
+  #board.shake { animation: boardShake 0.35s; }           /* small shake when the level is lost */
+  @keyframes boardShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-4px); }
+    40% { transform: translateX(4px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(2px); }
+  }
 
   /* A card has two faces and flips over in 3D */
   .card {
@@ -63,11 +120,12 @@
     background: none;
     perspective: 600px;
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
   }
   .inner {
     position: absolute;
     inset: 0;
-    transition: transform 0.3s;
+    transition: transform 0.34s cubic-bezier(0.35, 1.35, 0.55, 1);    /* turns over with a tiny overshoot */
     transform-style: preserve-3d;
   }
   .card.up .inner { transform: rotateY(180deg); }
@@ -81,23 +139,97 @@
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
   }
-  .back {                                         /* face-down side */
-    background: #1c2742;
-    border: 2px solid #2c3a60;
-    color: #4dd4ac;
-    font-weight: 700;
+  .back {                                         /* face-down side: blue with a criss-cross pattern */
+    background:
+      repeating-linear-gradient(45deg,  rgba(255,255,255,0.07) 0 3px, transparent 3px 11px),
+      repeating-linear-gradient(-45deg, rgba(255,255,255,0.07) 0 3px, transparent 3px 11px),
+      linear-gradient(150deg, #34509a 0%, #22346c 55%, #1a2752 100%);
+    border: 2px solid #5b78c4;
+    box-shadow:
+      inset 0 0 0 2px rgba(11,18,32,0.55),        /* dark rim just inside the border */
+      inset 0 2px 0 2px rgba(255,255,255,0.10),   /* light catching the top edge */
+      0 3px 6px rgba(0,0,0,0.40);                 /* soft drop shadow */
+    color: #0b1220;
+    font-weight: 800;
   }
-  .front {                                        /* picture side */
-    background: #f3f5fa;
+  .mark {                                         /* round green badge holding the "?" */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5em;
+    height: 1.5em;
+    font-size: 0.6em;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #8ff0d2, #4dd4ac 55%, #2fa583);
+    box-shadow: 0 0 0 0.12em rgba(11,18,32,0.55), 0 0.1em 0.2em rgba(0,0,0,0.4);
+  }
+  .front {                                        /* picture side: bright white card */
+    background: linear-gradient(160deg, #ffffff 0%, #f3f5fa 55%, #dfe6f5 100%);
+    border: 2px solid #ffffff;
+    box-shadow:
+      inset 0 0 0 2px #cfd8ee,                    /* thin frame around the picture */
+      0 3px 6px rgba(0,0,0,0.40);
     transform: rotateY(180deg);
+    line-height: 1;
   }
-  .card.matched .front { background: #bfeedd; }
-  .card.matched { opacity: 0.55; transition: opacity 0.4s; }
+
+  /* New cards pop in one after another at the start of a level */
+  .card.deal { animation: deal 0.3s ease-out both; }
+  @keyframes deal {
+    0%   { opacity: 0; transform: translateY(14px) scale(0.6); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* Wrong pair: both cards shake gently (after they finish turning over) */
+  .card.wrong { animation: wrongShake 0.4s ease-in-out 0.3s; }
+  .card.wrong .front { box-shadow: inset 0 0 0 2px #ff9c9c, 0 3px 6px rgba(0,0,0,0.40); }
+  @keyframes wrongShake {
+    0%, 100% { transform: translateX(0) rotate(0); }
+    20% { transform: translateX(-5px) rotate(-3deg); }
+    40% { transform: translateX(5px)  rotate(3deg); }
+    60% { transform: translateX(-4px) rotate(-2deg); }
+    80% { transform: translateX(3px)  rotate(1deg); }
+  }
+
+  /* Matched pair: bounce, glow green, then fade back a little so the cards still to find stand out */
+  .card.matched { opacity: 0.6; transition: opacity 0.4s 1s; animation: matchBounce 0.5s ease-out 0.26s; }
+  .card.matched .front {
+    background: linear-gradient(160deg, #e9fff6 0%, #bfeedd 60%, #9fe3cb 100%);
+    border-color: #4dd4ac;
+    box-shadow: inset 0 0 0 2px #8fe6cb, 0 0 12px rgba(77,212,172,0.75);
+  }
+  @keyframes matchBounce {
+    0%   { transform: scale(1); }
+    35%  { transform: scale(1.18); }
+    60%  { transform: scale(0.94); }
+    80%  { transform: scale(1.05); }
+    100% { transform: scale(1); }
+  }
+
+  /* "+100" text that floats up from a matched pair */
+  .floatText {
+    position: absolute;
+    z-index: 3;
+    transform: translate(-50%, -50%);
+    font-size: 22px;
+    font-weight: 800;
+    color: #ffd966;
+    text-shadow: 0 2px 0 rgba(0,0,0,0.55);
+    pointer-events: none;
+    white-space: nowrap;
+    animation: floatUp 0.9s ease-out forwards;
+  }
+  @keyframes floatUp {
+    0%   { opacity: 0; margin-top: 0; }
+    15%  { opacity: 1; }
+    100% { opacity: 0; margin-top: -54px; }
+  }
 
   /* Message shown over the cards between levels */
   #overlay {
     position: absolute;
     inset: 0;
+    z-index: 4;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -106,10 +238,39 @@
     background: rgba(11,18,32,0.86);
     text-align: center;
     border-radius: 8px;
+    animation: overlayIn 0.25s ease-out;
   }
   #overlay.hidden { display: none; }
-  #overlay h1 { margin: 0; font-size: 26px; }
+  @keyframes overlayIn { 0% { opacity: 0; } 100% { opacity: 1; } }
+  #msgIcon { font-size: 56px; line-height: 1; animation: iconBob 1.6s ease-in-out infinite; }
+  @keyframes iconBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+  #overlay h1 { margin: 0; font-size: 28px; color: #ffd966; text-shadow: 0 2px 0 rgba(0,0,0,0.5); }
   #overlay p  { margin: 0; font-size: 16px; color: rgba(255,255,255,0.8); }
+  #overlay #msgLine2 {                            /* the "Tap to..." line gently pulses */
+    margin-top: 8px;
+    padding: 9px 18px;
+    border-radius: 999px;
+    background: rgba(77,212,172,0.16);
+    border: 1px solid rgba(77,212,172,0.55);
+    color: #8ff0d2;
+    font-weight: 700;
+    animation: tapPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes tapPulse {
+    0%, 100% { transform: scale(1);    opacity: 0.75; }
+    50%      { transform: scale(1.07); opacity: 1; }
+  }
+
+  /* See-through drawing layer on top of everything, for sparkles and confetti (taps pass through it) */
+  #fx {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 5;
+    pointer-events: none;
+  }
 </style>
 </head>
 <body>
@@ -118,23 +279,28 @@
     <div class="stat"><span>Score</span><b id="score">0</b></div>
     <div class="stat"><span>Level</span><b id="level">1/10</b></div>
     <div class="stat"><span>Moves left</span><b id="moves">0</b></div>
+    <button id="sound" aria-label="Sound on or off"></button>
   </div>
 
   <div id="boardWrap">
     <div id="board"></div>
     <div id="overlay">
+      <div id="msgIcon">🃏</div>
       <h1 id="msgTitle">Memory Match</h1>
       <p id="msgLine1">Find all the matching pairs</p>
       <p id="msgLine2">Tap to start</p>
     </div>
   </div>
 </div>
+<canvas id="fx"></canvas>
 
 <script>
 // =====================================================
 // MEMORY MATCH - card matching game for phones, with 10 levels
 // Tap two cards to turn them over. A matching pair stays face up.
 // Find every pair before you run out of moves.
+// Matched pairs bounce, glow and sparkle; wrong pairs shake and turn back.
+// Sounds are made by code. The speaker button (top right) turns them on/off.
 // =====================================================
 
 // ---------- Settings (change these to experiment) ----------
@@ -143,6 +309,13 @@ const MATCH_POINTS  = 100;       // per pair (multiplied by the level number)
 const MOVE_BONUS    = 50;        // per unused move when a level is finished
 const CARD_GAP      = 8;         // space between cards in pixels (same as the CSS gap)
 const MAX_CARD_SIZE = 110;
+const SOUND_VOLUME  = 0.25;      // 0 = silent, 1 = very loud
+const END_MESSAGE_MS  = 700;     // wait this long before the "Level clear" message covers the cards
+const DEAL_STEP_MS    = 22;      // delay between one card and the next popping in at level start
+const SPARKLES_PER_CARD = 10;    // sparkles thrown out by each matched card
+const CONFETTI_CLEAR  = 70;      // confetti pieces when a level is finished
+const CONFETTI_WIN    = 140;     // confetti pieces when the whole game is won
+const MAX_PARTICLES   = 150;     // never draw more than this many sparkles + confetti at once
 
 // ---------- Levels ----------
 // cols x rows must be an even number (cards come in pairs)
@@ -171,12 +344,15 @@ const SYMBOLS = [
 const boardWrap = document.getElementById('boardWrap');
 const boardEl   = document.getElementById('board');
 const overlay   = document.getElementById('overlay');
+const msgIcon   = document.getElementById('msgIcon');
 const msgTitle  = document.getElementById('msgTitle');
 const msgLine1  = document.getElementById('msgLine1');
 const msgLine2  = document.getElementById('msgLine2');
 const elScore = document.getElementById('score');
 const elLevel = document.getElementById('level');
 const elMoves = document.getElementById('moves');
+const fxCanvas = document.getElementById('fx');
+const fxCtx    = fxCanvas.getContext('2d');
 
 // ---------- Game state ----------
 let cards = [];                  // each card: { symbol, up, matched, el }
@@ -186,6 +362,293 @@ let screen = 'title';            // 'title' | 'play' | 'clear' | 'over' | 'won'
 let level = 1, score = 0, levelStartScore = 0;
 let movesLeft = 0, pairsLeft = 0;
 let flipTimer = null;
+let messageTimer = null;         // waits a moment before showing the end-of-level message
+
+// ---------- Sound ----------
+// All sounds are made by code (short notes), so there are no sound files to upload.
+// Phones only allow sound after a touch, so the sound engine starts on the first touch.
+// The on/off choice is remembered, and is shared by all the games on this site.
+const btnSound = document.getElementById('sound');
+let audio = null;                // the sound engine (created on first touch)
+let muted = false;
+try { muted = localStorage.getItem('gamesMuted') === '1'; } catch (e) { /* storage blocked: start with sound on */ }
+
+function showSoundButton() {
+  btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
+  btnSound.classList.toggle('off', muted);
+}
+showSoundButton();
+
+function startAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (e) { audio = null; }                                  // no sound support: the game still works
+}
+// Different phones accept different kinds of touch for this, so listen for all of them
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, startAudio, true);
+}
+
+// Play one note.
+//   freq  = pitch in Hz (higher number = higher note)
+//   dur   = length in seconds
+//   type  = 'sine' (soft), 'triangle' (round), 'square' (retro), 'sawtooth' (buzzy)
+//   delay = seconds to wait before it starts (used to build little tunes)
+//   slide = pitch to glide to by the end (optional)
+//   volume = 0 to 1, share of SOUND_VOLUME
+function beep(freq, dur, type = 'sine', delay = 0, slide = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME * volume, t + 0.01);   // quick fade in (no click)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);                   // fade out
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// Short buzz on Android phones (iPhone does not allow this from a web page)
+function buzz(ms) {
+  if (!muted && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
+}
+
+btnSound.addEventListener('click', () => {
+  muted = !muted;
+  try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {}
+  showSoundButton();
+  startAudio();
+  if (!muted) setTimeout(() => beep(740, 0.05, 'sine', 0, 0, 0.6), 60);   // small note to confirm sound is on
+});
+
+// The game's own sounds: one named sound per thing that happens
+let lastFlipSound = 0;           // when the flip sound last played (so fast taps do not stack up)
+const sfx = {
+  // A card turns face up: short rising "flick"
+  flip() {
+    const now = performance.now();
+    if (now - lastFlipSound < 60) return;
+    lastFlipSound = now;
+    beep(520, 0.07, 'triangle', 0, 780, 0.5);
+  },
+  // A wrong pair turns face down again: quiet falling "flick"
+  flipBack() {
+    beep(420, 0.06, 'triangle', 0, 280, 0.3);
+  },
+  // Matching pair: two-note chime (timed to land as the second card finishes turning)
+  match() {
+    beep(660, 0.14, 'sine', 0.16, 0, 0.9);
+    beep(990, 0.24, 'sine', 0.28, 0, 0.9);
+    buzz(12);
+  },
+  // Wrong pair: soft low blip
+  wrong() {
+    beep(210, 0.2, 'sine', 0.24, 160, 0.7);
+  },
+  // Only 3 moves left: two quiet warning ticks
+  lowMoves() {
+    beep(880, 0.05, 'triangle', 0.5, 0, 0.4);
+    beep(880, 0.05, 'triangle', 0.62, 0, 0.4);
+  },
+  // A new level is dealt: quick rising pair of notes
+  deal() {
+    beep(392, 0.08, 'triangle', 0, 0, 0.5);
+    beep(587, 0.1, 'triangle', 0.08, 0, 0.5);
+  },
+  // Level finished: short rising tune (starts after the match chime)
+  clear() {
+    const tune = [523, 659, 784, 1047];
+    tune.forEach((freq, i) => beep(freq, 0.16, 'triangle', 0.55 + i * 0.11, 0, 0.8));
+    buzz(30);
+  },
+  // All 10 levels finished: longer happy tune
+  win() {
+    const tune = [523, 659, 784, 1047, 784, 1047, 1319];
+    tune.forEach((freq, i) => beep(freq, 0.18, 'triangle', 0.55 + i * 0.13, 0, 0.8));
+    beep(1568, 0.5, 'sine', 0.55 + tune.length * 0.13, 0, 0.7);
+    buzz(40);
+  },
+  // Out of moves: short falling tune
+  lose() {
+    const tune = [392, 330, 262, 196];
+    tune.forEach((freq, i) => beep(freq, 0.2, 'sine', i * 0.15, 0, 0.8));
+    buzz(35);
+  }
+};
+
+// ---------- Sparkles and confetti ----------
+// These are drawn on a see-through canvas that lies over the whole page.
+// The drawing loop only runs while there is something to draw, so it costs nothing the rest of the time.
+const SPARKLE_COLOURS  = ['#ffffff', '#ffe066', '#8ff0d2'];
+const CONFETTI_COLOURS = ['#ff6b6b', '#ffd966', '#4dd4ac', '#7fd4ff', '#c79bff', '#ff9ecb'];
+const SPARKLE_SPRITE_SIZE = 24;  // size of one sparkle picture in pixels
+let particles = [];              // each: { kind, x, y, vx, vy, age, life, size, colour/sprite, angle, spin }
+let sparkleSprites = [];         // one ready-made sparkle picture per colour
+let fxWidth = 0, fxHeight = 0;   // size of the drawing layer in CSS pixels
+let fxScale = 1;                 // extra pixels for sharp drawing on high-resolution phone screens
+let fxRunning = false;
+let fxLastTime = 0;
+
+// Draw each sparkle picture once on a small hidden canvas; later we just stamp copies of it
+function buildSparkleSprites() {
+  sparkleSprites = SPARKLE_COLOURS.map((colour) => {
+    const sprite = document.createElement('canvas');
+    sprite.width = sprite.height = Math.ceil(SPARKLE_SPRITE_SIZE * fxScale);
+    const c = sprite.getContext('2d');
+    c.scale(fxScale, fxScale);
+    const mid = SPARKLE_SPRITE_SIZE / 2;
+
+    // Soft round glow behind the star
+    const glow = c.createRadialGradient(mid, mid, 0, mid, mid, mid);
+    glow.addColorStop(0, 'rgba(255,255,255,0.55)');
+    glow.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = glow;
+    c.fillRect(0, 0, SPARKLE_SPRITE_SIZE, SPARKLE_SPRITE_SIZE);
+
+    // Four-pointed star: long points up/down/left/right, pinched in between
+    c.fillStyle = colour;
+    c.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const radius = (i % 2 === 0) ? mid * 0.95 : mid * 0.24;
+      const angle = i * Math.PI / 4;
+      const x = mid + Math.cos(angle) * radius;
+      const y = mid + Math.sin(angle) * radius;
+      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+    }
+    c.closePath();
+    c.fill();
+    return sprite;
+  });
+}
+
+// Make the drawing layer match the screen size (and stay sharp on high-resolution screens)
+function resizeFx() {
+  fxScale = Math.min(window.devicePixelRatio || 1, 3);
+  fxWidth = window.innerWidth;
+  fxHeight = window.innerHeight;
+  fxCanvas.width = Math.round(fxWidth * fxScale);
+  fxCanvas.height = Math.round(fxHeight * fxScale);
+  buildSparkleSprites();
+}
+
+function addParticle(p) {
+  if (particles.length >= MAX_PARTICLES) return;      // keep cheap phones smooth
+  particles.push(p);
+  if (!fxRunning) {
+    fxRunning = true;
+    fxLastTime = performance.now();
+    requestAnimationFrame(fxFrame);
+  }
+}
+
+// Throw sparkles out in all directions from a point on the screen
+function spawnSparkles(x, y, spread) {
+  for (let i = 0; i < SPARKLES_PER_CARD; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 50 + Math.random() * 110;
+    addParticle({
+      kind: 'sparkle',
+      x: x + Math.cos(angle) * spread * 0.3,
+      y: y + Math.sin(angle) * spread * 0.3,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 40,
+      age: 0,
+      life: 0.5 + Math.random() * 0.4,
+      size: 10 + Math.random() * 12,
+      sprite: Math.floor(Math.random() * SPARKLE_COLOURS.length),
+      angle: 0,
+      spin: 0
+    });
+  }
+}
+
+// Drop coloured paper pieces from above the top of the screen
+function spawnConfetti(count) {
+  for (let i = 0; i < count; i++) {
+    addParticle({
+      kind: 'confetti',
+      x: Math.random() * fxWidth,
+      y: -20 - Math.random() * fxHeight * 0.5,
+      vx: (Math.random() - 0.5) * 90,
+      vy: 120 + Math.random() * 160,
+      age: 0,
+      life: 2.6 + Math.random() * 1.4,
+      size: 6 + Math.random() * 6,
+      colour: CONFETTI_COLOURS[i % CONFETTI_COLOURS.length],
+      angle: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 10
+    });
+  }
+}
+
+// One step of the sparkle/confetti animation: move everything, then draw it
+function fxFrame(now) {
+  const dt = Math.min(0.05, (now - fxLastTime) / 1000);    // seconds since the last frame
+  fxLastTime = now;
+
+  fxCtx.setTransform(fxScale, 0, 0, fxScale, 0, 0);
+  fxCtx.clearRect(0, 0, fxWidth, fxHeight);
+
+  const alive = [];
+  for (const p of particles) {
+    // Move
+    p.age += dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.angle += p.spin * dt;
+    if (p.kind === 'sparkle') p.vy += 160 * dt;            // sparkles drift down slowly
+    else p.vx += Math.sin(p.age * 6 + p.spin) * 60 * dt;   // confetti flutters side to side
+
+    // Remove when its time is up or it has fallen off the bottom
+    if (p.age >= p.life || p.y > fxHeight + 30) continue;
+    alive.push(p);
+
+    // Draw (fading out near the end of its life)
+    const lifeLeft = 1 - p.age / p.life;
+    if (p.kind === 'sparkle') {
+      const size = p.size * (0.4 + 0.6 * lifeLeft);        // shrinks as it fades
+      fxCtx.globalAlpha = Math.min(1, lifeLeft * 2);
+      fxCtx.drawImage(sparkleSprites[p.sprite], p.x - size / 2, p.y - size / 2, size, size);
+    } else {
+      fxCtx.globalAlpha = Math.min(1, lifeLeft * 3);
+      fxCtx.save();
+      fxCtx.translate(p.x, p.y);
+      fxCtx.rotate(p.angle);
+      fxCtx.fillStyle = p.colour;
+      // Squashing the height makes the paper look like it is tumbling
+      fxCtx.fillRect(-p.size / 2, -p.size * 0.3 * Math.cos(p.age * 8), p.size, p.size * 0.6 * Math.cos(p.age * 8));
+      fxCtx.restore();
+    }
+  }
+  fxCtx.globalAlpha = 1;
+  particles = alive;
+
+  if (particles.length > 0) requestAnimationFrame(fxFrame);
+  else fxRunning = false;                                  // nothing left: stop until the next effect
+}
+
+// Where is the middle of a card on the screen?
+function cardCentre(card) {
+  const box = card.el.getBoundingClientRect();
+  return { x: box.left + box.width / 2, y: box.top + box.height / 2, size: box.width };
+}
+
+// Show text (for example "+100") floating up from a point inside the card area
+function floatText(text, screenX, screenY) {
+  const wrapBox = boardWrap.getBoundingClientRect();
+  const el = document.createElement('div');
+  el.className = 'floatText';
+  el.textContent = text;
+  el.style.left = (screenX - wrapBox.left) + 'px';
+  el.style.top = (screenY - wrapBox.top) + 'px';
+  el.addEventListener('animationend', () => el.remove());   // tidy up when the animation finishes
+  boardWrap.appendChild(el);
+}
 
 // ---------- Helpers ----------
 // Shuffle a list in place
@@ -209,6 +672,8 @@ function startLevel(n) {
   firstPick = null;
   locked = false;
   clearTimeout(flipTimer);
+  clearTimeout(messageTimer);
+  boardEl.classList.remove('shake');
 
   // Pick random pictures, make two of each, and shuffle
   const chosen = shuffle(SYMBOLS.slice()).slice(0, pairs);
@@ -216,17 +681,20 @@ function startLevel(n) {
 
   // Build the cards on the page
   boardEl.innerHTML = '';
-  cards = deck.map((symbol) => {
+  cards = deck.map((symbol, index) => {
     const el = document.createElement('button');
-    el.className = 'card';
+    el.className = 'card deal';
+    el.style.animationDelay = (index * DEAL_STEP_MS) + 'ms';     // cards pop in one after another
     el.setAttribute('aria-label', 'Card');
     el.innerHTML =
       '<div class="inner">' +
-        '<div class="face back">?</div>' +
+        '<div class="face back"><span class="mark">?</span></div>' +
         '<div class="face front">' + symbol + '</div>' +
       '</div>';
     const card = { symbol, up: false, matched: false, el };
     el.addEventListener('click', () => pick(card));
+    // When the pop-in has finished, remove its class so it can never replay
+    el.addEventListener('animationend', (e) => { if (e.animationName === 'deal') stopDealAnimation(card); });
     boardEl.appendChild(el);
     return card;
   });
@@ -235,19 +703,29 @@ function startLevel(n) {
   overlay.classList.add('hidden');
   layout();
   updateHud();
+  sfx.deal();
+}
+
+// The pop-in animation is over (or the card was tapped before it finished)
+function stopDealAnimation(card) {
+  card.el.classList.remove('deal');
+  card.el.style.animationDelay = '';
 }
 
 // ---------- Turning cards over ----------
 function pick(card) {
   if (screen !== 'play' || locked || card.up || card.matched) return;
 
+  stopDealAnimation(card);
   setUp(card, true);
+  sfx.flip();
   if (!firstPick) { firstPick = card; return; }    // first card of the move: wait for the second
 
   // Second card: this counts as one move
   const a = firstPick, b = card;
   firstPick = null;
   movesLeft--;
+  stopDealAnimation(a);
 
   if (a.symbol === b.symbol) {
     // Match: both stay face up
@@ -256,19 +734,42 @@ function pick(card) {
     b.el.classList.add('matched');
     pairsLeft--;
     score += MATCH_POINTS * level;
+    matchEffects(a, b);
     updateHud();
     checkEnd();
   } else {
-    // No match: show both for a moment, then turn them back
+    // No match: show both for a moment (they shake), then turn them back
     locked = true;
+    a.el.classList.add('wrong');
+    b.el.classList.add('wrong');
+    sfx.wrong();
     updateHud();
     flipTimer = setTimeout(() => {
+      a.el.classList.remove('wrong');
+      b.el.classList.remove('wrong');
       setUp(a, false);
       setUp(b, false);
+      sfx.flipBack();
       locked = false;
       checkEnd();
     }, FLIP_BACK_MS);
   }
+
+  // Warn the player when only 3 moves remain
+  if (screen === 'play' && movesLeft === 3 && pairsLeft > 0) sfx.lowMoves();
+}
+
+// Chime, sparkles and floating points for a matched pair
+function matchEffects(a, b) {
+  sfx.match();
+  const points = MATCH_POINTS * level;
+  const ca = cardCentre(a), cb = cardCentre(b);
+  // Wait until the second card has turned over, so the sparkles come off the picture
+  setTimeout(() => {
+    spawnSparkles(ca.x, ca.y, ca.size);
+    spawnSparkles(cb.x, cb.y, cb.size);
+    floatText('+' + points, cb.x, cb.y - cb.size * 0.45);     // starts at the top edge of the card
+  }, 260);
 }
 
 function setUp(card, up) {
@@ -283,18 +784,32 @@ function checkEnd() {
     updateHud();
     if (level === LEVELS.length) {
       screen = 'won';
-      showMessage('You win!', 'Score ' + score, 'Tap to play again');
+      sfx.win();
+      showMessageSoon('🏆', 'You win!', 'Score ' + score, 'Tap to play again', CONFETTI_WIN);
     } else {
       screen = 'clear';
-      showMessage('Level ' + level + ' clear!', movesLeft + ' moves to spare', 'Tap for level ' + (level + 1));
+      sfx.clear();
+      showMessageSoon('⭐', 'Level ' + level + ' clear!', movesLeft + ' moves to spare', 'Tap for level ' + (level + 1), CONFETTI_CLEAR);
     }
   } else if (movesLeft <= 0) {
     screen = 'over';
-    showMessage('Out of moves', pairsLeft + (pairsLeft === 1 ? ' pair' : ' pairs') + ' left', 'Tap to retry level ' + level);
+    sfx.lose();
+    boardEl.classList.add('shake');
+    showMessageSoon('😮', 'Out of moves', pairsLeft + (pairsLeft === 1 ? ' pair' : ' pairs') + ' left', 'Tap to retry level ' + level, 0);
   }
 }
 
-function showMessage(title, line1, line2) {
+// Let the last pair finish its animation, then show the message (with confetti if the level was finished)
+function showMessageSoon(icon, title, line1, line2, confettiCount) {
+  clearTimeout(messageTimer);
+  messageTimer = setTimeout(() => {
+    showMessage(icon, title, line1, line2);
+    if (confettiCount > 0) spawnConfetti(confettiCount);
+  }, END_MESSAGE_MS);
+}
+
+function showMessage(icon, title, line1, line2) {
+  msgIcon.textContent = icon;
   msgTitle.textContent = title;
   msgLine1.textContent = line1;
   msgLine2.textContent = line2;
@@ -308,10 +823,20 @@ function advance() {
   else if (screen === 'over') { score = levelStartScore; startLevel(level); }   // retry same level
 }
 
+// Write a number into the top bar; if it changed, make it "pop" briefly
+function setStat(el, text) {
+  text = String(text);
+  if (el.textContent === text) return;
+  el.textContent = text;
+  el.classList.remove('bump');
+  void el.offsetWidth;                 // makes the browser notice the class was removed, so the pop can replay
+  el.classList.add('bump');
+}
+
 function updateHud() {
-  elScore.textContent = score;
-  elLevel.textContent = level + '/' + LEVELS.length;
-  elMoves.textContent = movesLeft;
+  setStat(elScore, score);
+  setStat(elLevel, level + '/' + LEVELS.length);
+  setStat(elMoves, movesLeft);
   elMoves.classList.toggle('low', screen === 'play' && movesLeft <= 3);
 }
 
@@ -336,13 +861,15 @@ function layout() {
 // ---------- Input ----------
 overlay.addEventListener('click', advance);
 window.addEventListener('keydown', (e) => {
+  if (e.target === btnSound) return;               // Space/Enter on the sound button only changes the sound
   if (e.key === ' ' || e.key === 'Enter') {
     if (screen !== 'play') { advance(); e.preventDefault(); }
   }
 });
 
 // ---------- Start ----------
-window.addEventListener('resize', layout);
+window.addEventListener('resize', () => { layout(); resizeFx(); });
+resizeFx();
 updateHud();
 </script>
 </body>

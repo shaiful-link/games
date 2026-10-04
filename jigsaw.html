@@ -32,29 +32,84 @@
     justify-content: space-between;
     gap: 6px;
     padding: 8px 10px;
+    background: linear-gradient(#17223f, #0f1830);
+    box-shadow: inset 0 -1px 0 rgba(255,255,255,0.07);
   }
-  .stat { text-align: center; min-width: 48px; }
+
+  /* Each stat sits in its own small rounded card */
+  .stat {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 48px;
+    height: 40px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    overflow: hidden;
+  }
   .stat span {
     display: block;
-    font-size: 10px;
+    font-size: 9px;
+    line-height: 1.2;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.55);
+    color: rgba(255,255,255,0.6);
   }
-  .stat b { font-size: 18px; font-variant-numeric: tabular-nums; }
+  .stat b { font-size: 17px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  #level  { color: #8fd0ff; }      /* each stat has its own accent colour */
+  #pieces { color: #7fe3a8; }
+  #time   { color: #ffd66b; }
+
+  /* Thin green bar under "Pieces" that fills up as pieces are placed */
+  #piecesBar {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 3px;
+    width: 0%;
+    background: #4dd48a;
+    transition: width 0.25s;
+  }
+
   #top button {
     height: 40px;
     padding: 0 12px;
     border: 0;
     border-radius: 10px;
-    background: #1c2742;
+    background: linear-gradient(#2a3962, #1c2742);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), 0 2px 0 rgba(0,0,0,0.35);
     color: #ffffff;
     font-size: 14px;
     font-weight: 600;
+    touch-action: manipulation;
   }
-  #top button:active { background: #2c3a60; }
-  #top button.on { background: #2a6f5c; }
+  #top button:active { background: #2c3a60; transform: translateY(1px); }
+  #top button.on { background: linear-gradient(#37917a, #2a6f5c); }
+
+  /* Sound on/off button (same look in all the games) */
+  #top #sound {
+    width: 40px;
+    padding: 0;
+    flex: 0 0 auto;
+    background: rgba(255,255,255,0.10);
+    box-shadow: none;
+    font-size: 17px;
+  }
+  #top #sound.off { opacity: 0.45; }
   #photoInput { display: none; }
+
+  /* Small phones: tighten the top bar so everything still fits on one line */
+  @media (max-width: 370px) {
+    #top { gap: 4px; padding: 8px 6px; }
+    .stat { min-width: 44px; }
+    .stat b { font-size: 15px; }
+    #top button { padding: 0 8px; font-size: 13px; }
+    #top #sound { width: 36px; padding: 0; font-size: 16px; }
+  }
 
   #stage { flex: 1; min-height: 0; }
   #game { display: block; width: 100%; height: 100%; }
@@ -64,10 +119,11 @@
 <div id="app">
   <div id="top">
     <div class="stat"><span>Level</span><b id="level">1/10</b></div>
-    <div class="stat"><span>Pieces</span><b id="pieces">0/0</b></div>
+    <div class="stat"><span>Pieces</span><b id="pieces">0/0</b><i id="piecesBar"></i></div>
     <div class="stat"><span>Time</span><b id="time">0:00</b></div>
     <button id="btnHint" aria-label="Show or hide the picture">Hint</button>
     <button id="btnPhoto" aria-label="Use my own photo">Photo</button>
+    <button id="sound" aria-label="Sound on or off"></button>
     <input id="photoInput" type="file" accept="image/*">
   </div>
   <div id="stage"><canvas id="game"></canvas></div>
@@ -79,11 +135,18 @@
 // Drag each piece into the frame. A piece clicks into place when it is close.
 // Hint  = show the finished picture faintly inside the frame.
 // Photo = use a picture from your phone (it stays on your phone, nothing is uploaded).
+// Speaker button = sound on / off (all sounds are made by code).
+// Every level has its own picture, and every picture is drawn by code (no image files).
 // =====================================================
 
 // ---------- Settings (change these to experiment) ----------
 const SNAP = 0.3;                // how close a piece must be to click in (share of piece size)
 const TAB  = 0.22;               // size of the knobs on the pieces (share of piece size)
+const SOUND_VOLUME = 0.25;       // 0 = silent, 1 = very loud
+const SHADOW_BLUR = 5;           // how soft the shadow under a loose piece is (pixels)
+const LIFT_SCALE = 0.07;         // how much bigger a piece looks while you hold it (0.07 = 7%)
+const LIFT_SHADOW = 9;           // how far the shadow moves away while a piece is held (pixels)
+const MAX_PARTICLES = 150;       // most sparkles + confetti on screen at once (keeps cheap phones fast)
 
 // ---------- Levels ----------
 // cols x rows = number of pieces. To add a level, add one more line to this list.
@@ -106,6 +169,7 @@ const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
 const elLevel  = document.getElementById('level');
 const elPieces = document.getElementById('pieces');
+const elPiecesBar = document.getElementById('piecesBar');
 const elTime   = document.getElementById('time');
 const btnHint  = document.getElementById('btnHint');
 const btnPhoto = document.getElementById('btnPhoto');
@@ -114,7 +178,7 @@ const photoInput = document.getElementById('photoInput');
 // ---------- Game state ----------
 let screen = 'title';            // 'title' | 'play' | 'clear' | 'won'
 let level = 1;
-let pieces = [];                 // each piece: { c, r, x, y, placed, img }  (x, y = top-left of its cell on screen)
+let pieces = [];                 // each piece: { c, r, x, y, placed, img, shadow, flash }  (x, y = top-left of its cell on screen)
 let order = [];                  // loose pieces in drawing order (last = on top)
 let placedCount = 0;
 let levelTime = 0;               // seconds spent on this level
@@ -124,11 +188,161 @@ let picture = null;              // offscreen canvas holding the finished pictur
 let drag = null;                 // { piece, dx, dy } while a piece is being moved
 let tabsV = [], tabsH = [];      // which way each knob points (+1 or -1)
 
+// Effects (only for looks, they never change the game)
+let clock = 0;                   // seconds since the page opened (drives gentle pulsing)
+let lift = 0;                    // 0 = piece lying flat, 1 = piece fully lifted by the finger
+let particles = [];              // sparkles and confetti
+let rings = [];                  // growing circles where a piece clicked in
+let pictureFlash = 0;            // white flash over the picture when a level is finished (1 fading to 0)
+let confettiTimer = 0;           // counts up to the next confetti burst on the final screen
+let backdrop = null;             // offscreen canvas: background, frame and tray, painted once
+
 // Layout (set by resize)
 let dpr = 1, W = 0, H = 0;
 let frame = { x: 0, y: 0, size: 0 };             // where the puzzle is assembled
 let tray  = { x: 0, y: 0, w: 0, h: 0 };          // where loose pieces start
 let cw = 0, ch = 0, pad = 0;                     // piece width, height, and knob margin
+let shadowPad = 0;                               // margin around a piece's shadow image
+
+// ---------- Sound ----------
+// All sounds are made by code (short notes), so there are no sound files to upload.
+// Phones only allow sound after a touch, so the sound engine starts on the first touch.
+// The on/off choice is remembered, and is shared by all the games on this site.
+const btnSound = document.getElementById('sound');
+let audio = null;                // the sound engine (created on first touch)
+let muted = false;
+try { muted = localStorage.getItem('gamesMuted') === '1'; } catch (e) { /* storage blocked: start with sound on */ }
+
+function showSoundButton() {
+  btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
+  btnSound.classList.toggle('off', muted);
+}
+showSoundButton();
+
+function startAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (e) { audio = null; }                                  // no sound support: the game still works
+}
+// Different phones accept different kinds of touch for this, so listen for all of them
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, startAudio, true);
+}
+
+// Play one note.
+//   freq  = pitch in Hz (higher number = higher note)
+//   dur   = length in seconds
+//   type  = 'sine' (soft), 'triangle' (round), 'square' (retro), 'sawtooth' (buzzy)
+//   delay = seconds to wait before it starts (used to build little tunes)
+//   slide = pitch to glide to by the end (optional)
+//   volume = 0 to 1, share of SOUND_VOLUME
+function beep(freq, dur, type = 'sine', delay = 0, slide = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME * volume, t + 0.01);   // quick fade in (no click)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);                   // fade out
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// Play a burst of hiss (used for the "click" when a piece locks in).
+//   dur = length in seconds, tone = how bright it is in Hz (300 = deep boom, 4000 = sharp crack)
+let noiseBuffer = null;
+function noise(dur, tone = 1000, delay = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  if (!noiseBuffer) {                                            // one second of random hiss, made once
+    noiseBuffer = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  const t = audio.currentTime + delay;
+  const src = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const gain = audio.createGain();
+  src.buffer = noiseBuffer;
+  src.loop = true;
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(tone, t);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(60, tone * 0.25), t + dur);
+  gain.gain.setValueAtTime(SOUND_VOLUME * volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(filter).connect(gain).connect(audio.destination);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+}
+
+// Short buzz on Android phones (iPhone does not allow this from a web page)
+function buzz(ms) {
+  if (!muted && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
+}
+
+btnSound.addEventListener('click', () => {
+  muted = !muted;
+  try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {}
+  showSoundButton();
+  startAudio();
+  if (!muted) setTimeout(() => beep(740, 0.05, 'sine', 0, 0, 0.6), 60);   // small note to confirm sound is on
+});
+
+// The game's own sounds: one small function per event.
+const sfx = {
+  // A new puzzle is laid out: three quick rising notes
+  start() {
+    beep(392, 0.08, 'triangle', 0.00, 0, 0.5);
+    beep(523, 0.08, 'triangle', 0.07, 0, 0.5);
+    beep(659, 0.12, 'triangle', 0.14, 0, 0.5);
+  },
+  // Finger picks a piece up: short note sliding up
+  pick() {
+    beep(520, 0.07, 'sine', 0, 780, 0.5);
+  },
+  // Piece put down in the wrong place: soft low note sliding down
+  drop() {
+    beep(250, 0.09, 'sine', 0, 160, 0.5);
+  },
+  // Piece locks into its place: a click, then a two-note chime
+  snap() {
+    noise(0.04, 3500, 0, 0.45);
+    beep(190, 0.05, 'square', 0, 95, 0.3);
+    beep(880, 0.14, 'sine', 0.03, 0, 0.7);
+    beep(1319, 0.22, 'sine', 0.09, 0, 0.6);
+    buzz(12);
+  },
+  // Hint switched on (notes go up) or off (notes go down)
+  hintOn() {
+    beep(660, 0.08, 'sine', 0.00, 0, 0.6);
+    beep(990, 0.14, 'sine', 0.08, 0, 0.6);
+  },
+  hintOff() {
+    beep(990, 0.08, 'sine', 0.00, 0, 0.5);
+    beep(660, 0.12, 'sine', 0.08, 0, 0.5);
+  },
+  // Level finished: short rising tune (starts just after the last "snap" sound)
+  levelClear() {
+    const notes = [523, 659, 784, 1047];
+    for (let i = 0; i < notes.length; i++) beep(notes[i], 0.16, 'triangle', 0.28 + i * 0.12, 0, 0.8);
+    beep(1319, 0.35, 'sine', 0.28 + notes.length * 0.12, 0, 0.6);
+    buzz(30);
+  },
+  // All ten puzzles finished: a longer fanfare with a final chord
+  allClear() {
+    const notes = [523, 523, 523, 659, 784, 659, 784, 1047];
+    const times = [0.00, 0.12, 0.24, 0.36, 0.52, 0.68, 0.80, 0.96];
+    for (let i = 0; i < notes.length; i++) beep(notes[i], 0.15, 'triangle', 0.28 + times[i], 0, 0.8);
+    beep(1047, 0.7, 'triangle', 1.42, 0, 0.6);          // final chord: three notes together
+    beep(1319, 0.7, 'sine', 1.42, 0, 0.5);
+    beep(1568, 0.7, 'sine', 1.42, 0, 0.5);
+    buzz(40);
+  }
+};
 
 // ---------- Small random-number helper ----------
 // Gives the same "random" numbers every time for the same seed,
@@ -141,16 +355,22 @@ function seeded(seed) {
   };
 }
 
-// ---------- Pictures ----------
-// Each function paints one picture on a square of size s.
-const SCENES = [paintHills, paintSea, paintBalloons, paintCity, paintReef];
+// ---------- Drawing helpers for the pictures ----------
+// Every picture is painted on a square that is 100 units wide and 100 units tall:
+// (0, 0) is the top-left corner, (50, 50) the middle, (100, 100) the bottom-right corner.
+// makePicture() stretches that square to the real size of the frame.
 
-function skyGradient(c, s, top, bottom) {
-  const g = c.createLinearGradient(0, 0, 0, s);
+// Fill a strip across the picture (from y, h tall) with a colour that fades from top to bottom
+function band(c, y, h, top, bottom) {
+  const g = c.createLinearGradient(0, y, 0, y + h);
   g.addColorStop(0, top);
   g.addColorStop(1, bottom);
   c.fillStyle = g;
-  c.fillRect(0, 0, s, s);
+  c.fillRect(0, y, 100, h);
+}
+// Fill the whole picture with a sky that fades from top to bottom
+function fillSky(c, top, bottom) {
+  band(c, 0, 100, top, bottom);
 }
 function circle(c, x, y, r, color) {
   c.fillStyle = color;
@@ -158,157 +378,1017 @@ function circle(c, x, y, r, color) {
   c.arc(x, y, r, 0, Math.PI * 2);
   c.fill();
 }
-function cloud(c, x, y, r) {
+// Oval with its centre at (x, y); angle tilts it (in radians)
+function oval(c, x, y, rx, ry, color, angle = 0) {
+  c.fillStyle = color;
+  c.beginPath();
+  c.ellipse(x, y, rx, ry, angle, 0, Math.PI * 2);
+  c.fill();
+}
+// Top half of an oval (islands, domes)
+function halfOval(c, x, y, rx, ry, color) {
+  c.fillStyle = color;
+  c.beginPath();
+  c.ellipse(x, y, rx, ry, 0, Math.PI, 0);
+  c.fill();
+}
+function box(c, x, y, w, h, color) {
+  c.fillStyle = color;
+  c.fillRect(x, y, w, h);
+}
+// Outline of a box with rounded corners (fill or stroke it afterwards)
+function roundRectPath(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.lineTo(x + w - r, y);
+  c.quadraticCurveTo(x + w, y, x + w, y + r);
+  c.lineTo(x + w, y + h - r);
+  c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  c.lineTo(x + r, y + h);
+  c.quadraticCurveTo(x, y + h, x, y + h - r);
+  c.lineTo(x, y + r);
+  c.quadraticCurveTo(x, y, x + r, y);
+  c.closePath();
+}
+function roundBox(c, x, y, w, h, r, color) {
+  c.fillStyle = color;
+  roundRectPath(c, x, y, w, h, r);
+  c.fill();
+}
+// Filled shape with straight sides. points = [x0, y0, x1, y1, x2, y2, ...]
+function shape(c, color, points) {
+  c.fillStyle = color;
+  c.beginPath();
+  c.moveTo(points[0], points[1]);
+  for (let i = 2; i < points.length; i += 2) c.lineTo(points[i], points[i + 1]);
+  c.closePath();
+  c.fill();
+}
+// Straight line with round ends
+function line(c, x0, y0, x1, y1, width, color) {
+  c.strokeStyle = color;
+  c.lineWidth = width;
+  c.lineCap = 'round';
+  c.beginPath();
+  c.moveTo(x0, y0);
+  c.lineTo(x1, y1);
+  c.stroke();
+}
+// Bent line from (x0, y0) to (x1, y1); (bx, by) is the point it bends towards
+function curve(c, x0, y0, bx, by, x1, y1, width, color) {
+  c.strokeStyle = color;
+  c.lineWidth = width;
+  c.lineCap = 'round';
+  c.beginPath();
+  c.moveTo(x0, y0);
+  c.quadraticCurveTo(bx, by, x1, y1);
+  c.stroke();
+}
+// Shaded ball: light colour at the top-left, dark colour at the bottom-right
+function ball(c, x, y, r, light, dark) {
+  const g = c.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r);
+  g.addColorStop(0, light);
+  g.addColorStop(1, dark);
+  c.fillStyle = g;
+  c.beginPath();
+  c.arc(x, y, r, 0, Math.PI * 2);
+  c.fill();
+}
+// Soft glow that fades out. rgb = 'red,green,blue' numbers, strength = 0 to 1
+function glow(c, x, y, r, rgb, strength) {
+  const g = c.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, 'rgba(' + rgb + ',' + strength + ')');
+  g.addColorStop(1, 'rgba(' + rgb + ',0)');
+  c.fillStyle = g;
+  c.fillRect(x - r, y - r, r * 2, r * 2);
+}
+// Rounded hill that is lighter at the top
+function hill(c, x, y, rx, ry, top, bottom) {
+  const g = c.createLinearGradient(0, y - ry, 0, y);
+  g.addColorStop(0, top);
+  g.addColorStop(1, bottom);
+  c.fillStyle = g;
+  c.beginPath();
+  c.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+  c.fill();
+}
+// Fluffy cloud: a shaded underside, then white puffs on top
+function cloud(c, x, y, r, color = '#ffffff', shade = '#c9ddef') {
+  circle(c, x, y + r * 0.25, r, shade);
+  circle(c, x + r * 1.15, y + r * 0.4, r * 0.8, shade);
+  circle(c, x - r * 1.15, y + r * 0.45, r * 0.7, shade);
+  circle(c, x, y, r, color);
+  circle(c, x + r * 1.1, y + r * 0.2, r * 0.8, color);
+  circle(c, x - r * 1.1, y + r * 0.25, r * 0.7, color);
+  circle(c, x + r * 0.5, y - r * 0.55, r * 0.6, color);
+}
+// Five-pointed star
+function star5(c, x, y, r, color) {
+  c.fillStyle = color;
+  c.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 5;
+    const d = i % 2 === 0 ? r : r * 0.45;
+    c.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d);
+  }
+  c.closePath();
+  c.fill();
+}
+// Cartoon eye: white, black pupil, tiny shine
+function eye(c, x, y, r) {
   circle(c, x, y, r, '#ffffff');
-  circle(c, x + r * 1.1, y + r * 0.2, r * 0.8, '#ffffff');
-  circle(c, x - r * 1.1, y + r * 0.25, r * 0.7, '#ffffff');
+  circle(c, x + r * 0.15, y + r * 0.1, r * 0.55, '#1a1a2a');
+  circle(c, x - r * 0.1, y - r * 0.2, r * 0.2, '#ffffff');
+}
+// Far-away bird: two small arcs like a flat "m"
+function bird(c, x, y, r, color) {
+  c.strokeStyle = color;
+  c.lineWidth = r * 0.22;
+  c.lineCap = 'round';
+  c.beginPath();
+  c.arc(x - r * 0.5, y, r * 0.5, Math.PI * 1.15, Math.PI * 1.95);
+  c.stroke();
+  c.beginPath();
+  c.arc(x + r * 0.5, y, r * 0.5, Math.PI * 1.05, Math.PI * 1.85);
+  c.stroke();
+}
+// Flower: five petals around a yellow middle
+function flower(c, x, y, r, color) {
+  for (let i = 0; i < 5; i++) {
+    const a = i * Math.PI * 2 / 5 - Math.PI / 2;
+    circle(c, x + Math.cos(a) * r, y + Math.sin(a) * r, r * 0.75, color);
+  }
+  circle(c, x, y, r * 0.6, '#ffd84d');
+}
+// Round leafy tree with a trunk; (x, y) = where the trunk meets the ground
+function roundTree(c, x, y, size) {
+  box(c, x - size * 0.12, y - size * 0.9, size * 0.24, size * 0.9, '#7a4a2b');
+  ball(c, x - size * 0.42, y - size * 0.95, size * 0.42, '#5cb85a', '#2c7a3c');
+  ball(c, x + size * 0.42, y - size * 0.95, size * 0.42, '#5cb85a', '#2c7a3c');
+  ball(c, x, y - size * 1.3, size * 0.58, '#6cc866', '#2f8a42');
+}
+// Pine tree made of three triangles
+function pine(c, x, y, size, color) {
+  box(c, x - size * 0.08, y - size * 0.2, size * 0.16, size * 0.2, '#5a3a22');
+  for (let i = 0; i < 3; i++) {
+    const top = y - size * (1.3 - i * 0.3), w = size * (0.3 + i * 0.12);
+    shape(c, color, [x, top, x + w, top + size * 0.5, x - w, top + size * 0.5]);
+  }
+}
+// Palm tree; (x, y) = foot of the trunk, h = height, lean = how far the top leans sideways
+function palm(c, x, y, h, lean) {
+  const tx = x + lean, ty = y - h;
+  curve(c, x, y, x + lean * 0.2, y - h * 0.6, tx, ty, h * 0.09, '#8a5a34');
+  const leaves = [[-0.55, -0.1], [-0.45, 0.25], [0.55, -0.1], [0.45, 0.25], [-0.2, -0.4], [0.2, -0.4]];
+  for (let i = 0; i < leaves.length; i++) {
+    const ex = tx + leaves[i][0] * h, ey = ty + leaves[i][1] * h;
+    curve(c, tx, ty, (tx + ex) / 2, Math.min(ty, ey) - h * 0.22, ex, ey, h * 0.085, i % 2 ? '#2f9e4f' : '#237a3d');
+  }
+  circle(c, tx - h * 0.04, ty + h * 0.05, h * 0.045, '#6b3f1f');     // coconuts
+  circle(c, tx + h * 0.05, ty + h * 0.06, h * 0.045, '#6b3f1f');
+}
+// Big jungle leaf from (x, y), pointing along "angle"
+function leaf(c, x, y, len, angle, color) {
+  c.save();
+  c.translate(x, y);
+  c.rotate(angle);
+  c.fillStyle = color;
+  c.beginPath();
+  c.moveTo(0, 0);
+  c.quadraticCurveTo(len * 0.5, -len * 0.3, len, 0);
+  c.quadraticCurveTo(len * 0.5, len * 0.3, 0, 0);
+  c.fill();
+  line(c, 0, 0, len * 0.92, 0, len * 0.025, 'rgba(255,255,255,0.28)');   // the vein down the middle
+  c.restore();
+}
+// Fish: r = body length, dir = +1 swims right, -1 swims left, stripe = colour of its stripes
+function fish(c, x, y, r, color, dir, stripe) {
+  // Tail and fins first, so the body covers where they join
+  shape(c, color, [x - dir * r * 0.75, y, x - dir * r * 1.6, y - r * 0.6, x - dir * r * 1.35, y, x - dir * r * 1.6, y + r * 0.6]);
+  shape(c, color, [x - dir * r * 0.3, y - r * 0.5, x + dir * r * 0.1, y - r * 0.95, x + dir * r * 0.35, y - r * 0.5]);
+  oval(c, x, y, r, r * 0.6, color);
+  // Stripes stay inside the body
+  c.save();
+  c.beginPath();
+  c.ellipse(x, y, r, r * 0.6, 0, 0, Math.PI * 2);
+  c.clip();
+  box(c, x - dir * r * 0.5 - r * 0.11, y - r, r * 0.22, r * 2, stripe);
+  box(c, x - r * 0.11, y - r, r * 0.22, r * 2, stripe);
+  oval(c, x, y + r * 0.75, r, r * 0.5, 'rgba(0,0,0,0.12)');          // darker belly
+  oval(c, x, y - r * 0.75, r, r * 0.5, 'rgba(255,255,255,0.22)');    // lighter back
+  c.restore();
+  eye(c, x + dir * r * 0.55, y - r * 0.12, r * 0.17);
 }
 
-// 1: house on green hills
-function paintHills(c, s) {
-  skyGradient(c, s, '#5bb8f5', '#d5f0ff');
-  circle(c, s * 0.8, s * 0.18, s * 0.09, '#ffd84d');
-  cloud(c, s * 0.25, s * 0.2, s * 0.06);
-  cloud(c, s * 0.55, s * 0.32, s * 0.045);
-  c.fillStyle = '#6fbf73';
-  c.beginPath(); c.ellipse(s * 0.2, s * 0.95, s * 0.6, s * 0.4, 0, 0, Math.PI * 2); c.fill();
-  c.fillStyle = '#4c9f58';
-  c.beginPath(); c.ellipse(s * 0.85, s * 1.0, s * 0.6, s * 0.38, 0, 0, Math.PI * 2); c.fill();
-  // House
-  c.fillStyle = '#f4e3c1'; c.fillRect(s * 0.3, s * 0.52, s * 0.26, s * 0.2);
-  c.fillStyle = '#c9503f';
-  c.beginPath(); c.moveTo(s * 0.26, s * 0.53); c.lineTo(s * 0.43, s * 0.38); c.lineTo(s * 0.6, s * 0.53); c.fill();
-  c.fillStyle = '#7a4a2b'; c.fillRect(s * 0.40, s * 0.61, s * 0.06, s * 0.11);
-  c.fillStyle = '#8fd0ff'; c.fillRect(s * 0.33, s * 0.57, s * 0.05, s * 0.05); c.fillRect(s * 0.48, s * 0.57, s * 0.05, s * 0.05);
-  // Tree
-  c.fillStyle = '#7a4a2b'; c.fillRect(s * 0.74, s * 0.55, s * 0.03, s * 0.14);
-  circle(c, s * 0.755, s * 0.5, s * 0.08, '#2f7d3b');
-  // Flowers
+// ---------- Pictures ----------
+// One picture per level. Each function paints its picture on the 100 x 100 square.
+const SCENES = [
+  paintGarden,      // level 1:  house and garden
+  paintSea,         // level 2:  sailing boat, lighthouse and fish
+  paintSpace,       // level 3:  rocket and planets
+  paintJungle,      // level 4:  lion, monkey and parrot
+  paintBalloons,    // level 5:  hot-air balloons over mountains
+  paintFarm,        // level 6:  barn, windmill, cow and sheep
+  paintReef,        // level 7:  fish, turtle and coral
+  paintCastle,      // level 8:  castle under a rainbow
+  paintCity,        // level 9:  city at night with a big wheel
+  paintDinos        // level 10: dinosaurs and a volcano
+];
+
+// 1: house and garden
+function paintGarden(c) {
+  fillSky(c, '#3f9fee', '#d8f2ff');
+  // Sun with rays
+  glow(c, 80, 17, 24, '255,240,160', 0.75);
+  for (let i = 0; i < 12; i++) {
+    const a = i * Math.PI / 6;
+    line(c, 80 + Math.cos(a) * 11, 17 + Math.sin(a) * 11, 80 + Math.cos(a) * 14.5, 17 + Math.sin(a) * 14.5, 1.3, '#ffe066');
+  }
+  ball(c, 80, 17, 8.5, '#fff8b8', '#ffc933');
+  cloud(c, 22, 15, 6);
+  cloud(c, 52, 27, 4.2);
+  bird(c, 38, 10, 3, '#3b4a6b');
+  bird(c, 45, 14, 2.4, '#3b4a6b');
+  // Hills and lawn
+  hill(c, 15, 82, 50, 26, '#a5e096', '#6cbf6a');
+  hill(c, 90, 86, 52, 30, '#86d47e', '#4fa85a');
+  band(c, 70, 30, '#6cc565', '#2f8f43');
+  // Garden path from the door to the bottom of the picture
+  shape(c, '#e8cc98', [40.5, 72, 46.5, 72, 62, 100, 32, 100]);
+  for (const [sx, sy, sr] of [[44, 77, 1.5], [46, 84, 2], [44, 91, 2.3], [50, 96, 2.5], [40, 97, 2]]) {
+    oval(c, sx, sy, sr, sr * 0.55, '#cfae74');
+  }
+  // Chimney with smoke
+  box(c, 51, 36, 5, 12, '#a8483a');
+  box(c, 50.3, 35, 6.4, 2, '#8a382d');
+  circle(c, 54, 30, 2.2, 'rgba(255,255,255,0.75)');
+  circle(c, 56.5, 25, 3, 'rgba(255,255,255,0.6)');
+  circle(c, 60, 19, 3.8, 'rgba(255,255,255,0.45)');
+  // House walls (the right side is a little darker, like shade)
+  box(c, 28, 50, 30, 22, '#f7e6c4');
+  box(c, 50, 50, 8, 22, '#e6d0a6');
+  // Roof
+  shape(c, '#d4573f', [24, 51.5, 43, 34, 62, 51.5]);
+  shape(c, '#b3412f', [43, 34, 62, 51.5, 54, 51.5]);
+  line(c, 24, 51.5, 62, 51.5, 1, '#8a2f22');
+  circle(c, 43, 45, 2.6, '#ffffff');
+  circle(c, 43, 45, 1.9, '#8fd0ff');
+  // Door
+  roundBox(c, 40, 59.5, 7, 12.5, 1.5, '#8a5230');
+  box(c, 41, 61, 5, 4.5, '#a66a3f');
+  circle(c, 45.6, 66.5, 0.6, '#ffd84d');
+  // Windows with white frames
+  for (const wx of [30.5, 49.5]) {
+    box(c, wx - 0.7, 55.3, 8.4, 8.4, '#ffffff');
+    box(c, wx, 56, 7, 7, '#8fd0ff');
+    box(c, wx + 3.1, 56, 0.8, 7, '#ffffff');
+    box(c, wx, 59.1, 7, 0.8, '#ffffff');
+    box(c, wx - 1, 63.7, 9, 1.6, '#c9503f');                 // flower box
+    circle(c, wx + 1, 63.5, 0.9, '#ff7aa8');
+    circle(c, wx + 3.5, 63.3, 0.9, '#ffd84d');
+    circle(c, wx + 6, 63.5, 0.9, '#ff7aa8');
+  }
+  // White fence on both sides of the house
+  for (let x = 1; x < 100; x += 4) {
+    if (x > 25 && x < 62) continue;
+    shape(c, '#ffffff', [x, 81, x, 73.5, x + 1, 72, x + 2, 73.5, x + 2, 81]);
+  }
+  box(c, 0, 75, 27, 1, '#eef2f6');
+  box(c, 0, 78.5, 27, 1, '#eef2f6');
+  box(c, 62, 75, 38, 1, '#eef2f6');
+  box(c, 62, 78.5, 38, 1, '#eef2f6');
+  // Apple tree
+  roundTree(c, 81, 74, 16);
+  for (const [ax, ay] of [[76, 56], [84, 52], [80, 60], [88, 59], [73, 61], [82, 46]]) circle(c, ax, ay, 1.3, '#e8413a');
+  // Bush by the house
+  ball(c, 23, 70, 5, '#5cb85a', '#2c7a3c');
+  ball(c, 17, 72, 3.6, '#5cb85a', '#2c7a3c');
+  // Flowers in the grass
   const rnd = seeded(7);
-  for (let i = 0; i < 26; i++) {
-    circle(c, rnd() * s, s * (0.78 + rnd() * 0.2), s * 0.012, ['#ff6b6b', '#ffd84d', '#ffffff', '#b388eb'][i % 4]);
+  const colors = ['#ff6b6b', '#ffd84d', '#ffffff', '#c79bff', '#ff8fc7'];
+  for (let i = 0; i < 22; i++) {
+    const x = 3 + rnd() * 94, y = 85 + rnd() * 12;
+    if (x > 30 && x < 64) continue;                          // keep the path clear
+    line(c, x, y, x, y + 3, 0.5, '#237a3d');
+    flower(c, x, y, 1.1, colors[i % colors.length]);
   }
+  // Butterfly
+  oval(c, 12.2, 57, 2, 1.3, '#ff8fc7', -0.6);
+  oval(c, 15.8, 57, 2, 1.3, '#ff8fc7', 0.6);
+  oval(c, 12.8, 59.2, 1.3, 1, '#c79bff', 0.5);
+  oval(c, 15.2, 59.2, 1.3, 1, '#c79bff', -0.5);
+  line(c, 14, 56.5, 14, 60, 0.6, '#3b2a22');
 }
 
-// 2: sailing boat at sunset
-function paintSea(c, s) {
-  skyGradient(c, s, '#ff9a5a', '#ffe0a3');
-  circle(c, s * 0.5, s * 0.5, s * 0.14, '#fff2b8');
-  c.fillStyle = '#1f6fa8'; c.fillRect(0, s * 0.55, s, s * 0.45);
+// 2: sailing boat at sunset, with a lighthouse and fish
+function paintSea(c) {
+  band(c, 0, 50, '#ff8448', '#ffe3a8');
+  // Setting sun
+  glow(c, 50, 47, 32, '255,246,200', 0.85);
+  ball(c, 50, 46, 10, '#fffce6', '#ffd866');
+  cloud(c, 20, 13, 5, '#ffe6d0', '#ffb89a');
+  cloud(c, 76, 9, 4, '#ffe6d0', '#ffb89a');
+  bird(c, 30, 26, 3, '#4a3340');
+  bird(c, 37, 21, 2.4, '#4a3340');
+  bird(c, 66, 24, 2.6, '#4a3340');
+  // Sea
+  band(c, 50, 50, '#3aa3dc', '#0a3566');
   const rnd = seeded(11);
-  c.strokeStyle = 'rgba(255,255,255,0.55)'; c.lineWidth = s * 0.006;
-  for (let i = 0; i < 28; i++) {
-    const x = rnd() * s, y = s * (0.58 + rnd() * 0.4), w = s * (0.04 + rnd() * 0.06);
-    c.beginPath(); c.moveTo(x, y); c.lineTo(x + w, y); c.stroke();
+  for (let i = 0; i < 16; i++) {                             // the sun's sparkle on the water
+    const y = 51 + i * 1.5, w = 4 + rnd() * 9;
+    const x = 50 + (rnd() - 0.5) * 6;
+    line(c, x - w / 2, y, x + w / 2, y, 0.5, 'rgba(255,244,190,0.75)');
   }
-  // Boat
-  c.fillStyle = '#7a3b2e';
-  c.beginPath(); c.moveTo(s * 0.22, s * 0.66); c.lineTo(s * 0.58, s * 0.66); c.lineTo(s * 0.5, s * 0.74); c.lineTo(s * 0.28, s * 0.74); c.fill();
-  c.fillStyle = '#3b2a22'; c.fillRect(s * 0.39, s * 0.3, s * 0.012, s * 0.36);
-  c.fillStyle = '#ffffff';
-  c.beginPath(); c.moveTo(s * 0.41, s * 0.32); c.lineTo(s * 0.56, s * 0.62); c.lineTo(s * 0.41, s * 0.62); c.fill();
-  c.fillStyle = '#ff6b6b';
-  c.beginPath(); c.moveTo(s * 0.38, s * 0.38); c.lineTo(s * 0.26, s * 0.62); c.lineTo(s * 0.38, s * 0.62); c.fill();
-  // Island and birds
-  c.fillStyle = '#2f5d3a';
-  c.beginPath(); c.ellipse(s * 0.85, s * 0.56, s * 0.13, s * 0.05, 0, Math.PI, 0); c.fill();
-  c.strokeStyle = '#3b2a22'; c.lineWidth = s * 0.006;
-  for (const [bx, by] of [[0.15, 0.2], [0.24, 0.14], [0.75, 0.22], [0.84, 0.3]]) {
-    c.beginPath(); c.arc(s * bx, s * by, s * 0.025, Math.PI * 1.1, Math.PI * 1.9); c.stroke();
+  for (let i = 0; i < 30; i++) {                             // little waves
+    const x = rnd() * 100, y = 54 + rnd() * 44, w = 3 + rnd() * 5;
+    curve(c, x, y, x + w / 2, y - 0.9, x + w, y, 0.45, 'rgba(255,255,255,0.45)');
+  }
+  // Island with a palm tree
+  halfOval(c, 12, 51, 14, 4, '#f0d28a');
+  palm(c, 10, 48.5, 17, 3);
+  // Lighthouse on rocks
+  halfOval(c, 88, 51.5, 11, 5, '#5d5a6b');
+  halfOval(c, 81, 51.5, 5, 2.5, '#6e6b7d');
+  glow(c, 88, 23, 11, '255,244,170', 0.8);
+  shape(c, '#ffffff', [84.5, 47.5, 91.5, 47.5, 90.2, 26, 85.8, 26]);
+  shape(c, '#e8413a', [84.9, 41, 91.1, 41, 90.8, 36, 85.2, 36]);
+  shape(c, '#e8413a', [85.5, 31, 90.5, 31, 90.2, 26, 85.8, 26]);
+  box(c, 85, 24.6, 6, 1.4, '#39405a');
+  box(c, 86, 21, 4, 3.6, '#ffe98a');
+  shape(c, '#e8413a', [85, 21, 88, 17.5, 91, 21]);
+  // Sailing boat
+  oval(c, 48, 77, 19, 2.2, 'rgba(5,30,60,0.35)');            // shadow on the water
+  line(c, 47, 28, 47, 68, 0.9, '#4a3226');                   // mast
+  shape(c, '#ffffff', [48.5, 31, 64, 64.5, 48.5, 64.5]);     // big sail
+  shape(c, '#e6ecf5', [48.5, 31, 54, 64.5, 48.5, 64.5]);
+  shape(c, '#ff6b5e', [45.5, 37, 31, 64.5, 45.5, 64.5]);     // small sail
+  shape(c, '#e2534a', [45.5, 37, 41, 64.5, 45.5, 64.5]);
+  shape(c, '#ffd84d', [47, 28, 53, 29.8, 47, 31.6]);         // flag
+  shape(c, '#8a4632', [29, 67, 67, 67, 60, 77, 35, 77]);     // hull
+  shape(c, '#6f3626', [33, 74, 62.2, 74, 60, 77, 35, 77]);
+  line(c, 30.5, 69.2, 65.5, 69.2, 1, '#ffffff');
+  for (const px of [40, 47, 54]) circle(c, px, 72, 0.9, '#ffe98a');     // round windows
+  curve(c, 31, 77.5, 48, 79.5, 65, 77.5, 0.8, 'rgba(255,255,255,0.8)');   // foam
+  // Fish seen through the water
+  c.globalAlpha = 0.9;
+  fish(c, 20, 88, 5, '#ffb03a', 1, '#ffffff');
+  fish(c, 74, 91, 5.5, '#ff6b6b', -1, '#ffd84d');
+  fish(c, 46, 93, 3.2, '#ffe066', 1, '#ff9a4d');
+  fish(c, 88, 70, 3, '#7fe3c8', -1, '#ffffff');
+  c.globalAlpha = 1;
+}
+
+// 3: rocket flying between planets
+function paintSpace(c) {
+  fillSky(c, '#070b24', '#2a1557');
+  glow(c, 70, 40, 45, '120,80,220', 0.35);                   // coloured space clouds
+  glow(c, 15, 75, 35, '40,140,220', 0.3);
+  glow(c, 40, 10, 25, '230,90,160', 0.22);
+  const rnd = seeded(19);
+  for (let i = 0; i < 130; i++) {
+    circle(c, rnd() * 100, rnd() * 100, 0.15 + rnd() * 0.45, i % 7 === 0 ? '#ffe9a8' : '#ffffff');
+  }
+  star5(c, 12, 12, 2, '#fff2a8');
+  star5(c, 92, 52, 1.6, '#fff2a8');
+  star5(c, 44, 90, 1.5, '#fff2a8');
+  star5(c, 60, 6, 1.2, '#ffffff');
+  // Ringed planet: back of the ring, the planet, then the front of the ring
+  c.strokeStyle = '#f2d9a0';
+  c.lineWidth = 2.4;
+  c.beginPath(); c.ellipse(25, 27, 21, 5.5, -0.35, Math.PI, Math.PI * 2); c.stroke();
+  ball(c, 25, 27, 12, '#ffcf70', '#c9642a');
+  c.save();
+  c.beginPath(); c.arc(25, 27, 12, 0, Math.PI * 2); c.clip();
+  c.rotate(-0.35);
+  box(c, -10, 26, 70, 2.4, 'rgba(160,70,30,0.35)');          // bands across the planet
+  box(c, -10, 32, 70, 1.6, 'rgba(255,240,200,0.35)');
+  box(c, -10, 37, 70, 3, 'rgba(160,70,30,0.3)');
+  c.restore();
+  c.strokeStyle = '#f2d9a0';
+  c.lineWidth = 2.4;
+  c.beginPath(); c.ellipse(25, 27, 21, 5.5, -0.35, 0, Math.PI); c.stroke();
+  c.strokeStyle = 'rgba(140,90,40,0.6)';
+  c.lineWidth = 0.5;
+  c.beginPath(); c.ellipse(25, 27, 21, 5.5, -0.35, 0, Math.PI); c.stroke();
+  // Earth with land and clouds
+  glow(c, 80, 82, 24, '90,170,255', 0.45);
+  ball(c, 80, 82, 16, '#6cc6ff', '#1b4fa8');
+  c.save();
+  c.beginPath(); c.arc(80, 82, 16, 0, Math.PI * 2); c.clip();
+  oval(c, 74, 76, 6, 4, '#4fbf62', 0.5);
+  oval(c, 79, 80, 3.5, 5, '#4fbf62', -0.3);
+  oval(c, 89, 88, 6, 4, '#4fbf62', 0.8);
+  oval(c, 72, 92, 4, 3, '#4fbf62', 0);
+  oval(c, 84, 73, 7, 1.5, 'rgba(255,255,255,0.8)', 0.2);
+  oval(c, 76, 87, 6, 1.3, 'rgba(255,255,255,0.8)', -0.1);
+  oval(c, 92, 100, 18, 14, 'rgba(0,10,50,0.35)');            // night side
+  c.restore();
+  // Moon and a small red planet
+  ball(c, 84, 18, 6.5, '#f4f4f8', '#9aa0b8');
+  circle(c, 82, 16.5, 1.3, 'rgba(110,116,140,0.55)');
+  circle(c, 86.5, 19.5, 1.8, 'rgba(110,116,140,0.55)');
+  circle(c, 83.5, 21.5, 0.9, 'rgba(110,116,140,0.55)');
+  ball(c, 58, 14, 3.6, '#ff9a7a', '#b8362e');
+  // Comet
+  const tail = c.createLinearGradient(8, 50, 24, 42);
+  tail.addColorStop(0, 'rgba(160,220,255,0)');
+  tail.addColorStop(1, 'rgba(200,240,255,0.9)');
+  c.strokeStyle = tail; c.lineWidth = 1.6; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(6, 51); c.lineTo(24, 42); c.stroke();
+  circle(c, 24, 42, 1.4, '#ffffff');
+  // Flying saucer
+  oval(c, 15, 66.5, 4, 3.4, '#9df0c0');
+  circle(c, 15, 65.5, 1.1, '#2a7a55');
+  oval(c, 15, 68, 9, 2.6, '#c9d2e6');
+  oval(c, 15, 68.9, 9, 1.6, '#8c97b3');
+  for (const lx of [9.5, 13, 17, 20.5]) circle(c, lx, 68.6, 0.7, '#ffd84d');
+  // Smoke trail behind the rocket
+  for (const [px, py, pr, pa] of [[38, 79, 3, 0.75], [35, 85, 4, 0.55], [31, 91, 5, 0.38], [26, 97, 6, 0.24]]) {
+    circle(c, px, py, pr, 'rgba(235,238,250,' + pa + ')');
+  }
+  // Rocket (drawn standing up, then tilted)
+  c.save();
+  c.translate(54, 50);
+  c.rotate(0.5);
+  c.fillStyle = '#ff7a2a';                                   // flame
+  c.beginPath(); c.moveTo(-4.5, 14); c.quadraticCurveTo(0, 38, 4.5, 14); c.fill();
+  c.fillStyle = '#ffe066';
+  c.beginPath(); c.moveTo(-2.5, 14); c.quadraticCurveTo(0, 28, 2.5, 14); c.fill();
+  shape(c, '#e23d3d', [-5.5, 4, -12.5, 17, -5, 13]);         // side fins
+  shape(c, '#e23d3d', [5.5, 4, 12.5, 17, 5, 13]);
+  const body = c.createLinearGradient(-8, 0, 8, 0);
+  body.addColorStop(0, '#ffffff');
+  body.addColorStop(1, '#aab6d2');
+  c.fillStyle = body;
+  c.beginPath();
+  c.moveTo(0, -20);
+  c.bezierCurveTo(9, -9, 8, 8, 5, 14.5);
+  c.lineTo(-5, 14.5);
+  c.bezierCurveTo(-8, 8, -9, -9, 0, -20);
+  c.fill();
+  c.save();
+  c.clip();                                                  // the red nose stays inside the body
+  box(c, -10, -22, 20, 11, '#e23d3d');
+  c.restore();
+  circle(c, 0, -3, 4, '#39405a');                            // window
+  ball(c, 0, -3, 3, '#bfeaff', '#3a8ad8');
+  shape(c, '#b82e2e', [0, 5, 1.1, 14.5, -1.1, 14.5]);        // middle fin
+  c.restore();
+}
+
+// 4: jungle animals
+function paintJungle(c) {
+  fillSky(c, '#d9f2a8', '#3d9a52');
+  glow(c, 50, 8, 55, '255,255,210', 0.6);                    // sunlight through the trees
+  // Far-away tree trunks
+  for (const [tx, tw] of [[8, 5], [30, 3.5], [58, 4.5], [90, 6], [44, 2.5]]) box(c, tx, 0, tw, 80, 'rgba(40,110,70,0.3)');
+  const rnd = seeded(31);
+  for (let i = 0; i < 16; i++) {
+    leaf(c, rnd() * 100, 4 + rnd() * 26, 12 + rnd() * 8, rnd() * 6.3, 'rgba(50,140,80,0.45)');
+  }
+  // Ground
+  band(c, 78, 22, '#5fb04c', '#2c6e34');
+  // Branch with a parrot (top right)
+  curve(c, 100, 50, 84, 47, 68, 53, 2.2, '#6b4426');
+  oval(c, 83, 40, 4.5, 7.5, '#e8362e', 0.15);                // body
+  oval(c, 85.5, 42, 2.6, 6, '#2f7de0', 0.3);                 // wing
+  shape(c, '#2f7de0', [84, 47, 88, 58, 85, 58, 82, 48]);     // tail
+  circle(c, 81.5, 32.5, 4, '#e8362e');                       // head
+  circle(c, 80.5, 32, 1.9, '#ffffff');
+  eye(c, 80.3, 32, 1);
+  shape(c, '#ffc02e', [78, 32, 74, 34.5, 78.5, 36]);         // beak
+  line(c, 82, 48, 82, 50.5, 0.6, '#3b2a22');
+  line(c, 84.5, 48, 84.5, 50.3, 0.6, '#3b2a22');
+  // Vine with a monkey hanging from it
+  curve(c, 40, 0, 62, 18, 58, 0, 0.9, '#2a7a3d');
+  curve(c, 61, 0, 60, 10, 61, 20, 1, '#2a7a3d');
+  curve(c, 61, 19, 58, 26, 60, 33, 2.2, '#8a5a34');          // arm reaching up
+  curve(c, 68, 44, 78, 46, 74, 36, 1.4, '#8a5a34');          // tail
+  oval(c, 62, 41, 5.5, 7, '#8a5a34');                        // body
+  oval(c, 62, 42.5, 3.2, 4.4, '#e6c08e');                    // tummy
+  curve(c, 65, 37, 70, 40, 69, 45, 2, '#8a5a34');            // other arm
+  curve(c, 59.5, 47, 57, 52, 60, 55, 2.2, '#8a5a34');        // legs
+  curve(c, 64.5, 47, 67, 52, 64, 55, 2.2, '#8a5a34');
+  circle(c, 55.3, 30, 2.2, '#8a5a34');                       // ears
+  circle(c, 66.7, 30, 2.2, '#8a5a34');
+  circle(c, 55.3, 30, 1.2, '#e6c08e');
+  circle(c, 66.7, 30, 1.2, '#e6c08e');
+  circle(c, 61, 30.5, 5.6, '#8a5a34');                       // head
+  oval(c, 61, 32, 4.2, 3.6, '#e6c08e');
+  oval(c, 59.2, 29.6, 1.7, 2, '#e6c08e');
+  oval(c, 62.8, 29.6, 1.7, 2, '#e6c08e');
+  eye(c, 59.3, 29.8, 0.95);
+  eye(c, 62.7, 29.8, 0.95);
+  curve(c, 59, 33, 61, 35, 63, 33, 0.5, '#5a3418');          // smile
+  // Lion
+  curve(c, 51, 80, 60, 84, 58, 72, 1.4, '#e8a83a');          // tail
+  circle(c, 58, 71.5, 2, '#b5601c');
+  oval(c, 40, 80, 14, 8.5, '#f2b84a');                       // body
+  roundBox(c, 28, 82, 5, 12, 2, '#f2b84a');                  // legs
+  roundBox(c, 36, 83, 5, 11, 2, '#e8a83a');
+  roundBox(c, 44, 83, 5, 11, 2, '#f2b84a');
+  roundBox(c, 49.5, 81, 5, 13, 2, '#e8a83a');
+  for (let i = 0; i < 14; i++) {                             // mane: a ring of dark puffs
+    const a = i * Math.PI * 2 / 14;
+    circle(c, 24 + Math.cos(a) * 11.5, 66 + Math.sin(a) * 11.5, 4.2, '#b5601c');
+  }
+  circle(c, 24, 66, 12.5, '#cf7a26');
+  circle(c, 15.5, 58, 3, '#f2b84a');                         // ears
+  circle(c, 32.5, 58, 3, '#f2b84a');
+  circle(c, 15.5, 58, 1.6, '#c98a52');
+  circle(c, 32.5, 58, 1.6, '#c98a52');
+  ball(c, 24, 67, 9.5, '#ffd772', '#eeae3e');                // face
+  oval(c, 21, 71.5, 3.4, 2.8, '#fff0cc');                    // cheeks
+  oval(c, 27, 71.5, 3.4, 2.8, '#fff0cc');
+  eye(c, 20, 64.5, 1.7);
+  eye(c, 28, 64.5, 1.7);
+  shape(c, '#6b3a1c', [22, 68.2, 26, 68.2, 24, 70.6]);       // nose
+  curve(c, 24, 70.6, 22.5, 73.6, 20.5, 72.4, 0.5, '#6b3a1c');
+  curve(c, 24, 70.6, 25.5, 73.6, 27.5, 72.4, 0.5, '#6b3a1c');
+  // Snake in the grass
+  c.strokeStyle = '#7ac943'; c.lineWidth = 3; c.lineCap = 'round';
+  c.beginPath();
+  c.moveTo(66, 93);
+  c.bezierCurveTo(72, 85, 76, 99, 82, 91);
+  c.bezierCurveTo(86, 86, 89, 94, 93, 89);
+  c.stroke();
+  circle(c, 93.6, 88.2, 2.3, '#7ac943');
+  eye(c, 94.2, 87.5, 0.75);
+  line(c, 95.6, 89, 98, 89.6, 0.4, '#e8362e');
+  for (const [sx, sy] of [[70, 90.3], [76.5, 93.3], [82, 91], [88, 90]]) circle(c, sx, sy, 0.7, '#ffe066');
+  // Big leaves in front, and flowers
+  leaf(c, 0, 100, 30, -0.9, '#1f8a45');
+  leaf(c, 0, 100, 26, -0.35, '#2fa858');
+  leaf(c, 100, 100, 28, Math.PI + 0.75, '#1f8a45');
+  leaf(c, 100, 78, 20, Math.PI + 0.25, '#2fa858');
+  leaf(c, 0, 0, 30, 0.55, '#2fa858');
+  leaf(c, 0, 14, 22, 0.1, '#1f8a45');
+  leaf(c, 100, 0, 30, Math.PI - 0.6, '#1f8a45');
+  leaf(c, 100, 12, 22, Math.PI - 0.15, '#2fa858');
+  flower(c, 9, 84, 2.4, '#ff5a8a');
+  flower(c, 63, 82, 1.8, '#ff8a3d');
+  flower(c, 91, 72, 2, '#ff5a8a');
+  flower(c, 37, 14, 1.8, '#c79bff');
+}
+
+// One hot-air balloon: col1 and col2 are its two stripe colours
+function balloon(c, x, y, r, col1, col2) {
+  line(c, x - r * 0.55, y + r * 0.8, x - r * 0.22, y + r * 1.6, r * 0.03, '#5a4634');   // ropes
+  line(c, x + r * 0.55, y + r * 0.8, x + r * 0.22, y + r * 1.6, r * 0.03, '#5a4634');
+  roundBox(c, x - r * 0.26, y + r * 1.58, r * 0.52, r * 0.38, r * 0.06, '#a06a3c');     // basket
+  box(c, x - r * 0.26, y + r * 1.58, r * 0.52, r * 0.09, '#7a4a2b');
+  c.save();
+  c.beginPath();                                             // balloon shape: round top, narrow bottom
+  c.arc(x, y, r, Math.PI, 0);
+  c.bezierCurveTo(x + r, y + r * 0.65, x + r * 0.35, y + r * 0.95, x + r * 0.22, y + r * 1.3);
+  c.lineTo(x - r * 0.22, y + r * 1.3);
+  c.bezierCurveTo(x - r * 0.35, y + r * 0.95, x - r, y + r * 0.65, x - r, y);
+  c.closePath();
+  c.clip();
+  box(c, x - r, y - r, r * 2, r * 2.4, col1);
+  oval(c, x, y + r * 0.1, r * 0.72, r * 1.5, col2);          // stripes
+  oval(c, x, y + r * 0.1, r * 0.44, r * 1.5, col1);
+  oval(c, x, y + r * 0.1, r * 0.16, r * 1.5, col2);
+  glow(c, x - r * 0.4, y - r * 0.45, r * 0.9, '255,255,255', 0.5);     // shine
+  glow(c, x + r * 0.9, y + r * 0.3, r * 1.1, '0,0,0', 0.22);            // shade
+  c.restore();
+  box(c, x - r * 0.22, y + r * 1.26, r * 0.44, r * 0.09, '#5a4634');
+}
+
+// 5: hot-air balloons over mountains
+function paintBalloons(c) {
+  fillSky(c, '#4aa8f5', '#fff1d0');
+  glow(c, 10, 12, 26, '255,246,190', 0.8);
+  ball(c, 10, 12, 6, '#fffbe0', '#ffd866');
+  // Mountains: far ones, then near ones with snow and a shaded side
+  shape(c, '#b4c0dd', [0, 84, 14, 58, 30, 84]);
+  shape(c, '#b4c0dd', [50, 84, 78, 52, 100, 78, 100, 84]);
+  shape(c, '#7f8db3', [8, 86, 34, 50, 60, 86]);
+  shape(c, '#66739a', [34, 50, 60, 86, 40, 86]);
+  shape(c, '#ffffff', [34, 50, 27.5, 59, 31, 57.5, 34, 61, 37, 57.5, 40.5, 59]);
+  shape(c, '#8d9bc0', [46, 86, 70, 56, 96, 86]);
+  shape(c, '#717fa6', [70, 56, 96, 86, 76, 86]);
+  shape(c, '#ffffff', [70, 56, 64, 63.5, 67.5, 62, 70, 65.5, 73, 62, 76.5, 63.5]);
+  // Meadow, pine trees and a lake
+  band(c, 82, 18, '#79cc6a', '#3f9548');
+  const rnd = seeded(13);
+  for (let i = 0; i < 13; i++) pine(c, 2 + i * 8 + rnd() * 3, 86 + rnd() * 2, 6 + rnd() * 3, i % 2 ? '#2f7d4a' : '#27693d');
+  oval(c, 62, 95, 30, 4.2, '#5fbdf0');
+  oval(c, 60, 94.4, 22, 2, 'rgba(255,255,255,0.35)');
+  for (let i = 0; i < 9; i++) flower(c, 4 + rnd() * 26, 91 + rnd() * 7, 0.9, ['#ffffff', '#ffd84d', '#ff8fc7'][i % 3]);
+  // Clouds and balloons
+  cloud(c, 47, 10, 4.5);
+  cloud(c, 88, 30, 3.6);
+  cloud(c, 8, 44, 3.4);
+  balloon(c, 24, 28, 13, '#ff5e5e', '#ffd84d');
+  balloon(c, 68, 22, 10.5, '#4f86f0', '#ffffff');
+  balloon(c, 48, 48, 7, '#b07cf0', '#ffe066');
+  balloon(c, 87, 50, 6, '#34c9a0', '#ffffff');
+  bird(c, 40, 30, 2.4, '#3b4a6b');
+  bird(c, 82, 12, 2, '#3b4a6b');
+}
+
+// Fluffy sheep; (x, y) = middle of its body, size = how big, dir = +1 faces right, -1 faces left
+function sheep(c, x, y, size, dir) {
+  for (const lx of [-0.5, -0.15, 0.25, 0.55]) box(c, x + lx * size - size * 0.07, y + size * 0.3, size * 0.14, size * 0.6, '#3a3a44');
+  for (const [px, py] of [[-0.55, 0], [-0.2, -0.3], [0.25, -0.3], [0.6, 0], [0.3, 0.28], [-0.25, 0.28], [0, 0]]) {
+    circle(c, x + px * size, y + py * size, size * 0.42, '#ffffff');
+  }
+  oval(c, x + dir * size * 0.95, y - size * 0.12, size * 0.3, size * 0.36, '#3a3a44');   // head
+  circle(c, x + dir * size * 0.8, y - size * 0.45, size * 0.2, '#ffffff');               // wool on top
+  eye(c, x + dir * size * 1.02, y - size * 0.2, size * 0.1);
+}
+
+// 6: farm with a barn, windmill, cow and sheep
+function paintFarm(c) {
+  fillSky(c, '#58b6f7', '#e6f6ff');
+  glow(c, 44, 13, 22, '255,244,170', 0.8);
+  ball(c, 44, 13, 6.5, '#fff8b8', '#ffc933');
+  cloud(c, 70, 12, 5);
+  cloud(c, 90, 24, 3.4);
+  cloud(c, 6, 9, 3.6);
+  // Wheat hill with rows, and a green hill
+  hill(c, 22, 78, 55, 22, '#f6dd72', '#d7b23e');
+  for (let i = 0; i < 6; i++) curve(c, -10 + i * 9, 80, 14 + i * 4, 60, 22 + i * 1.5, 56.2, 0.5, 'rgba(170,125,30,0.5)');
+  hill(c, 88, 80, 50, 22, '#8fd67c', '#5aa85a');
+  band(c, 68, 32, '#74c865', '#38903f');
+  // Silo behind the barn
+  box(c, 82, 36, 9, 34, '#c9ced9');
+  box(c, 87.5, 36, 3.5, 34, '#a9afbd');
+  halfOval(c, 86.5, 36, 4.5, 4, '#8d94a6');
+  for (const sy of [44, 52, 60]) box(c, 82, sy, 9, 0.7, '#8d94a6');
+  // Red barn
+  shape(c, '#c8402f', [52, 70, 52, 46, 66, 33, 80, 46, 80, 70]);
+  shape(c, '#7a2a22', [49.5, 47.5, 56, 37.5, 66, 30.5, 76, 37.5, 82.5, 47.5, 80, 48, 75, 40, 66, 34, 57, 40, 52, 48]);
+  box(c, 62.5, 40, 7, 6, '#ffffff');                         // loft window
+  box(c, 63.4, 40.9, 5.2, 4.2, '#3a2320');
+  box(c, 58, 53, 16, 17, '#ffffff');                         // big door with a white X
+  box(c, 59, 54, 14, 16, '#a8321f');
+  line(c, 59.5, 54.5, 72.5, 69.5, 1, '#ffffff');
+  line(c, 72.5, 54.5, 59.5, 69.5, 1, '#ffffff');
+  // Windmill
+  shape(c, '#efe7d2', [11.5, 70, 24.5, 70, 21, 40, 15, 40]);
+  shape(c, '#d9cfb4', [19, 40, 21, 40, 24.5, 70, 21, 70]);
+  halfOval(c, 18, 40.5, 3.6, 4, '#a8483a');
+  roundBox(c, 16, 62, 4, 8, 1.5, '#7a4a2b');
+  box(c, 16.5, 50, 3, 3.5, '#6cc0f0');
+  for (let i = 0; i < 4; i++) {                              // four sails
+    c.save();
+    c.translate(18, 41);
+    c.rotate(0.45 + i * Math.PI / 2);
+    box(c, -0.4, -19, 0.8, 19, '#7a4a2b');
+    box(c, 0.4, -19, 4.2, 13, '#ffffff');
+    for (let k = 1; k < 4; k++) box(c, 0.4, -19 + k * 3.25, 4.2, 0.35, '#c9b98f');
+    c.restore();
+  }
+  circle(c, 18, 41, 1.3, '#5a3a22');
+  // Wooden fence
+  for (let x = 2; x < 100; x += 9) box(c, x, 72.5, 1.5, 7, '#8a5a34');
+  box(c, 0, 74, 100, 1, '#a06a3c');
+  box(c, 0, 77, 100, 1, '#a06a3c');
+  // Cow
+  for (const lx of [31, 35, 42, 46]) box(c, lx, 88, 2.2, 8, '#f4f4f4');
+  for (const lx of [31, 35, 42, 46]) box(c, lx, 94.5, 2.2, 1.5, '#3a3a44');
+  curve(c, 29, 82, 26, 85, 27, 90, 0.6, '#3a3a44');          // tail
+  oval(c, 40.5, 90.5, 2.2, 1.6, '#ffb3c7');                  // udder
+  roundBox(c, 29, 79, 20, 11, 4, '#ffffff');
+  c.save();
+  roundRectPath(c, 29, 79, 20, 11, 4);
+  c.clip();
+  circle(c, 33, 81, 3.5, '#3a3a44');                         // black patches
+  circle(c, 42, 88, 4, '#3a3a44');
+  circle(c, 47, 79, 2.6, '#3a3a44');
+  c.restore();
+  oval(c, 47.5, 75.5, 1.6, 1, '#ffffff', -0.5);              // ears and horns
+  oval(c, 55.5, 75.5, 1.6, 1, '#ffffff', 0.5);
+  line(c, 49.5, 74.5, 49, 72.6, 0.7, '#d9c9a0');
+  line(c, 53.5, 74.5, 54, 72.6, 0.7, '#d9c9a0');
+  roundBox(c, 48, 74.5, 7, 8.5, 2.5, '#ffffff');             // head
+  roundBox(c, 48.4, 79.5, 6.2, 4, 2, '#ffb3c7');
+  circle(c, 50.2, 81.6, 0.5, '#8a4a5a');
+  circle(c, 52.8, 81.6, 0.5, '#8a4a5a');
+  eye(c, 49.9, 77.3, 0.85);
+  eye(c, 53.1, 77.3, 0.85);
+  // Sheep
+  sheep(c, 72, 87, 5.5, -1);
+  sheep(c, 89, 82, 4.2, -1);
+  // Sunflowers in front
+  for (const [sx, sy, sr] of [[6, 82, 3], [15, 86, 3.4], [23, 83, 2.8]]) {
+    line(c, sx, sy, sx, 100, 0.9, '#2f7d3b');
+    leaf(c, sx, sy + 8, 5, -0.5, '#3a9a4a');
+    leaf(c, sx, sy + 11, 5, Math.PI + 0.5, '#3a9a4a');
+    for (let i = 0; i < 12; i++) {
+      const a = i * Math.PI / 6;
+      oval(c, sx + Math.cos(a) * sr, sy + Math.sin(a) * sr, sr * 0.55, sr * 0.28, '#ffd22e', a);
+    }
+    ball(c, sx, sy, sr * 0.68, '#9a6230', '#5a3418');
   }
 }
 
-// 3: hot-air balloons over mountains
-function paintBalloons(c, s) {
-  skyGradient(c, s, '#7ac4ff', '#fff3d6');
-  c.fillStyle = '#8d9bb8';
-  c.beginPath(); c.moveTo(0, s); c.lineTo(s * 0.25, s * 0.6); c.lineTo(s * 0.5, s); c.fill();
-  c.fillStyle = '#6f7d9c';
-  c.beginPath(); c.moveTo(s * 0.3, s); c.lineTo(s * 0.65, s * 0.55); c.lineTo(s, s); c.fill();
-  c.fillStyle = '#ffffff';
-  c.beginPath(); c.moveTo(s * 0.65, s * 0.55); c.lineTo(s * 0.59, s * 0.63); c.lineTo(s * 0.71, s * 0.63); c.fill();
-  c.fillStyle = '#5aa85f'; c.fillRect(0, s * 0.92, s, s * 0.08);
-  const balloons = [
-    [0.25, 0.3, 0.13, '#ff6b6b', '#ffd84d'], [0.68, 0.22, 0.1, '#5b8def', '#ffffff'],
-    [0.5, 0.52, 0.07, '#b388eb', '#ffd84d'], [0.86, 0.45, 0.06, '#4dd4ac', '#ffffff']
-  ];
-  for (const [bx, by, br, col1, col2] of balloons) {
-    const x = s * bx, y = s * by, r = s * br;
-    circle(c, x, y, r, col1);
-    c.fillStyle = col2;                                   // stripe
-    c.beginPath(); c.ellipse(x, y, r * 0.4, r, 0, 0, Math.PI * 2); c.fill();
-    c.strokeStyle = '#5a4634'; c.lineWidth = s * 0.004;   // ropes
-    c.beginPath(); c.moveTo(x - r * 0.5, y + r * 0.85); c.lineTo(x - r * 0.2, y + r * 1.5);
-    c.moveTo(x + r * 0.5, y + r * 0.85); c.lineTo(x + r * 0.2, y + r * 1.5); c.stroke();
-    c.fillStyle = '#8a5a3c'; c.fillRect(x - r * 0.25, y + r * 1.5, r * 0.5, r * 0.35);   // basket
+// 7: fish and a turtle on a coral reef
+function paintReef(c) {
+  fillSky(c, '#4fd0f2', '#0a4684');
+  // Rays of light coming down through the water
+  for (const [x0, x1, w] of [[12, 2, 10], [38, 30, 12], [62, 68, 9], [84, 96, 12]]) {
+    shape(c, 'rgba(255,255,255,0.08)', [x0, 0, x0 + w * 0.6, 0, x1 + w, 90, x1 - w * 0.4, 90]);
   }
-  cloud(c, s * 0.45, s * 0.12, s * 0.04);
-  cloud(c, s * 0.1, s * 0.6, s * 0.035);
+  const rnd = seeded(41);
+  // Sand
+  const sand = c.createLinearGradient(0, 80, 0, 100);
+  sand.addColorStop(0, '#f2dba0');
+  sand.addColorStop(1, '#c9a868');
+  c.fillStyle = sand;
+  c.beginPath(); c.moveTo(0, 100); c.lineTo(0, 88); c.quadraticCurveTo(30, 80, 55, 86); c.quadraticCurveTo(80, 92, 100, 85); c.lineTo(100, 100); c.fill();
+  for (let i = 0; i < 40; i++) circle(c, rnd() * 100, 90 + rnd() * 10, 0.25, 'rgba(140,105,50,0.5)');
+  // Rocks
+  ball(c, 50, 89, 7, '#8a90a8', '#4a4f66');
+  ball(c, 58, 91, 4.5, '#8a90a8', '#4a4f66');
+  // Seaweed
+  for (let i = 0; i < 9; i++) {
+    const x = 4 + i * 11.5 + rnd() * 3, h = 16 + rnd() * 20;
+    curve(c, x, 92, x + 6, 92 - h * 0.5, x - 1, 92 - h, 1.7, i % 2 ? '#2fae62' : '#1f8a4c');
+    curve(c, x + 2, 93, x - 4, 93 - h * 0.4, x + 3, 93 - h * 0.75, 1.3, i % 2 ? '#1f8a4c' : '#2fae62');
+  }
+  // Branch coral (pink), tube coral (orange) and fan coral (purple)
+  for (const [bx, by, ex, ey] of [[18, 92, 12, 76], [18, 92, 18, 72], [18, 92, 25, 77], [15, 84, 9, 80], [21.5, 84, 27, 82]]) {
+    line(c, bx, by, ex, ey, 2.4, '#ff6f8f');
+    circle(c, ex, ey, 1.7, '#ff9ab0');
+  }
+  for (const [tx, th] of [[70, 12], [74, 16], [78, 10], [66.5, 8]]) {
+    roundBox(c, tx - 1.8, 93 - th, 3.6, th, 1.6, '#ff9a3d');
+    oval(c, tx, 93 - th + 0.4, 1.4, 0.7, '#b85a14');
+  }
+  for (let i = 0; i < 7; i++) {
+    const a = -Math.PI / 2 + (i - 3) * 0.3;
+    line(c, 91, 92, 91 + Math.cos(a) * 15, 92 + Math.sin(a) * 15, 1, '#c96be0');
+  }
+  c.strokeStyle = '#c96be0'; c.lineWidth = 0.8;
+  for (const rr of [6, 10, 14]) { c.beginPath(); c.arc(91, 92, rr, -Math.PI / 2 - 0.95, -Math.PI / 2 + 0.95); c.stroke(); }
+  // Starfish and shell on the sand
+  star5(c, 36, 94, 3.6, '#ff8a3d');
+  circle(c, 36, 94, 0.8, '#ffc08a');
+  halfOval(c, 62, 97.5, 2.6, 2.4, '#ffd9e6');
+  // Jellyfish
+  curve(c, 13, 24, 11, 31, 13.5, 37, 0.6, '#ffb3e0');
+  curve(c, 16, 24, 17.5, 32, 15.5, 39, 0.6, '#ffb3e0');
+  curve(c, 19, 24, 21.5, 30, 19.5, 36, 0.6, '#ffb3e0');
+  halfOval(c, 16, 24.5, 6, 6.5, 'rgba(255,150,215,0.9)');
+  halfOval(c, 15, 23.5, 3.4, 3.6, 'rgba(255,225,245,0.6)');
+  // Turtle
+  oval(c, 61.5, 27.5, 5, 2.2, '#5fb85a', -0.6);              // flippers
+  oval(c, 60.5, 39.5, 5, 2.2, '#5fb85a', 0.6);
+  oval(c, 76, 29.5, 3.6, 1.8, '#5fb85a', 0.7);
+  oval(c, 76, 38.5, 3.6, 1.8, '#5fb85a', -0.7);
+  circle(c, 56.5, 33, 3.8, '#6cc866');                       // head
+  eye(c, 55, 32, 0.95);
+  ball(c, 68, 34, 9.5, '#8fd65a', '#2f7d3b');                // shell
+  c.fillStyle = 'rgba(30,90,45,0.5)';
+  for (const [hx, hy, hr] of [[68, 34, 3.2], [62.5, 31, 2], [62.5, 37, 2], [73.5, 31, 2], [73.5, 37, 2], [68, 28, 1.8], [68, 40, 1.8]]) {
+    c.beginPath();
+    for (let i = 0; i < 6; i++) c.lineTo(hx + Math.cos(i * Math.PI / 3) * hr, hy + Math.sin(i * Math.PI / 3) * hr);
+    c.closePath();
+    c.fill();
+  }
+  // Fish
+  fish(c, 26, 50, 9, '#ff8a2a', 1, '#ffffff');
+  fish(c, 38, 15, 5.5, '#ffd84d', -1, '#3a6fd8');
+  fish(c, 82, 14, 4.5, '#ff6b9a', -1, '#ffffff');
+  fish(c, 84, 56, 7, '#4dd4ac', -1, '#ffe066');
+  fish(c, 46, 68, 5, '#b388eb', 1, '#ffffff');
+  fish(c, 12, 68, 3.6, '#ffffff', 1, '#ff6b6b');
+  fish(c, 66, 58, 3.2, '#ffe066', -1, '#ff9a4d');
+  // Bubbles
+  c.lineWidth = 0.4;
+  for (let i = 0; i < 24; i++) {
+    const x = rnd() * 100, y = rnd() * 78, r = 0.6 + rnd() * 1.5;
+    c.strokeStyle = 'rgba(255,255,255,0.75)';
+    c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.stroke();
+    circle(c, x - r * 0.35, y - r * 0.35, r * 0.25, 'rgba(255,255,255,0.8)');
+  }
 }
 
-// 4: city at night
-function paintCity(c, s) {
-  skyGradient(c, s, '#0d1b3d', '#3b2a6b');
+// One castle tower with a pointed roof and a flag
+function tower(c, x, y, w, h, roof, flag) {
+  const g = c.createLinearGradient(x, 0, x + w, 0);
+  g.addColorStop(0, '#e6e1f2');
+  g.addColorStop(1, '#b3acc9');
+  c.fillStyle = g;
+  c.fillRect(x, y, w, h);
+  for (let i = 0; i < 3; i++) box(c, x - 1 + i * (w + 2 - 3) / 2, y - 2.5, 3, 3, '#cfc9e0');   // battlements
+  shape(c, roof, [x - 2, y - 2.5, x + w / 2, y - 2.5 - w * 1.25, x + w + 2, y - 2.5]);
+  shape(c, 'rgba(0,0,0,0.18)', [x + w / 2, y - 2.5 - w * 1.25, x + w + 2, y - 2.5, x + w * 0.62, y - 2.5]);
+  line(c, x + w / 2, y - 2.5 - w * 1.25, x + w / 2, y - 8.5 - w * 1.25, 0.5, '#5a4634');
+  shape(c, flag, [x + w / 2, y - 8.5 - w * 1.25, x + w / 2 + 5, y - 7 - w * 1.25, x + w / 2, y - 5.5 - w * 1.25]);
+  roundBox(c, x + w / 2 - 1.5, y + 6, 3, 5.5, 1.5, '#3a3566');                                 // window
+  roundBox(c, x + w / 2 - 0.9, y + 6.8, 1.8, 4, 0.9, '#ffd84d');
+}
+
+// 8: castle under a rainbow
+function paintCastle(c) {
+  fillSky(c, '#5aa6f5', '#ffe3ee');
+  glow(c, 14, 14, 24, '255,246,190', 0.8);
+  ball(c, 14, 14, 6.5, '#fff8b8', '#ffc933');
+  // Rainbow
+  const rainbow = ['#ff5a5a', '#ff9a3d', '#ffe04d', '#5fd068', '#4f9cf0', '#a070e8'];
+  c.globalAlpha = 0.85;
+  for (let i = 0; i < rainbow.length; i++) {
+    c.strokeStyle = rainbow[i];
+    c.lineWidth = 2.3;
+    c.lineCap = 'butt';
+    c.beginPath(); c.arc(50, 72, 50 - i * 2.2, Math.PI, Math.PI * 2); c.stroke();
+  }
+  c.globalAlpha = 1;
+  cloud(c, 4, 66, 5);
+  cloud(c, 96, 66, 5);
+  cloud(c, 70, 10, 4);
+  bird(c, 36, 12, 2.4, '#3b4a6b');
+  bird(c, 84, 28, 2, '#3b4a6b');
+  // Hills
+  hill(c, 10, 92, 45, 26, '#9bdc8f', '#5fb565');
+  hill(c, 92, 92, 45, 24, '#8fd67c', '#56a85c');
+  band(c, 76, 24, '#72c866', '#3a9444');
+  // Castle: side towers, wall, middle tower
+  tower(c, 20, 40, 12, 40, '#7a5ad8', '#ff5a5a');
+  tower(c, 68, 40, 12, 40, '#7a5ad8', '#ff5a5a');
+  const wall = c.createLinearGradient(0, 50, 0, 80);
+  wall.addColorStop(0, '#dcd6ea');
+  wall.addColorStop(1, '#bdb6d2');
+  c.fillStyle = wall;
+  c.fillRect(32, 52, 36, 28);
+  for (let x = 32; x < 67; x += 5.5) box(c, x, 49, 3, 3.5, '#cfc9e0');
+  tower(c, 43, 34, 14, 20, '#e8559a', '#ffd84d');
+  const rnd = seeded(53);
+  for (let i = 0; i < 26; i++) box(c, 33 + rnd() * 31, 54 + rnd() * 24, 2.6, 0.5, 'rgba(110,100,150,0.4)');   // bricks
+  // Gate with bars
+  c.fillStyle = '#4a3226';
+  c.beginPath(); c.moveTo(44, 80); c.lineTo(44, 68); c.arc(50, 68, 6, Math.PI, 0); c.lineTo(56, 80); c.fill();
+  c.save();
+  c.clip();
+  for (let x = 45.5; x < 56; x += 2.2) box(c, x, 60, 0.5, 20, '#c9a868');
+  for (let y = 65; y < 80; y += 3) box(c, 44, y, 12, 0.5, '#c9a868');
+  c.restore();
+  for (const wx of [37, 62]) {                               // wall windows
+    roundBox(c, wx - 1.5, 60, 3, 6, 1.5, '#3a3566');
+    roundBox(c, wx - 0.9, 60.8, 1.8, 4.4, 0.9, '#ffd84d');
+  }
+  // Moat and wooden bridge
+  oval(c, 50, 91, 62, 8, '#4aa8e8');
+  oval(c, 42, 89.5, 30, 2.4, 'rgba(255,255,255,0.3)');
+  shape(c, '#a06a3c', [44, 80, 56, 80, 61, 99, 39, 99]);
+  for (let y = 83; y < 99; y += 3.2) box(c, 39, y, 22, 0.5, '#6b4426');
+  line(c, 44, 80, 39, 99, 0.9, '#6b4426');
+  line(c, 56, 80, 61, 99, 0.9, '#6b4426');
+  // Trees and flowers
+  roundTree(c, 9, 82, 9);
+  roundTree(c, 91, 82, 9);
+  for (let i = 0; i < 10; i++) {
+    const x = i < 5 ? 2 + rnd() * 30 : 68 + rnd() * 30;
+    flower(c, x, 96 + rnd() * 3, 1, ['#ff8fc7', '#ffffff', '#ffd84d'][i % 3]);
+  }
+}
+
+// 9: city at night with a big wheel
+function paintCity(c) {
+  fillSky(c, '#0a1233', '#55307f');
   const rnd = seeded(23);
-  for (let i = 0; i < 70; i++) circle(c, rnd() * s, rnd() * s * 0.6, s * (0.002 + rnd() * 0.004), '#ffffff');
-  circle(c, s * 0.78, s * 0.2, s * 0.09, '#fff6cf');
-  circle(c, s * 0.74, s * 0.18, s * 0.085, '#1a2450');    // crescent moon
-  const colors = ['#1d2b55', '#243566', '#19244a', '#2b3d73'];
-  let x = 0, i = 0;
-  while (x < s) {
-    const w = s * (0.09 + rnd() * 0.08), h = s * (0.25 + rnd() * 0.45);
-    c.fillStyle = colors[i++ % colors.length];
-    c.fillRect(x, s - h, w, h);
-    // Windows
-    const cols = Math.max(2, Math.floor(w / (s * 0.035)));
-    for (let wy = s - h + s * 0.03; wy < s - s * 0.04; wy += s * 0.05) {
-      for (let k = 0; k < cols; k++) {
-        if (rnd() < 0.6) {
-          c.fillStyle = rnd() < 0.5 ? '#ffd84d' : '#ffb35a';
-          c.fillRect(x + (k + 0.25) * (w / cols), wy, w / cols * 0.5, s * 0.025);
-        }
+  for (let i = 0; i < 80; i++) circle(c, rnd() * 100, rnd() * 55, 0.15 + rnd() * 0.4, '#ffffff');
+  star5(c, 30, 10, 1.4, '#fff2a8');
+  star5(c, 55, 22, 1.1, '#fff2a8');
+  // Full moon
+  glow(c, 80, 17, 22, '255,250,210', 0.5);
+  ball(c, 80, 17, 8.5, '#fffdf0', '#e6d690');
+  circle(c, 77, 15, 1.6, 'rgba(190,170,90,0.4)');
+  circle(c, 83, 19.5, 2.2, 'rgba(190,170,90,0.4)');
+  circle(c, 79.5, 22, 1, 'rgba(190,170,90,0.4)');
+  line(c, 8, 20, 18, 16, 0.4, 'rgba(255,255,255,0.8)');      // shooting star
+  // Far-away buildings
+  let x = 0;
+  while (x < 100) {
+    const w = 7 + rnd() * 7, h = 22 + rnd() * 26;
+    box(c, x, 84 - h, w, h, '#2b3470');
+    for (let wy = 84 - h + 3; wy < 82; wy += 4.5) {
+      for (let wx = x + 1.5; wx < x + w - 1.5; wx += 2.8) {
+        if (rnd() < 0.35) box(c, wx, wy, 1.2, 1.8, 'rgba(255,220,130,0.55)');
       }
     }
     x += w;
   }
+  // Big wheel
+  const colors = ['#ff5a5a', '#ffd84d', '#5fd068', '#4f9cf0', '#ff8fc7', '#ff9a3d', '#a070e8', '#4dd4ac'];
+  line(c, 24, 58, 15, 85, 1.2, '#c9d2e6');
+  line(c, 24, 58, 33, 85, 1.2, '#c9d2e6');
+  c.strokeStyle = '#e6ecf5'; c.lineWidth = 1;
+  c.beginPath(); c.arc(24, 58, 17, 0, Math.PI * 2); c.stroke();
+  c.lineWidth = 0.5;
+  c.beginPath(); c.arc(24, 58, 12, 0, Math.PI * 2); c.stroke();
+  for (let i = 0; i < 8; i++) {
+    const a = i * Math.PI / 4 + 0.2;
+    line(c, 24, 58, 24 + Math.cos(a) * 17, 58 + Math.sin(a) * 17, 0.5, '#c9d2e6');
+    const cx = 24 + Math.cos(a) * 17, cy = 58 + Math.sin(a) * 17;
+    glow(c, cx, cy + 1.5, 5, '255,255,255', 0.25);
+    roundBox(c, cx - 2.2, cy, 4.4, 3.6, 1, colors[i]);
+    box(c, cx - 1.4, cy + 0.7, 2.8, 1.2, '#fff6cf');
+  }
+  circle(c, 24, 58, 1.8, '#ffd84d');
+  // Buildings in front (low ones on the left so the wheel can be seen)
+  const fronts = ['#141d48', '#1b2658', '#101840', '#202c66'];
+  x = 0;
+  let i = 0;
+  while (x < 100) {
+    const w = 9 + rnd() * 8;
+    const h = x < 40 ? 8 + rnd() * 9 : 22 + rnd() * 36;
+    c.fillStyle = fronts[i % fronts.length];
+    c.fillRect(x, 86 - h, w, h);
+    box(c, x, 86 - h, w, 0.8, 'rgba(255,255,255,0.12)');     // roof edge
+    if (h > 40) {                                            // tall towers get a mast with a red light
+      line(c, x + w / 2, 86 - h, x + w / 2, 80 - h, 0.5, '#8c97b3');
+      glow(c, x + w / 2, 80 - h, 2.5, '255,80,80', 0.8);
+      circle(c, x + w / 2, 80 - h, 0.7, '#ff5a5a');
+    }
+    const cols = Math.max(2, Math.floor(w / 3.4));
+    for (let wy = 86 - h + 3; wy < 83; wy += 5) {
+      for (let k = 0; k < cols; k++) {
+        if (rnd() < 0.62) {
+          c.fillStyle = rnd() < 0.5 ? '#ffd84d' : (rnd() < 0.5 ? '#ffb35a' : '#9fe0ff');
+          c.fillRect(x + (k + 0.25) * (w / cols), wy, w / cols * 0.5, 2.6);
+        }
+      }
+    }
+    x += w;
+    i++;
+  }
+  // River with lights shining on it
+  band(c, 86, 14, '#16245c', '#070c26');
+  for (let k = 0; k < 46; k++) {
+    const rx = rnd() * 100, ry = 87 + rnd() * 12, rw = 1.5 + rnd() * 4;
+    line(c, rx, ry, rx + rw, ry, 0.45, rnd() < 0.6 ? 'rgba(255,216,77,0.55)' : 'rgba(159,224,255,0.45)');
+  }
+  for (let k = 0; k < 6; k++) line(c, 77 - k * 0.3, 88 + k * 2, 83 + k * 0.3, 88 + k * 2, 0.6, 'rgba(255,250,210,0.5)');
+  // Little boat
+  shape(c, '#e6ecf5', [52, 92, 66, 92, 63.5, 95.5, 54.5, 95.5]);
+  box(c, 56, 89.5, 6, 2.5, '#ff5a5a');
+  box(c, 57, 90.2, 1.4, 1.2, '#fff6cf');
+  box(c, 59.6, 90.2, 1.4, 1.2, '#fff6cf');
 }
 
-// 5: fish on a coral reef
-function paintReef(c, s) {
-  skyGradient(c, s, '#3fc1e8', '#0b4f8a');
-  const rnd = seeded(41);
-  c.fillStyle = '#e6c98a';
-  c.beginPath(); c.moveTo(0, s); c.lineTo(0, s * 0.88); c.quadraticCurveTo(s * 0.5, s * 0.78, s, s * 0.9); c.lineTo(s, s); c.fill();
-  // Seaweed
-  c.lineWidth = s * 0.018; c.lineCap = 'round';
-  for (let i = 0; i < 9; i++) {
-    const x = s * (0.05 + i * 0.115), h = s * (0.15 + rnd() * 0.2);
-    c.strokeStyle = i % 2 ? '#2f9e5a' : '#1f7d47';
-    c.beginPath(); c.moveTo(x, s * 0.9);
-    c.quadraticCurveTo(x + s * 0.05, s * 0.9 - h * 0.5, x - s * 0.01, s * 0.9 - h); c.stroke();
+// 10: dinosaurs and a volcano
+function paintDinos(c) {
+  fillSky(c, '#ff9455', '#ffeab0');
+  glow(c, 20, 20, 26, '255,250,210', 0.8);
+  ball(c, 20, 20, 7, '#fffce6', '#ffd866');
+  // Far mountains
+  shape(c, '#c98a7a', [0, 62, 12, 44, 26, 62]);
+  shape(c, '#b87a70', [18, 62, 36, 40, 54, 62]);
+  // Volcano with smoke and lava
+  circle(c, 80, 6, 7, 'rgba(110,100,110,0.55)');
+  circle(c, 73, 11, 5.5, 'rgba(110,100,110,0.65)');
+  circle(c, 78, 17, 4.5, 'rgba(110,100,110,0.75)');
+  glow(c, 76, 24, 14, '255,120,40', 0.7);
+  shape(c, '#7a5548', [50, 64, 71, 24, 81, 24, 100, 56, 100, 64]);
+  shape(c, '#634238', [76, 24, 81, 24, 100, 56, 100, 64, 88, 64]);
+  shape(c, '#ff5a2a', [71, 24, 81, 24, 79.5, 29, 77.5, 26.5, 75.5, 31, 73.5, 27]);
+  curve(c, 73.5, 27, 70, 38, 66, 44, 1.5, '#ff5a2a');
+  curve(c, 79, 28, 84, 38, 83, 48, 1.5, '#ff7a2a');
+  curve(c, 75.5, 30, 76, 36, 74.5, 41, 1.1, '#ffb02e');
+  for (const [lx, ly] of [[68, 16], [86, 18], [76, 12]]) circle(c, lx, ly, 0.9, '#ff7a2a');     // sparks
+  // Ground, pond and palm trees
+  band(c, 60, 40, '#9bd66a', '#4a9544');
+  oval(c, 82, 90, 17, 5.5, '#4db4e6');
+  oval(c, 79, 89, 9, 1.6, 'rgba(255,255,255,0.35)');
+  palm(c, 7, 66, 26, 4);
+  palm(c, 95, 70, 20, -4);
+  // Flying dinosaur
+  shape(c, '#8a5a8a', [34, 14, 44, 9, 49, 14, 54, 9, 64, 14, 54, 15.5, 49, 19, 44, 15.5]);
+  shape(c, '#8a5a8a', [47, 13, 49, 8, 51, 13]);
+  shape(c, '#ffb02e', [48.2, 8.6, 49, 4.5, 49.8, 8.6]);
+  // Big long-neck dinosaur
+  shape(c, '#4fae5a', [28, 62, 2, 82, 30, 75]);              // tail
+  for (const lx of [27, 34, 44, 51]) roundBox(c, lx, 72, 6, 16, 2.5, lx === 34 || lx === 51 ? '#3f9a4c' : '#4fae5a');
+  for (const lx of [27, 34, 44, 51]) for (let t = 0; t < 3; t++) circle(c, lx + 1.2 + t * 1.8, 87.5, 0.7, '#f4f0d8');   // toenails
+  curve(c, 51, 64, 60, 56, 61, 36, 7, '#4fae5a');            // neck
+  oval(c, 41, 68, 17, 10.5, '#4fae5a');                      // body
+  oval(c, 41, 74.5, 12, 4, '#a8e08a');                       // belly
+  oval(c, 64, 33.5, 6.5, 4.4, '#4fae5a', -0.15);             // head
+  for (const [sx, sy, sr] of [[32, 62, 2], [39, 60.5, 2.4], [47, 62, 2], [28, 68, 1.5], [54, 58, 1.5], [58.5, 48, 1.4], [59.5, 41, 1.2]]) {
+    circle(c, sx, sy, sr, '#2f8a44');                        // spots
   }
-  c.lineCap = 'butt';
-  // Coral
-  for (const [cx, col] of [[0.2, '#ff7a8a'], [0.62, '#ff9a4d'], [0.86, '#d86bd8']]) {
-    for (let k = 0; k < 5; k++) circle(c, s * (cx + (k - 2) * 0.025), s * (0.88 - (k % 2) * 0.03), s * 0.028, col);
-  }
-  // Fish
-  const fish = [
-    [0.25, 0.25, 0.09, '#ff8a3d', 1], [0.7, 0.18, 0.06, '#ffd84d', -1], [0.55, 0.45, 0.11, '#ff6b6b', 1],
-    [0.18, 0.58, 0.06, '#b388eb', -1], [0.82, 0.6, 0.08, '#4dd4ac', -1], [0.42, 0.7, 0.05, '#ffffff', 1]
-  ];
-  for (const [fx, fy, fr, col, d] of fish) {
-    const x = s * fx, y = s * fy, r = s * fr;
-    c.fillStyle = col;
-    c.beginPath(); c.ellipse(x, y, r, r * 0.6, 0, 0, Math.PI * 2); c.fill();
-    c.beginPath(); c.moveTo(x - d * r * 0.8, y); c.lineTo(x - d * r * 1.6, y - r * 0.6); c.lineTo(x - d * r * 1.6, y + r * 0.6); c.fill();
-    circle(c, x + d * r * 0.5, y - r * 0.15, r * 0.14, '#ffffff');
-    circle(c, x + d * r * 0.55, y - r * 0.15, r * 0.07, '#0b1220');
-  }
-  // Bubbles
-  c.strokeStyle = 'rgba(255,255,255,0.7)'; c.lineWidth = s * 0.004;
-  for (let i = 0; i < 22; i++) {
-    c.beginPath(); c.arc(rnd() * s, rnd() * s * 0.8, s * (0.006 + rnd() * 0.014), 0, Math.PI * 2); c.stroke();
+  eye(c, 64.5, 32, 1.5);
+  circle(c, 69, 32.4, 0.45, '#2a6a38');
+  curve(c, 62.5, 35.8, 66, 37.2, 69.5, 35, 0.5, '#2a6a38');  // smile
+  // Baby dinosaur with back plates
+  shape(c, '#ff9a3d', [66, 78, 58, 82, 67, 81.5]);
+  box(c, 67.5, 82, 2, 5, '#ff9a3d');
+  box(c, 73, 82, 2, 5, '#ff9a3d');
+  for (let k = 0; k < 4; k++) shape(c, '#e8413a', [66.5 + k * 2.6, 75.6, 67.8 + k * 2.6, 72.4, 69.1 + k * 2.6, 75.6]);
+  oval(c, 71, 79.5, 6, 4.2, '#ff9a3d');
+  circle(c, 78, 76, 3.2, '#ff9a3d');
+  eye(c, 79, 75.2, 0.9);
+  curve(c, 78, 77.6, 79.5, 78.2, 80.6, 77.2, 0.4, '#a85a14');
+  // Egg and ferns
+  oval(c, 15, 91, 3.6, 4.6, '#fff6e0');
+  for (const [ex, ey] of [[14, 89], [16.2, 92], [13.6, 93]]) circle(c, ex, ey, 0.7, '#c9a868');
+  for (const [fx, fy] of [[30, 99], [52, 100], [96, 100]]) {
+    for (let k = 0; k < 5; k++) leaf(c, fx, fy, 9, -Math.PI / 2 + (k - 2) * 0.45, k % 2 ? '#2f8a44' : '#3aa854');
   }
 }
 
@@ -324,7 +1404,11 @@ function makePicture() {
     const side = Math.min(photo.width, photo.height);
     c.drawImage(photo, (photo.width - side) / 2, (photo.height - side) / 2, side, side, 0, 0, size, size);
   } else {
-    SCENES[(level - 1) % SCENES.length](c, size);
+    // The pictures are painted on a 100 x 100 square, so stretch that square to the real size
+    c.save();
+    c.scale(size / 100, size / 100);
+    SCENES[(level - 1) % SCENES.length](c);
+    c.restore();
   }
 }
 
@@ -357,10 +1441,18 @@ function piecePath(c2, p) {
   c2.closePath();
 }
 
-// Cut the picture into piece images (done once per level, and again if the screen size changes)
+// Cut the picture into piece images (done once per level, and again if the screen size changes).
+// Each piece gets two small images that are made here once and then just stamped every frame:
+//   img    = its part of the picture, with a light edge and a dark edge so it looks like thick cardboard
+//   shadow = a soft dark copy of its shape, drawn underneath while the piece is loose
 function buildPieceImages() {
   makePicture();
+  const bevel = Math.max(1, Math.min(2.2, Math.min(cw, ch) * 0.025));   // width of the light and dark edges
   for (const p of pieces) {
+    // Hand back the memory of the old images first (phones are slow to do this by themselves)
+    if (p.img) { p.img.width = 0; p.img.height = 0; }
+    if (p.shadow) { p.shadow.width = 0; p.shadow.height = 0; }
+
     const img = document.createElement('canvas');
     img.width  = Math.ceil((cw + pad * 2) * dpr);
     img.height = Math.ceil((ch + pad * 2) * dpr);
@@ -371,13 +1463,39 @@ function buildPieceImages() {
     piecePath(c, p);
     c.clip();
     c.drawImage(picture, 0, 0, frame.size, frame.size);
+    // Light edge: the outline is drawn again, moved a little down and right.
+    // Only the part that is still inside the piece shows, which is its top and left edges.
+    c.translate(bevel, bevel);
+    piecePath(c, p);
+    c.lineWidth = bevel * 2;
+    c.strokeStyle = 'rgba(255,255,255,0.5)';
+    c.stroke();
+    // Dark edge: the same trick moved up and left, so it shows on the bottom and right edges
+    c.translate(-bevel * 2, -bevel * 2);
+    piecePath(c, p);
+    c.strokeStyle = 'rgba(0,0,0,0.38)';
+    c.stroke();
     c.restore();
     // Outline so pieces are easy to see
     piecePath(c, p);
-    c.lineWidth = 1.5;
+    c.lineWidth = 1;
     c.strokeStyle = 'rgba(0,0,0,0.55)';
     c.stroke();
     p.img = img;
+
+    // The shadow: the piece shape filled with black, with a blurred rim around it
+    const shadow = document.createElement('canvas');
+    shadow.width  = Math.ceil((cw + shadowPad * 2) * dpr);
+    shadow.height = Math.ceil((ch + shadowPad * 2) * dpr);
+    const s = shadow.getContext('2d');
+    s.scale(dpr, dpr);
+    s.translate(shadowPad - p.c * cw, shadowPad - p.r * ch);
+    s.shadowColor = '#000000';
+    s.shadowBlur = SHADOW_BLUR * dpr;
+    s.fillStyle = '#000000';
+    piecePath(s, p);
+    s.fill();
+    p.shadow = shadow;
   }
 }
 
@@ -393,14 +1511,23 @@ function startLevel(n) {
     tabsH.push(Array.from({ length: cols }, () => (Math.random() < 0.5 ? 1 : -1)));
   }
 
+  // Free the images of the previous puzzle
+  for (const p of pieces) {
+    if (p.img) { p.img.width = 0; p.img.height = 0; }
+    if (p.shadow) { p.shadow.width = 0; p.shadow.height = 0; }
+  }
+
   pieces = [];
   for (let r = 0; r < rows; r++)
     for (let c = 0; c < cols; c++)
-      pieces.push({ c, r, x: 0, y: 0, placed: false, img: null });
+      pieces.push({ c, r, x: 0, y: 0, placed: false, img: null, shadow: null, flash: 0 });
 
   placedCount = 0;
   levelTime = 0;
   drag = null;
+  particles = [];                // clear away old confetti and sparkles
+  rings = [];
+  pictureFlash = 0;
   setSizes();
   buildPieceImages();
   scatter();
@@ -413,6 +1540,7 @@ function startLevel(n) {
   }
   screen = 'play';
   updateHud();
+  sfx.start();
 }
 
 // Piece size for the current level and screen
@@ -421,6 +1549,7 @@ function setSizes() {
   cw = frame.size / cols;
   ch = frame.size / rows;
   pad = Math.ceil(TAB * Math.min(cw, ch)) + 3;
+  shadowPad = pad + SHADOW_BLUR + 3;             // the shadow image needs extra room for its blurred rim
 }
 
 // Where a piece belongs inside the frame
@@ -456,20 +1585,183 @@ function updateHud() {
   elLevel.textContent = level + '/' + LEVELS.length;
   elPieces.textContent = placedCount + '/' + pieces.length;
   elTime.textContent = formatTime(levelTime);
+  // The little green bar under "Pieces"
+  elPiecesBar.style.width = (pieces.length ? placedCount / pieces.length * 100 : 0) + '%';
+}
+
+// ---------- Effects: sparkles, rings and confetti ----------
+const CONFETTI_COLORS = ['#ff5a5a', '#ffd84d', '#5fd068', '#4f9cf0', '#ff8fc7', '#ff9a3d', '#a070e8', '#ffffff'];
+
+// Add one particle, unless there are already too many on screen
+function addParticle(particle) {
+  if (particles.length < MAX_PARTICLES) particles.push(particle);
+}
+
+// A piece clicked in: a growing ring and a burst of sparkles around it
+function snapEffect(p) {
+  const cx = p.x + cw / 2, cy = p.y + ch / 2;
+  const size = Math.min(cw, ch);
+  rings.push({ x: cx, y: cy, r: Math.min(size * 0.35, 30), grow: Math.min(size, 60), life: 0.35, maxLife: 0.35 });
+  for (let i = 0; i < 12; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const speed = 50 + Math.random() * 110;
+    addParticle({
+      kind: 'spark',
+      x: cx + Math.cos(a) * size * 0.35, y: cy + Math.sin(a) * size * 0.35,
+      vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
+      size: 2 + Math.random() * 2.5,
+      color: i % 3 === 0 ? '#ffffff' : '#ffe98a',
+      life: 0.5 + Math.random() * 0.3, maxLife: 0.8, spin: 0, turn: 0
+    });
+  }
+}
+
+// Throw confetti up from the middle of the picture
+function confettiBurst(count) {
+  const cx = frame.x + frame.size / 2, cy = frame.y + frame.size * 0.45;
+  for (let i = 0; i < count; i++) {
+    const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.6;    // mostly upwards
+    const speed = 140 + Math.random() * 330;
+    const life = 2 + Math.random() * 1.4;
+    addParticle({
+      kind: 'confetti',
+      x: cx + (Math.random() - 0.5) * frame.size * 0.5, y: cy,
+      vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
+      size: 5 + Math.random() * 4,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      life: life, maxLife: life,
+      spin: Math.random() * 6, turn: 5 + Math.random() * 8
+    });
+  }
+}
+
+// Move the effects along by dt seconds
+function updateEffects(dt) {
+  clock += dt;
+  lift = drag ? Math.min(1, lift + dt * 9) : 0;              // a held piece rises quickly
+  pictureFlash = Math.max(0, pictureFlash - dt * 2.2);
+  for (const p of pieces) if (p.flash > 0) p.flash = Math.max(0, p.flash - dt * 2.8);
+
+  for (const ring of rings) ring.life -= dt;
+  rings = rings.filter((ring) => ring.life > 0);
+
+  for (const q of particles) {
+    q.life -= dt;
+    q.x += q.vx * dt;
+    q.y += q.vy * dt;
+    if (q.kind === 'confetti') {
+      q.vy += 420 * dt;                                      // gravity pulls confetti down
+      q.vx *= 1 - 1.2 * dt;                                  // air slows it
+      if (q.vy > 150) q.vy = 150;                            // and it flutters down slowly
+      q.spin += q.turn * dt;
+    } else {
+      q.vx *= 1 - 4 * dt;                                    // sparkles slow down quickly
+      q.vy *= 1 - 4 * dt;
+    }
+  }
+  particles = particles.filter((q) => q.life > 0 && q.y < H + 20);
+
+  // On the final screen, keep the party going with a new burst now and then
+  if (screen === 'won') {
+    confettiTimer += dt;
+    if (confettiTimer > 1.6) { confettiTimer = 0; confettiBurst(50); }
+  }
+}
+
+function drawEffects() {
+  // Rings
+  for (const ring of rings) {
+    const t = 1 - ring.life / ring.maxLife;                  // 0 at the start, 1 at the end
+    ctx.globalAlpha = (1 - t) * 0.8;
+    ctx.strokeStyle = '#fff3b0';
+    ctx.lineWidth = 3 * (1 - t) + 1;
+    ctx.beginPath();
+    ctx.arc(ring.x, ring.y, ring.r + ring.grow * t, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  // Sparkles (little plus signs) and confetti (little rectangles that seem to flip over)
+  for (const q of particles) {
+    ctx.globalAlpha = Math.min(1, q.life / q.maxLife * 2);
+    ctx.fillStyle = q.color;
+    if (q.kind === 'spark') {
+      const s = q.size * (q.life / q.maxLife + 0.3);
+      ctx.fillRect(q.x - s, q.y - s * 0.25, s * 2, s * 0.5);
+      ctx.fillRect(q.x - s * 0.25, q.y - s, s * 0.5, s * 2);
+    } else {
+      const w = q.size * Math.abs(Math.cos(q.spin));
+      ctx.fillRect(q.x - w / 2, q.y - q.size * 0.3, w, q.size * 0.6);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- Backdrop ----------
+// The background, the frame and the tray never change while playing,
+// so they are painted once here (and again when the screen size changes).
+function buildBackdrop() {
+  backdrop = document.createElement('canvas');
+  backdrop.width  = Math.max(1, canvas.width);
+  backdrop.height = Math.max(1, canvas.height);
+  const c = backdrop.getContext('2d');
+  c.scale(dpr, dpr);
+
+  // Dark navy background, a little lighter at the top
+  const g = c.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#111b36');
+  g.addColorStop(1, '#0b1220');
+  c.fillStyle = g;
+  c.fillRect(0, 0, W, H);
+
+  // Tray: a soft panel with a few faint dots, like a table top
+  roundRectPath(c, tray.x, tray.y, Math.max(1, tray.w), Math.max(1, tray.h), 14);
+  c.fillStyle = 'rgba(255,255,255,0.04)';
+  c.fill();
+  c.strokeStyle = 'rgba(255,255,255,0.08)';
+  c.lineWidth = 1;
+  c.stroke();
+  const rnd = seeded(5);
+  for (let i = 0; i < 60; i++) {
+    circle(c, tray.x + 8 + rnd() * Math.max(1, tray.w - 16), tray.y + 8 + rnd() * Math.max(1, tray.h - 16), 0.6 + rnd() * 0.9, 'rgba(255,255,255,0.05)');
+  }
+
+  // Frame: a raised rim with a shadow, and a dark board inside it
+  c.shadowColor = 'rgba(0,0,0,0.55)';
+  c.shadowBlur = 10 * dpr;
+  c.shadowOffsetY = 3 * dpr;
+  const rim = c.createLinearGradient(0, frame.y - 5, 0, frame.y + frame.size + 5);
+  rim.addColorStop(0, '#4a629c');
+  rim.addColorStop(1, '#24335e');
+  c.fillStyle = rim;
+  roundRectPath(c, frame.x - 5, frame.y - 5, frame.size + 10, frame.size + 10, 8);
+  c.fill();
+  c.shadowColor = 'transparent';
+  c.shadowBlur = 0;
+  c.shadowOffsetY = 0;
+  c.fillStyle = '#111a2e';
+  c.fillRect(frame.x, frame.y, frame.size, frame.size);
+  // The rim casts a little shade on the top and left of the board
+  const shadeTop = c.createLinearGradient(0, frame.y, 0, frame.y + 12);
+  shadeTop.addColorStop(0, 'rgba(0,0,0,0.4)');
+  shadeTop.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = shadeTop;
+  c.fillRect(frame.x, frame.y, frame.size, 12);
+  const shadeLeft = c.createLinearGradient(frame.x, 0, frame.x + 12, 0);
+  shadeLeft.addColorStop(0, 'rgba(0,0,0,0.3)');
+  shadeLeft.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = shadeLeft;
+  c.fillRect(frame.x, frame.y, 12, frame.size);
 }
 
 // ---------- Drawing ----------
 function draw() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // Background, frame and tray (painted earlier, just stamped here)
   ctx.fillStyle = '#0b1220';
   ctx.fillRect(0, 0, W, H);
-
-  // Frame
-  ctx.fillStyle = '#111a2e';
-  ctx.fillRect(frame.x, frame.y, frame.size, frame.size);
+  if (backdrop && W > 0 && H > 0) ctx.drawImage(backdrop, 0, 0, W, H);
 
   if (screen === 'title') {
-    drawMessage(['Jigsaw', 'Drag the pieces into the frame', 'Tap to start'], frame.y + frame.size / 2);
+    drawTitle();
     return;
   }
 
@@ -485,42 +1777,129 @@ function draw() {
 
   if (screen === 'play') {
     // Pieces already in place, then loose pieces, then the one being dragged
-    for (const p of pieces) if (p.placed) drawPiece(p);
-    for (const p of order) if (!p.placed && !(drag && drag.piece === p)) drawPiece(p);
-    if (drag) {
-      ctx.shadowColor = 'rgba(0,0,0,0.6)';
-      ctx.shadowBlur = 12;
-      ctx.shadowOffsetY = 4;
-      drawPiece(drag.piece);
-      ctx.shadowColor = 'transparent';
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetY = 0;
-    }
+    for (const p of pieces) if (p.placed) drawPiece(p, 0);
+    for (const p of order) if (!p.placed && !(drag && drag.piece === p)) drawPiece(p, 0);
+    if (drag) drawPiece(drag.piece, lift);
   } else {
     // Finished: show the whole picture and a message in the tray
     ctx.drawImage(picture, frame.x, frame.y, frame.size, frame.size);
+    ctx.strokeStyle = '#ffd84d';                             // gold line around the finished picture
+    ctx.lineWidth = 2;
+    ctx.strokeRect(frame.x + 1, frame.y + 1, frame.size - 2, frame.size - 2);
+    if (pictureFlash > 0) {                                  // quick white flash as the last piece goes in
+      ctx.globalAlpha = pictureFlash * 0.6;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(frame.x, frame.y, frame.size, frame.size);
+      ctx.globalAlpha = 1;
+    }
     const lines = screen === 'won'
       ? ['All puzzles complete!', 'Time ' + formatTime(levelTime), 'Tap to play again']
       : ['Level ' + level + ' complete!', 'Time ' + formatTime(levelTime), 'Tap for level ' + (level + 1)];
     drawMessage(lines, tray.y + tray.h / 2);
   }
+  drawEffects();
 }
 
-function drawPiece(p) {
-  ctx.drawImage(p.img, p.x - pad, p.y - pad, cw + pad * 2, ch + pad * 2);
+// Draw one piece. amount = how far it is lifted off the table (0 = lying flat, 1 = held by the finger)
+function drawPiece(p, amount) {
+  const scale = 1 + LIFT_SCALE * amount;                     // a held piece looks a little bigger
+  const cx = p.x + cw / 2, cy = p.y + ch / 2;                // middle of the piece (it grows from here)
+
+  if (!p.placed) {
+    // Soft shadow underneath; it moves further away as the piece lifts
+    const sw = (cw + shadowPad * 2) * scale, sh = (ch + shadowPad * 2) * scale;
+    const off = 2 + LIFT_SHADOW * amount;
+    ctx.globalAlpha = 0.5 - 0.15 * amount;
+    ctx.drawImage(p.shadow, cx - sw / 2 + off * 0.5, cy - sh / 2 + off, sw, sh);
+    ctx.globalAlpha = 1;
+  }
+
+  const w = (cw + pad * 2) * scale, h = (ch + pad * 2) * scale;
+  ctx.drawImage(p.img, cx - w / 2, cy - h / 2, w, h);
+
+  // Just clicked in: the piece glows for a moment
+  if (p.flash > 0) {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = p.flash * 0.45;
+    ctx.drawImage(p.img, cx - w / 2, cy - h / 2, w, h);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
 }
 
-// Lines of text centred around (centre of screen width, cy); the first line is bigger
-function drawMessage(lines, cy) {
-  const cx = screen === 'title' ? frame.x + frame.size / 2 : tray.x + tray.w / 2;
-  ctx.fillStyle = '#ffffff';
+// A simple puzzle-piece picture for the title screen (a square with two knobs and two holes)
+function drawTitlePiece(x, y, size, color, angle) {
+  const half = size / 2, knob = size * 0.2;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';                        // shadow
+  roundRectPath(ctx, -half + 2, -half + 4, size, size, size * 0.12);
+  ctx.fill();
+  ctx.fillStyle = color;
+  roundRectPath(ctx, -half, -half, size, size, size * 0.12);
+  ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -half - knob * 0.5, knob, 0, Math.PI * 2); ctx.fill();     // knob on top
+  ctx.beginPath(); ctx.arc(half + knob * 0.5, 0, knob, 0, Math.PI * 2); ctx.fill();      // knob on the right
+  ctx.fillStyle = '#111a2e';                                 // holes are the colour of the board
+  ctx.beginPath(); ctx.arc(-half + knob * 0.5, 0, knob, 0, Math.PI * 2); ctx.fill();     // hole on the left
+  ctx.beginPath(); ctx.arc(0, half - knob * 0.5, knob, 0, Math.PI * 2); ctx.fill();      // hole at the bottom
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';                  // shine along the top
+  ctx.fillRect(-half + size * 0.12, -half + 2, size * 0.76, 3);
+  ctx.restore();
+}
+
+// Title screen: three bobbing puzzle pieces, the name of the game, and what to do
+function drawTitle() {
+  const cx = frame.x + frame.size / 2;
+  const cy = frame.y + frame.size / 2;
+  const size = Math.min(54, frame.size * 0.16);
+  const bob = Math.sin(clock * 2) * 3;                       // gentle up-and-down movement
+  drawTitlePiece(cx - size * 1.7, cy - 78 + bob, size, '#ff6b6b', -0.25);
+  drawTitlePiece(cx, cy - 86 - bob, size, '#ffd84d', 0.08);
+  drawTitlePiece(cx + size * 1.7, cy - 78 + bob, size, '#4dd4ac', 0.3);
+
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  ctx.font = '800 38px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillText('Jigsaw', cx, cy + 3);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('Jigsaw', cx, cy);
+  ctx.font = '500 16px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.fillText('Drag the pieces into the frame', cx, cy + 40);
+  ctx.font = '700 18px system-ui, sans-serif';
+  ctx.fillStyle = '#ffd84d';
+  ctx.globalAlpha = 0.75 + 0.25 * Math.sin(clock * 4);       // "Tap to start" pulses gently
+  ctx.fillText('Tap to start', cx, cy + 78);
+  ctx.globalAlpha = 1;
+}
+
+// Lines of text centred around (centre of the tray, cy), on a dark card; the first line is bigger
+function drawMessage(lines, cy) {
+  const cx = tray.x + tray.w / 2;
   const gap = 30;
   const top = cy - (lines.length - 1) * gap / 2;
+
+  // Card behind the text, so it stays readable when confetti falls past
+  const cardW = Math.min(tray.w - 16, 290), cardH = lines.length * gap + 26;
+  roundRectPath(ctx, cx - cardW / 2, cy - cardH / 2, cardW, cardH, 14);
+  ctx.fillStyle = 'rgba(16,25,50,0.92)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,216,77,0.55)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
   for (let i = 0; i < lines.length; i++) {
-    ctx.font = i === 0 ? '700 24px system-ui, sans-serif' : '500 16px system-ui, sans-serif';
+    const last = i === lines.length - 1;
+    ctx.font = i === 0 ? '700 24px system-ui, sans-serif' : (last ? '700 16px system-ui, sans-serif' : '500 16px system-ui, sans-serif');
+    ctx.fillStyle = i === 0 ? '#ffd84d' : '#ffffff';
+    if (last) ctx.globalAlpha = 0.75 + 0.25 * Math.sin(clock * 4);     // the "Tap..." line pulses gently
     ctx.fillText(lines[i], cx, top + i * gap);
+    ctx.globalAlpha = 1;
   }
 }
 
@@ -544,6 +1923,8 @@ function resize() {
     frame.x = Math.floor((W - frame.size) / 2); frame.y = m;
     tray = { x: m, y: frame.y + frame.size + m, w: W - m * 2, h: H - frame.size - m * 3 };
   }
+
+  buildBackdrop();
 
   // If a puzzle is in progress, rebuild it at the new size
   if (pieces.length) {
@@ -572,6 +1953,8 @@ canvas.addEventListener('pointerdown', (e) => {
       order.splice(i, 1);
       order.push(p);                              // bring it to the top
       canvas.setPointerCapture(e.pointerId);
+      lift = 0;                                   // the piece starts flat and rises (see updateEffects)
+      sfx.pick();
       return;
     }
   }
@@ -596,8 +1979,20 @@ function endDrag() {
     p.y = home.y;
     p.placed = true;
     placedCount++;
-    if (placedCount === pieces.length) screen = level === LEVELS.length ? 'won' : 'clear';
+    p.flash = 1;                                  // glow, ring and sparkles
+    snapEffect(p);
+    sfx.snap();
+    if (placedCount === pieces.length) {
+      screen = level === LEVELS.length ? 'won' : 'clear';
+      // Celebrate: flash, confetti and a tune
+      pictureFlash = 1;
+      confettiTimer = 0;
+      confettiBurst(screen === 'won' ? 130 : 90);
+      if (screen === 'won') sfx.allClear(); else sfx.levelClear();
+    }
     updateHud();
+  } else {
+    sfx.drop();                                   // put down somewhere else
   }
 }
 canvas.addEventListener('pointerup', endDrag);
@@ -607,6 +2002,7 @@ canvas.addEventListener('pointercancel', endDrag);
 btnHint.addEventListener('click', () => {
   hint = !hint;
   btnHint.classList.toggle('on', hint);
+  if (hint) sfx.hintOn(); else sfx.hintOff();
 });
 
 btnPhoto.addEventListener('click', () => photoInput.click());
@@ -639,6 +2035,7 @@ function loop(time) {
     levelTime += dt;
     if (Math.floor(levelTime) !== lastShown) { lastShown = Math.floor(levelTime); updateHud(); }
   }
+  updateEffects(dt);
   draw();
   requestAnimationFrame(loop);
 }

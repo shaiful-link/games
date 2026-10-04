@@ -18,6 +18,8 @@
     -webkit-user-select: none;
     touch-action: none;
   }
+  /* Soft glow at the top of the page so the background is not flat */
+  body { background: radial-gradient(ellipse at 50% 0%, #1a2a50 0%, #0b1220 65%); }
   #app {
     display: flex;
     flex-direction: column;
@@ -27,36 +29,81 @@
     gap: 10px;
   }
 
-  /* Top bar: score, lines, level, next piece, pause */
+  /* Top bar: sound, score, lines, level, next piece, pause */
   #top {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
   }
-  .stat { text-align: center; min-width: 52px; }
+  /* Each stat is a small card: label on top, number below */
+  .stat {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 56px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+    background: linear-gradient(180deg, #1b2847 0%, #111a2e 100%);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+  }
   .stat span {
     display: block;
-    font-size: 11px;
-    letter-spacing: 0.08em;
+    font-size: 10px;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.55);
+    color: rgba(255,255,255,0.6);
   }
-  .stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stat b { font-size: 19px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  #score { color: #f4d35e; }       /* each number has its own accent colour */
+  #score.long { font-size: 15px; line-height: 1.5; }   /* six-digit scores use smaller letters */
+  #lines { color: #6fe3c1; }
+  #level { color: #9dbcff; }
   #next {
+    flex: none;
     width: 56px;
     height: 56px;
-    background: #111a2e;
-    border-radius: 8px;
+    background: linear-gradient(180deg, #1b2847 0%, #111a2e 100%);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
   }
   #pause {
+    flex: none;
     width: 44px;
     height: 44px;
     border: 0;
     border-radius: 10px;
-    background: #1c2742;
+    background: linear-gradient(180deg, #2a3963 0%, #1c2742 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -3px 0 rgba(0,0,0,0.28);
     color: #ffffff;
     font-size: 18px;
+    font-weight: 700;
+  }
+  /* Sound on/off button: top-left corner, far from the control buttons */
+  #sound {
+    flex: none;
+    width: 38px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.10);
+    color: #fff;
+    font-size: 18px;
+    touch-action: manipulation;
+  }
+  #sound.off { opacity: .45; }
+
+  /* Narrow phones: squeeze the top bar a little so everything still fits */
+  @media (max-width: 350px) {
+    #top { gap: 5px; }
+    .stat span { font-size: 9px; letter-spacing: 0.05em; }
+    .stat b { font-size: 15px; }
+    #score.long { font-size: 12px; line-height: 1.6; }
+    #next { width: 48px; height: 48px; }
+    #sound { width: 34px; }
   }
 
   /* Board area takes all remaining space; canvas is centred inside */
@@ -70,6 +117,8 @@
   #board {
     background: #111a2e;
     border-radius: 6px;
+    /* a thin rim and a soft shadow so the well looks sunk into the page */
+    box-shadow: 0 0 0 2px #2a3a66, 0 0 0 4px rgba(0,0,0,0.35), 0 6px 18px rgba(0,0,0,0.5);
   }
 
   /* Control buttons */
@@ -87,21 +136,32 @@
   #btnDown   { grid-column: 3; grid-row: 1 / 3; }
   #btnRotate { grid-column: 4; grid-row: 1; }
   #btnDrop   { grid-column: 4; grid-row: 2; }
+  /* Buttons look raised: lighter on top, a dark lip at the bottom */
   #controls button {
     border: 0;
-    border-radius: 12px;
-    background: #1c2742;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #2a3963 0%, #1c2742 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -4px 0 rgba(0,0,0,0.28), 0 2px 6px rgba(0,0,0,0.35);
     color: #ffffff;
     font-size: 24px;
     touch-action: none;
   }
-  #controls button:active, #pause:active { background: #2c3a60; }
-  #controls #btnDrop { background: #2a6f5c; font-size: 15px; font-weight: 700; }
+  #controls #btnRotate { background: linear-gradient(180deg, #7a5fc4 0%, #523c94 100%); }
+  #controls #btnDrop   { background: linear-gradient(180deg, #37957b 0%, #23604f 100%); font-size: 15px; font-weight: 700; letter-spacing: 0.06em; }
+  /* Pressed look: the button sinks and gets brighter */
+  #controls button:active, #pause:active {
+    background: #2c3a60;
+    box-shadow: inset 0 3px 6px rgba(0,0,0,0.45);
+    transform: translateY(2px);
+  }
+  #controls #btnRotate:active { background: #8a70d6; }
+  #controls #btnDrop:active   { background: #43ab8e; }
 </style>
 </head>
 <body>
 <div id="app">
   <div id="top">
+    <button id="sound" aria-label="Sound on or off"></button>
     <div class="stat"><span>Score</span><b id="score">0</b></div>
     <div class="stat"><span>Lines</span><b id="lines">0/0</b></div>
     <div class="stat"><span>Level</span><b id="level">1/10</b></div>
@@ -126,6 +186,7 @@
 // Clear the target number of lines to finish a level. Finish level 10 to win.
 // Buttons: left, right, rotate, down, drop
 // Keyboard (for laptop testing): arrows, Space = drop, P = pause
+// Sound: made by code (no sound files). The speaker button (top left) turns it on/off.
 // =====================================================
 
 // ---------- Settings (change these to experiment) ----------
@@ -133,6 +194,12 @@ const COLS = 10;                 // board width in cells
 const ROWS = 20;                 // board height in cells
 const LINE_SCORES = [0, 100, 300, 500, 800];   // points for 0-4 lines at once
 const LEVEL_BONUS = 1000;        // bonus for finishing a level (multiplied by the level number)
+const SOUND_VOLUME = 0.25;       // 0 = silent, 1 = very loud
+const MAX_PARTICLES = 150;       // most sparkles on screen at once (keeps cheap phones fast)
+const SHAKE_MS = 160;            // how long the board shakes after a hard drop
+const SHAKE_PIXELS = 3;          // how far the board shakes (small!)
+const FLASH_MS = 320;            // how long a cleared line glows
+const BANNER_MS = 1300;          // how long the "Level 3" banner shows at the start of a level
 
 // ---------- Levels ----------
 // goal     = lines to clear to finish the level
@@ -191,9 +258,191 @@ let state = 'ready';      // 'ready' | 'playing' | 'paused' | 'clear' | 'over' |
 let dropTimer = 0;        // ms since the piece last moved down
 let cell = 20;            // size of one cell in CSS pixels (set by resize)
 
+// ---------- Effects state (only for looks; never changes the rules) ----------
+let blockSprites = {};    // one ready-made picture of a shiny block per colour (built in resize)
+let wellSprite = null;    // ready-made picture of the empty well with its grid (built in resize)
+let particles = [];       // sparkles: { x, y, vx, vy, gravity, size, color, life, maxLife }
+let rowFlashes = [];      // glowing bars where lines were cleared: { y, life, color }
+let floaters = [];        // score texts that float up: { text, x, y, life, maxLife, color }
+let lockFlash = null;     // quick white blink on a piece that just landed: { cells, life }
+let banner = null;        // "Level 3" banner at the start of a level: { text, life }
+let shakeTime = 0;        // ms of board shake left
+let clock = 0;            // ms since the page opened (drives the pulsing text)
+let shownState = 'ready'; // the state drawn last frame (to notice when the screen changes)
+let stateTime = 0;        // ms since the screen last changed (drives the pop-in of message cards)
+
 function newBoard() {
   return Array.from({ length: ROWS }, () => Array(COLS).fill(null));
 }
+
+// ---------- Sound ----------
+// All sounds are made by code (short notes), so there are no sound files to upload.
+// Phones only allow sound after a touch, so the sound engine starts on the first touch.
+// The on/off choice is remembered, and is shared by all the games on this site.
+const btnSound = document.getElementById('sound');
+let audio = null;                // the sound engine (created on first touch)
+let muted = false;
+try { muted = localStorage.getItem('gamesMuted') === '1'; } catch (e) { /* storage blocked: start with sound on */ }
+
+function showSoundButton() {
+  btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
+  btnSound.classList.toggle('off', muted);
+}
+showSoundButton();
+
+function startAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (e) { audio = null; }                                  // no sound support: the game still works
+}
+// Different phones accept different kinds of touch for this, so listen for all of them
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, startAudio, true);
+}
+
+// Play one note.
+//   freq  = pitch in Hz (higher number = higher note)
+//   dur   = length in seconds
+//   type  = 'sine' (soft), 'triangle' (round), 'square' (retro), 'sawtooth' (buzzy)
+//   delay = seconds to wait before it starts (used to build little tunes)
+//   slide = pitch to glide to by the end (optional)
+//   volume = 0 to 1, share of SOUND_VOLUME
+function beep(freq, dur, type = 'sine', delay = 0, slide = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME * volume, t + 0.01);   // quick fade in (no click)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);                   // fade out
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// Play a burst of hiss (for explosions, crashes, whooshes).
+//   dur = length in seconds, tone = how bright it is in Hz (300 = deep boom, 4000 = sharp crack)
+let noiseBuffer = null;
+function noise(dur, tone = 1000, delay = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  if (!noiseBuffer) {                                            // one second of random hiss, made once
+    noiseBuffer = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  const t = audio.currentTime + delay;
+  const src = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const gain = audio.createGain();
+  src.buffer = noiseBuffer;
+  src.loop = true;
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(tone, t);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(60, tone * 0.25), t + dur);
+  gain.gain.setValueAtTime(SOUND_VOLUME * volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(filter).connect(gain).connect(audio.destination);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+}
+
+// Short buzz on Android phones (iPhone does not allow this from a web page)
+function buzz(ms) {
+  if (!muted && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
+}
+
+btnSound.addEventListener('click', () => {
+  muted = !muted;
+  try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {}
+  showSoundButton();
+  startAudio();
+  if (!muted) setTimeout(() => beep(740, 0.05, 'sine', 0, 0, 0.6), 60);   // small note to confirm sound is on
+  btnSound.blur();                                               // so the Space key does not press it again
+});
+
+// Some sounds can fire many times a second (holding left/right/down).
+// tooSoon('move') is true if that sound already played less than 60 ms ago, so we skip it.
+const lastPlayed = {};
+function tooSoon(name) {
+  const now = performance.now();
+  if (lastPlayed[name] && now - lastPlayed[name] < 60) return true;
+  lastPlayed[name] = now;
+  return false;
+}
+
+// The game's own sounds: one small function per event
+const sfx = {
+  // Very quiet tick when the piece moves sideways
+  move() {
+    if (tooSoon('move')) return;
+    beep(620, 0.03, 'triangle', 0, 0, 0.3);
+  },
+  // Quick upward "whip" when the piece turns
+  rotate() {
+    beep(500, 0.07, 'triangle', 0, 760, 0.5);
+  },
+  // Quiet low tick for each row moved down with the down button
+  softDrop() {
+    if (tooSoon('softDrop')) return;
+    beep(330, 0.03, 'sine', 0, 260, 0.35);
+  },
+  // Soft thud when a piece settles by itself
+  lock() {
+    beep(170, 0.09, 'sine', 0, 95, 0.7);
+  },
+  // Bigger thud for the DROP button
+  hardDrop() {
+    beep(190, 0.14, 'sine', 0, 60, 1);
+    noise(0.09, 500, 0, 0.5);
+    buzz(12);
+  },
+  // Rising notes: more lines = more notes. Four lines at once gets a special sparkle.
+  lineClear(lines) {
+    const notes = [523, 659, 784, 1047, 1319];                   // C E G C E going up
+    if (lines >= 4) {
+      for (let i = 0; i < 5; i++) beep(notes[i], 0.12, 'square', i * 0.07, 0, 0.4);
+      beep(1568, 0.3, 'triangle', 0.35, 0, 0.6);                 // long bright note on top
+      noise(0.25, 4000, 0, 0.3);                                 // sparkle hiss
+      buzz(30);
+    } else {
+      for (let i = 0; i <= lines; i++) beep(notes[i], 0.1, 'triangle', i * 0.07, 0, 0.8);
+      buzz(12);
+    }
+  },
+  // Short happy tune when a level is finished (wait = seconds, so it plays after the line sound)
+  levelClear(wait) {
+    const tune = [523, 659, 784, 1047];
+    for (let i = 0; i < tune.length; i++) beep(tune[i], 0.14, 'triangle', wait + i * 0.11, 0, 0.9);
+    beep(1319, 0.3, 'triangle', wait + 0.44, 0, 0.9);
+    buzz(35);
+  },
+  // Longer happy tune for finishing the whole game
+  win(wait) {
+    const tune = [523, 659, 784, 1047, 784, 1047, 1319, 1568];
+    for (let i = 0; i < tune.length; i++) beep(tune[i], 0.15, 'triangle', wait + i * 0.12, 0, 0.9);
+    beep(2093, 0.45, 'sine', wait + 0.96, 0, 0.7);
+    buzz(40);
+  },
+  // Short falling tune when the board fills up
+  gameOver() {
+    const tune = [392, 330, 262, 196];
+    for (let i = 0; i < tune.length; i++) beep(tune[i], 0.18, 'triangle', 0.15 + i * 0.15, 0, 0.8);
+    buzz(40);
+  },
+  // Little "go" blip when a level starts
+  start() {
+    beep(523, 0.07, 'triangle', 0, 0, 0.6);
+    beep(784, 0.1, 'triangle', 0.07, 0, 0.6);
+  },
+  // Small blip for pause and resume
+  pause() {
+    beep(440, 0.06, 'sine', 0, 0, 0.5);
+  }
+};
 
 // ---------- Piece supply: every 7 pieces contains each shape once ----------
 function takeFromBag() {
@@ -213,7 +462,10 @@ function spawn() {
   const m = SHAPES[type].map(row => row.slice());
   piece = { type, m, x: Math.floor((COLS - m.length) / 2), y: 0 };
   // No room for the new piece = game over
-  if (collides(piece.m, piece.x, piece.y)) state = 'over';
+  if (collides(piece.m, piece.x, piece.y)) {
+    state = 'over';
+    sfx.gameOver();
+  }
   drawNext();
 }
 
@@ -244,7 +496,10 @@ function rotateCW(m) {
 // ---------- Player actions ----------
 function move(dx) {
   if (state !== 'playing') return;
-  if (!collides(piece.m, piece.x + dx, piece.y)) piece.x += dx;
+  if (!collides(piece.m, piece.x + dx, piece.y)) {
+    piece.x += dx;
+    sfx.move();
+  }
 }
 
 function rotate() {
@@ -255,6 +510,7 @@ function rotate() {
     if (!collides(turned, piece.x + kick, piece.y)) {
       piece.m = turned;
       piece.x += kick;
+      sfx.rotate();
       return;
     }
   }
@@ -266,13 +522,16 @@ function stepDown() {
     piece.y++;
     return true;
   }
-  lock();
+  lock(false);
   return false;
 }
 
 function softDrop() {
   if (state !== 'playing') return;
-  if (stepDown()) score += 1;
+  if (stepDown()) {
+    score += 1;
+    sfx.softDrop();
+  }
   dropTimer = 0;
   updateHud();
 }
@@ -283,17 +542,26 @@ function hardDrop() {
     piece.y++;
     score += 2;
   }
-  lock();
+  lock(true);
   dropTimer = 0;
 }
 
 // Fix the piece into the board, clear full lines, then either finish the level
-// or bring in the next piece
-function lock() {
+// or bring in the next piece.
+// wasHardDrop = true when the DROP button was used (bigger thud, small shake, dust)
+function lock(wasHardDrop) {
+  const landed = [];                                    // cells the piece now fills (for the effects)
   for (let r = 0; r < piece.m.length; r++)
     for (let c = 0; c < piece.m[r].length; c++)
-      if (piece.m[r][c] && piece.y + r >= 0)
+      if (piece.m[r][c] && piece.y + r >= 0) {
         board[piece.y + r][piece.x + c] = piece.type;
+        landed.push({ x: piece.x + c, y: piece.y + r });
+      }
+
+  // Effects only: remember which rows are full (and their colours) before they are removed
+  const fullRows = [];
+  for (let y = 0; y < ROWS; y++)
+    if (board[y].every(v => v)) fullRows.push({ y: y, types: board[y].slice() });
 
   let cleared = 0;
   for (let y = ROWS - 1; y >= 0; y--) {
@@ -309,12 +577,31 @@ function lock() {
     levelLines += cleared;
   }
 
+  // Sound and effects for landing and for cleared lines
+  if (wasHardDrop) {
+    sfx.hardDrop();
+    shakeTime = SHAKE_MS;
+    addDust(landed);
+  } else {
+    sfx.lock();
+  }
+  if (cleared) {
+    sfx.lineClear(cleared);
+    addLineClearEffects(fullRows, LINE_SCORES[cleared] * level);
+    if (cleared >= 4) shakeTime = SHAKE_MS * 1.5;
+  } else {
+    lockFlash = { cells: landed, life: 140 };
+  }
+
   if (levelLines >= LEVELS[level - 1].goal) {
     // Level finished
     levelLines = LEVELS[level - 1].goal;
     score += LEVEL_BONUS * level;
     piece = null;
     state = level === LEVELS.length ? 'won' : 'clear';
+    // Play the tune a moment later so it follows the line-clear notes
+    const wait = cleared >= 4 ? 0.65 : 0.4;
+    if (state === 'won') sfx.win(wait); else sfx.levelClear(wait);
   } else {
     spawn();
   }
@@ -333,6 +620,13 @@ function startLevel(n) {
   dropTimer = 0;
   nextType = takeFromBag();
   state = 'playing';
+  // Fresh level: remove leftover effects and show the level banner
+  particles = [];
+  rowFlashes = [];
+  floaters = [];
+  lockFlash = null;
+  banner = { text: 'Level ' + n, life: BANNER_MS };
+  sfx.start();
   spawn();
   updateHud();
 }
@@ -351,83 +645,420 @@ function advance() {
   if (state === 'ready' || state === 'won') { score = 0; startLevel(1); }
   else if (state === 'clear') startLevel(level + 1);
   else if (state === 'over') { score = levelStartScore; startLevel(level); }   // retry same level
-  else if (state === 'paused') state = 'playing';
+  else if (state === 'paused') { state = 'playing'; sfx.pause(); }
 }
 
 function togglePause() {
-  if (state === 'playing') state = 'paused';
-  else if (state === 'paused') state = 'playing';
+  if (state === 'playing') { state = 'paused'; sfx.pause(); }
+  else if (state === 'paused') { state = 'playing'; sfx.pause(); }
 }
 
 function updateHud() {
   elScore.textContent = score;
+  elScore.classList.toggle('long', score >= 100000);    // smaller letters so a huge score still fits its card
   elLines.textContent = levelLines + '/' + LEVELS[level - 1].goal;
   elLevel.textContent = level + '/' + LEVELS.length;
 }
 
+// ---------- Effects: sparkles, glowing lines, floating score ----------
+// Add one sparkle, unless there are already too many on screen
+function addParticle(x, y, vx, vy, gravity, size, color, life) {
+  if (particles.length >= MAX_PARTICLES) return;
+  particles.push({ x, y, vx, vy, gravity, size, color, life, maxLife: life });
+}
+
+// Cleared lines: a glowing bar on each row, sparkles in the colours of the blocks,
+// and the points floating up
+function addLineClearEffects(fullRows, points) {
+  const special = fullRows.length >= 4;                 // four lines at once glows gold
+  let middleY = 0;
+  for (const row of fullRows) {
+    rowFlashes.push({ y: row.y, life: FLASH_MS, color: special ? '#ffe27a' : '#ffffff' });
+    middleY += row.y + 0.5;
+    for (let x = 0; x < COLS; x++) {
+      for (let i = 0; i < 3; i++) {                     // 3 sparkles per block
+        addParticle(
+          (x + Math.random()) * cell, (row.y + Math.random()) * cell,
+          (Math.random() - 0.5) * cell * 9, (Math.random() - 0.8) * cell * 8,
+          cell * 28, cell * (0.12 + Math.random() * 0.14),
+          COLORS[row.types[x]], 450 + Math.random() * 350);
+      }
+    }
+  }
+  floaters.push({
+    text: '+' + points,
+    x: COLS * cell / 2,
+    y: Math.max(cell * 1.5, middleY / fullRows.length * cell),
+    life: 900, maxLife: 900,
+    color: special ? '#ffe27a' : '#ffffff'
+  });
+}
+
+// Hard drop: a few puffs of dust fly out from under the piece
+function addDust(landed) {
+  for (const spot of landed) {
+    for (let i = 0; i < 2; i++) {
+      addParticle(
+        (spot.x + Math.random()) * cell, (spot.y + 1) * cell,
+        (Math.random() - 0.5) * cell * 7, -Math.random() * cell * 3,
+        cell * 12, cell * (0.08 + Math.random() * 0.1),
+        'rgba(255,255,255,0.8)', 220 + Math.random() * 180);
+    }
+  }
+}
+
+// Winning the game: colourful confetti falls from the top for a few seconds
+function addConfetti() {
+  const letters = Object.keys(SHAPES);
+  for (let i = 0; i < 2; i++) {
+    const letter = letters[Math.floor(Math.random() * letters.length)];
+    addParticle(
+      Math.random() * COLS * cell, -cell * 0.5,
+      (Math.random() - 0.5) * cell * 3, cell * (2 + Math.random() * 3),
+      cell * 4, cell * (0.18 + Math.random() * 0.16),
+      COLORS[letter], 1800 + Math.random() * 900);
+  }
+}
+
+// Move every effect forward by dt milliseconds and drop the finished ones
+function updateEffects(dt) {
+  const seconds = dt / 1000;
+  clock += dt;
+
+  // Notice when the screen changes (playing -> game over, etc.) so message cards can pop in
+  if (state !== shownState) { shownState = state; stateTime = 0; }
+  stateTime += dt;
+
+  for (const p of particles) {
+    p.vy += p.gravity * seconds;
+    p.x += p.vx * seconds;
+    p.y += p.vy * seconds;
+    p.life -= dt;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  for (const flash of rowFlashes) flash.life -= dt;
+  rowFlashes = rowFlashes.filter(flash => flash.life > 0);
+
+  for (const f of floaters) { f.y -= cell * 1.6 * seconds; f.life -= dt; }
+  floaters = floaters.filter(f => f.life > 0);
+
+  if (lockFlash) { lockFlash.life -= dt; if (lockFlash.life <= 0) lockFlash = null; }
+  if (banner && state === 'playing') { banner.life -= dt; if (banner.life <= 0) banner = null; }
+
+  if (state === 'won' && stateTime < 3500) addConfetti();
+
+  // Board shake: nudge the whole canvas a few pixels, getting smaller until it stops
+  if (shakeTime > 0) {
+    shakeTime = Math.max(0, shakeTime - dt);
+    const strength = SHAKE_PIXELS * shakeTime / SHAKE_MS;
+    const dx = (Math.random() * 2 - 1) * strength;
+    const dy = (Math.random() * 2 - 1) * strength;
+    boardCanvas.style.transform = shakeTime > 0 ? 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)' : '';
+  }
+}
+
 // ---------- Drawing ----------
-function drawBlock(c, x, y, size, color) {
+// Trace a rectangle with rounded corners (then call fill() or stroke())
+function roundRectPath(c, x, y, w, h, radius) {
+  c.beginPath();
+  c.moveTo(x + radius, y);
+  c.arcTo(x + w, y, x + w, y + h, radius);
+  c.arcTo(x + w, y + h, x, y + h, radius);
+  c.arcTo(x, y + h, x, y, radius);
+  c.arcTo(x, y, x + w, y, radius);
+  c.closePath();
+}
+
+// Paint one shiny block into its own small canvas. This is done once per colour
+// (in resize), so drawing a block later is just a fast "stamp" of this picture.
+// px = size of the picture in real screen pixels
+function makeBlockSprite(color, px) {
+  const sprite = document.createElement('canvas');
+  sprite.width = px;
+  sprite.height = px;
+  const c = sprite.getContext('2d');
+  const gap = Math.max(1, px * 0.035);                  // thin gap so blocks do not touch
+  const size = px - gap * 2;
+  const radius = size * 0.2;
+
+  // 1. The block body in its colour
+  roundRectPath(c, gap, gap, size, size, radius);
   c.fillStyle = color;
-  c.fillRect(x + 1, y + 1, size - 2, size - 2);
-  c.fillStyle = 'rgba(255,255,255,0.22)';        // light strip on top for a 3D look
-  c.fillRect(x + 1, y + 1, size - 2, Math.max(2, size * 0.14));
+  c.fill();
+
+  // 2. Outer bevel: light at the top fading to dark at the bottom
+  c.save();
+  roundRectPath(c, gap, gap, size, size, radius);
+  c.clip();
+  const bevel = c.createLinearGradient(0, gap, 0, gap + size);
+  bevel.addColorStop(0, 'rgba(255,255,255,0.55)');
+  bevel.addColorStop(0.45, 'rgba(255,255,255,0)');
+  bevel.addColorStop(0.55, 'rgba(0,0,0,0)');
+  bevel.addColorStop(1, 'rgba(0,0,0,0.45)');
+  c.fillStyle = bevel;
+  c.fillRect(0, 0, px, px);
+  c.restore();
+
+  // 3. The raised face in the middle (same colour, slightly lighter at the top)
+  const inset = size * 0.16;
+  const faceX = gap + inset, faceSize = size - inset * 2;
+  roundRectPath(c, faceX, faceX, faceSize, faceSize, radius * 0.6);
+  c.fillStyle = color;
+  c.fill();
+  const face = c.createLinearGradient(0, faceX, 0, faceX + faceSize);
+  face.addColorStop(0, 'rgba(255,255,255,0.22)');
+  face.addColorStop(1, 'rgba(0,0,0,0.10)');
+  c.fillStyle = face;
+  c.fill();
+
+  // 4. Glossy shine: a small bright streak near the top-left corner
+  roundRectPath(c, faceX + faceSize * 0.12, faceX + faceSize * 0.1, faceSize * 0.5, faceSize * 0.2, faceSize * 0.1);
+  c.fillStyle = 'rgba(255,255,255,0.4)';
+  c.fill();
+
+  // 5. Thin dark rim to separate the block from its neighbours
+  roundRectPath(c, gap, gap, size, size, radius);
+  c.strokeStyle = 'rgba(0,0,0,0.35)';
+  c.lineWidth = Math.max(1, px * 0.03);
+  c.stroke();
+  return sprite;
+}
+
+// Paint the empty well once: dark gradient, faint grid, darker edges
+function makeWellSprite(pxW, pxH, pxCell) {
+  const sprite = document.createElement('canvas');
+  sprite.width = pxW;
+  sprite.height = pxH;
+  const c = sprite.getContext('2d');
+
+  const back = c.createLinearGradient(0, 0, 0, pxH);
+  back.addColorStop(0, '#17223f');
+  back.addColorStop(1, '#0d1526');
+  c.fillStyle = back;
+  c.fillRect(0, 0, pxW, pxH);
+
+  // Faint grid lines
+  c.strokeStyle = 'rgba(255,255,255,0.06)';
+  c.lineWidth = 1;
+  c.beginPath();
+  for (let x = 1; x < COLS; x++) { c.moveTo(Math.round(x * pxCell) + 0.5, 0); c.lineTo(Math.round(x * pxCell) + 0.5, pxH); }
+  for (let y = 1; y < ROWS; y++) { c.moveTo(0, Math.round(y * pxCell) + 0.5); c.lineTo(pxW, Math.round(y * pxCell) + 0.5); }
+  c.stroke();
+
+  // Soft shadow along the left and right walls so the well looks deep
+  const walls = c.createLinearGradient(0, 0, pxW, 0);
+  walls.addColorStop(0, 'rgba(0,0,0,0.30)');
+  walls.addColorStop(0.08, 'rgba(0,0,0,0)');
+  walls.addColorStop(0.92, 'rgba(0,0,0,0)');
+  walls.addColorStop(1, 'rgba(0,0,0,0.30)');
+  c.fillStyle = walls;
+  c.fillRect(0, 0, pxW, pxH);
+  return sprite;
+}
+
+// Stamp one block. type = piece letter (picks the ready-made picture for that colour)
+function drawBlock(c, x, y, size, type) {
+  c.drawImage(blockSprites[type], x, y, size, size);
+}
+
+// Write text centred at (x, y); if it is wider than maxWidth, make the letters smaller
+function drawTextFit(text, x, y, maxWidth, size, weight) {
+  ctx.font = weight + ' ' + size + 'px system-ui, sans-serif';
+  const width = ctx.measureText(text).width;
+  if (width > maxWidth) {
+    size = Math.floor(size * maxWidth / width);
+    ctx.font = weight + ' ' + size + 'px system-ui, sans-serif';
+  }
+  ctx.fillText(text, x, y);
 }
 
 function draw() {
   const w = COLS * cell, h = ROWS * cell;
-  ctx.clearRect(0, 0, w, h);
 
-  // Faint grid lines
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let x = 1; x < COLS; x++) { ctx.moveTo(x * cell + 0.5, 0); ctx.lineTo(x * cell + 0.5, h); }
-  for (let y = 1; y < ROWS; y++) { ctx.moveTo(0, y * cell + 0.5); ctx.lineTo(w, y * cell + 0.5); }
-  ctx.stroke();
+  // Empty well with its grid (one ready-made picture)
+  ctx.drawImage(wellSprite, 0, 0, w, h);
 
   // Locked blocks
   for (let y = 0; y < ROWS; y++)
     for (let x = 0; x < COLS; x++)
-      if (board[y][x]) drawBlock(ctx, x * cell, y * cell, cell, COLORS[board[y][x]]);
+      if (board[y][x]) drawBlock(ctx, x * cell, y * cell, cell, board[y][x]);
+
+  // Quick white blink on the piece that just landed
+  if (lockFlash) {
+    ctx.fillStyle = 'rgba(255,255,255,' + (0.45 * lockFlash.life / 140).toFixed(3) + ')';
+    for (const spot of lockFlash.cells) ctx.fillRect(spot.x * cell + 1, spot.y * cell + 1, cell - 2, cell - 2);
+  }
 
   if (piece && state !== 'ready') {
     // Ghost: outline showing where the piece will land
     let gy = piece.y;
     while (!collides(piece.m, piece.x, gy + 1)) gy++;
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.strokeStyle = COLORS[piece.type];
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
     ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.75;
     eachCell(piece.m, (r, c) => {
-      ctx.strokeRect((piece.x + c) * cell + 2, (gy + r) * cell + 2, cell - 4, cell - 4);
+      roundRectPath(ctx, (piece.x + c) * cell + 2, (gy + r) * cell + 2, cell - 4, cell - 4, cell * 0.16);
+      ctx.fill();
+      ctx.stroke();
     });
+    ctx.globalAlpha = 1;
 
     // Falling piece
     eachCell(piece.m, (r, c) => {
-      drawBlock(ctx, (piece.x + c) * cell, (piece.y + r) * cell, cell, COLORS[piece.type]);
+      drawBlock(ctx, (piece.x + c) * cell, (piece.y + r) * cell, cell, piece.type);
     });
   }
 
-  // Message when not playing
+  // Dark veil over the board when not playing (fades in quickly)
   if (state !== 'playing') {
-    let text;
-    if (state === 'ready')       text = ['Block Drop', 'Tap to start'];
-    else if (state === 'paused') text = ['Paused', 'Tap to resume'];
-    else if (state === 'clear')  text = ['Level ' + level + ' clear!', 'Tap for level ' + (level + 1)];
-    else if (state === 'won')    text = ['You win!', 'Score ' + score, 'Tap to play again'];
-    else                         text = ['Game over', 'Tap to retry level ' + level];
-
-    ctx.fillStyle = 'rgba(11,18,32,0.78)';
+    const veil = state === 'ready' ? 0.6 : 0.78 * Math.min(1, stateTime / 250);
+    ctx.fillStyle = 'rgba(11,18,32,' + veil.toFixed(3) + ')';
     ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    // First line is big, the rest are smaller; the block of lines is centred
-    const gap = 30;
-    const top = h / 2 - (text.length - 1) * gap / 2;
-    for (let i = 0; i < text.length; i++) {
-      ctx.font = i === 0 ? '700 22px system-ui, sans-serif' : '500 16px system-ui, sans-serif';
-      ctx.fillText(text[i], w / 2, top + i * gap);
-    }
   }
+
+  drawEffects(w);
+
+  if (state === 'playing') drawBanner(w, h);
+  else drawMessage(w, h);
+}
+
+// Glowing bars, sparkles and floating score texts
+function drawEffects(w) {
+  // Glowing bar on each cleared row: bright at first, then fades
+  for (const flash of rowFlashes) {
+    const left = flash.life / FLASH_MS;                     // 1 = just cleared, 0 = finished
+    const barH = cell * left;                               // the bar gets thinner as it fades
+    ctx.globalAlpha = 0.75 * left;
+    ctx.fillStyle = flash.color;
+    ctx.fillRect(0, flash.y * cell + (cell - barH) / 2, w, barH);
+  }
+
+  // Sparkles: small squares that fade out
+  for (const p of particles) {
+    ctx.globalAlpha = Math.min(1, p.life / p.maxLife * 1.6);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+
+  // Score texts floating up
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const f of floaters) {
+    ctx.globalAlpha = Math.min(1, f.life / f.maxLife * 2);
+    ctx.font = '800 ' + Math.max(14, Math.round(cell * 0.85)) + 'px system-ui, sans-serif';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(11,18,32,0.85)';                // dark outline keeps it readable
+    ctx.strokeText(f.text, f.x, f.y);
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// "Level 3" banner shown for a moment when a level starts (fades in and out)
+function drawBanner(w, h) {
+  if (!banner) return;
+  const age = BANNER_MS - banner.life;
+  const alpha = Math.min(1, age / 150, banner.life / 350);
+  const barH = cell * 2;
+  const y = h * 0.42;
+  ctx.globalAlpha = alpha * 0.7;
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(0, y - barH / 2, w, barH);
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#4dd4e6';
+  ctx.fillRect(0, y - barH / 2, w, 2);
+  ctx.fillRect(0, y + barH / 2 - 2, w, 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  drawTextFit(banner.text.toUpperCase(), w / 2, y, w * 0.9, Math.round(cell * 1.05), '800');
+  ctx.globalAlpha = 1;
+}
+
+// Message card when not playing: start, paused, level clear, win, game over
+function drawMessage(w, h) {
+  // What to say on each screen. The last line is the "Tap to..." line, which pulses.
+  let title, titleColor, lines;
+  if (state === 'ready') {
+    title = 'Block Drop';                         titleColor = '#4dd4e6';
+    lines = ['Tap to start'];
+  } else if (state === 'paused') {
+    title = 'Paused';                             titleColor = '#ffffff';
+    lines = ['Tap to resume'];
+  } else if (state === 'clear') {
+    title = 'Level ' + level + ' clear!';         titleColor = '#6fe3c1';
+    lines = ['Bonus +' + LEVEL_BONUS * level, 'Tap for level ' + (level + 1)];
+  } else if (state === 'won') {
+    title = 'You win!';                           titleColor = '#f4d35e';
+    lines = ['Score ' + score, 'Tap to play again'];
+  } else {
+    title = 'Game over';                          titleColor = '#ff6b6b';
+    lines = ['Score ' + score, 'Tap to retry level ' + level];
+  }
+
+  // Sizes follow the board size so the card also fits small phones
+  const titleSize = Math.max(16, Math.min(30, Math.round(cell * 0.95)));
+  const lineSize  = Math.max(12, Math.min(18, Math.round(cell * 0.6)));
+  const lineGap   = lineSize * 1.9;
+  const pad       = lineSize * 1.3;
+  const showBlocks = state === 'ready';                   // start screen has a row of little blocks
+  const blockSize = Math.min(cell, (w * 0.8) / 7);
+  const blocksH   = showBlocks ? blockSize + pad * 0.7 : 0;
+  const cardW = w - cell * 1.2;
+  const cardH = pad * 2 + blocksH + titleSize + lines.length * lineGap;
+
+  // The card pops in: starts a little small and grows to full size
+  const grow = Math.min(1, stateTime / 220);
+  const scale = state === 'ready' ? 1 : 0.85 + 0.15 * (1 - (1 - grow) * (1 - grow));
+
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.scale(scale, scale);
+  ctx.globalAlpha = state === 'ready' ? 1 : grow;
+
+  // Card body with a coloured line on top
+  roundRectPath(ctx, -cardW / 2, -cardH / 2, cardW, cardH, 12);
+  ctx.fillStyle = 'rgba(20,31,58,0.94)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = titleColor;
+  ctx.fillRect(-cardW / 2 + 14, -cardH / 2, cardW - 28, 3);
+
+  let y = -cardH / 2 + pad;
+
+  // Row of seven little blocks, one of each colour, gently bobbing
+  if (showBlocks) {
+    const letters = Object.keys(SHAPES);
+    const startX = -blockSize * letters.length / 2;
+    for (let i = 0; i < letters.length; i++) {
+      const bob = Math.sin(clock / 300 + i * 0.9) * blockSize * 0.12;
+      drawBlock(ctx, startX + i * blockSize, y + bob, blockSize, letters[i]);
+    }
+    y += blocksH;
+  }
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = titleColor;
+  drawTextFit(title, 0, y + titleSize / 2, cardW - 20, titleSize, '800');
+  y += titleSize;
+
+  // Other lines; the last one ("Tap to...") pulses gently
+  for (let i = 0; i < lines.length; i++) {
+    const isTapLine = i === lines.length - 1;
+    const baseAlpha = ctx.globalAlpha;
+    if (isTapLine) ctx.globalAlpha = baseAlpha * (0.65 + 0.35 * Math.sin(clock / 260));
+    ctx.fillStyle = isTapLine ? '#ffffff' : '#f4d35e';
+    drawTextFit(lines[i], 0, y + lineGap * (i + 0.6), cardW - 20, lineSize, isTapLine ? '600' : '700');
+    ctx.globalAlpha = baseAlpha;
+  }
+  ctx.restore();
 }
 
 // Run fn(row, col) for every filled cell of a shape grid
@@ -441,20 +1072,29 @@ function eachCell(m, fn) {
 function drawNext() {
   const size = 56;
   nctx.clearRect(0, 0, size, size);
+
+  // Small "NEXT" label at the top of the box
+  const labelH = 14;
+  nctx.fillStyle = 'rgba(255,255,255,0.6)';
+  nctx.font = '600 9px system-ui, sans-serif';
+  nctx.textAlign = 'center';
+  nctx.textBaseline = 'middle';
+  nctx.fillText('NEXT', size / 2, labelH / 2 + 3);
+
   if (!nextType) return;
   const m = SHAPES[nextType];
   const s = 12;                                   // preview cell size
 
-  // Find the filled area so the piece can be centred
+  // Find the filled area so the piece can be centred (in the space under the label)
   let minR = 9, maxR = -1, minC = 9, maxC = -1;
   eachCell(m, (r, c) => {
     minR = Math.min(minR, r); maxR = Math.max(maxR, r);
     minC = Math.min(minC, c); maxC = Math.max(maxC, c);
   });
   const offX = (size - (maxC - minC + 1) * s) / 2;
-  const offY = (size - (maxR - minR + 1) * s) / 2;
+  const offY = labelH + (size - labelH - 2 - (maxR - minR + 1) * s) / 2;
   eachCell(m, (r, c) => {
-    drawBlock(nctx, offX + (c - minC) * s, offY + (r - minR) * s, s, COLORS[nextType]);
+    drawBlock(nctx, offX + (c - minC) * s, offY + (r - minR) * s, s, nextType);
   });
 }
 
@@ -469,6 +1109,11 @@ function resize() {
   boardCanvas.width  = Math.round(COLS * cell * dpr);
   boardCanvas.height = Math.round(ROWS * cell * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // Rebuild the ready-made pictures at the new size: one block per colour, and the empty well
+  const spritePx = Math.max(8, Math.round(cell * dpr));
+  for (const type in COLORS) blockSprites[type] = makeBlockSprite(COLORS[type], spritePx);
+  wellSprite = makeWellSprite(boardCanvas.width, boardCanvas.height, cell * dpr);
 
   nextCanvas.width  = Math.round(56 * dpr);
   nextCanvas.height = Math.round(56 * dpr);
@@ -536,6 +1181,7 @@ function loop(time) {
       stepDown();
     }
   }
+  updateEffects(dt);
   draw();
   requestAnimationFrame(loop);
 }

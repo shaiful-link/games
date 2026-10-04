@@ -18,6 +18,13 @@
     -webkit-user-select: none;
     touch-action: manipulation;
   }
+  /* Soft glow behind everything, so the dark navy page is not flat */
+  body {
+    background:
+      radial-gradient(120% 70% at 50% 0%, #1b2a4d 0%, rgba(27,42,77,0) 70%),
+      radial-gradient(90% 60% at 50% 100%, #14213d 0%, rgba(20,33,61,0) 70%),
+      #0b1220;
+  }
   #app {
     position: relative;
     display: flex;
@@ -28,18 +35,110 @@
     gap: 10px;
   }
 
-  /* Top bar: pieces left for each side, and whose turn it is */
+  /* Top bar: pieces left for each side, whose turn it is, and the sound button */
   #top {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    min-height: 40px;
   }
-  .side { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; }
-  .dot { width: 18px; height: 18px; border-radius: 50%; }
-  .dot.red   { background: #ff6b6b; }
-  .dot.green { background: #4dd4ac; }
-  #status { font-size: 15px; color: rgba(255,255,255,0.85); text-align: center; flex: 1; }
+  /* Each side's piece count sits in a small rounded "pill" */
+  .side {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 11px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.07);
+    border: 2px solid rgba(255,255,255,0.08);
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;      /* all digits the same width, so numbers do not wobble */
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .side span:not(.dot) { min-width: 2ch; text-align: center; }
+  /* The pill of the side that has to move lights up in its own colour */
+  #sideRed.turn   { border-color: #ff6b6b; background: rgba(255,107,107,0.16); }
+  #sideGreen.turn { border-color: #4dd4ac; background: rgba(77,212,172,0.16); }
+  /* A count "pops" for a moment when it changes */
+  .side .bump { animation: bump 0.35s ease-out; }
+  @keyframes bump {
+    0%   { transform: scale(1.6); }
+    100% { transform: scale(1); }
+  }
+  .dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    box-shadow: inset 0 -2px 3px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.5);
+  }
+  .dot.red   { background: radial-gradient(circle at 35% 30%, #ffc4bd 0%, #ff6b6b 45%, #b53535 100%); }
+  .dot.green { background: radial-gradient(circle at 35% 30%, #c2ffe9 0%, #4dd4ac 45%, #17805f 100%); }
+  #status {
+    font-size: 15px;
+    line-height: 1.25;
+    font-weight: 600;
+    color: rgba(255,255,255,0.9);
+    text-align: center;
+    flex: 1;
+  }
+  /* "must capture" reminder shown under the status text */
+  #status .must {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: rgba(244,211,94,0.18);
+    color: #f4d35e;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  /* Three little dots that blink while the computer is thinking */
+  #status .dots { white-space: nowrap; }
+  #status .dots i {
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    margin-left: 3px;
+    border-radius: 50%;
+    background: #ffffff;
+    animation: blink 1s infinite;
+  }
+  #status .dots i:nth-child(2) { animation-delay: 0.2s; }
+  #status .dots i:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink {
+    0%, 100% { opacity: 0.2; }
+    40%      { opacity: 1; }
+  }
+
+  /* On narrow phones the top bar is made a little tighter, so the status text fits in two lines */
+  @media (max-width: 350px) {
+    #top { gap: 6px; }
+    .side { padding: 5px 8px; gap: 5px; font-size: 16px; }
+    .dot { width: 15px; height: 15px; }
+    #status { font-size: 13px; }
+  }
+
+  /* Sound on/off button. It sits above the start screen too, so it can always be reached */
+  #sound {
+    position: relative;
+    z-index: 3;
+    flex: none;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.10);
+    color: #fff;
+    font-size: 18px;
+    line-height: 1;
+    font-family: inherit;
+    touch-action: manipulation;
+  }
+  #sound.off { opacity: .45; }
 
   /* Board area takes all remaining space; canvas is centred inside */
   #boardWrap {
@@ -49,21 +148,42 @@
     align-items: center;
     justify-content: center;
   }
-  #board { border-radius: 6px; }
+  #board {
+    border-radius: 10px;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.55), 0 2px 0 rgba(255,255,255,0.06);
+  }
+
+  /* See-through layer over the whole page, only used for the win confetti. Taps pass through it. */
+  #fx {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 5;
+    pointer-events: none;
+  }
 
   #controls { display: flex; gap: 10px; }
   #controls button, #modes button {
     flex: 1;
     height: 50px;
-    border: 0;
+    border: 1px solid rgba(255,255,255,0.10);
     border-radius: 12px;
-    background: #1c2742;
+    background: linear-gradient(#26345c, #1a2440);
+    box-shadow: 0 3px 0 #0a1020, inset 0 1px 0 rgba(255,255,255,0.10);
     color: #ffffff;
     font-size: 16px;
     font-weight: 600;
     font-family: inherit;
+    touch-action: manipulation;
   }
-  #controls button:active, #modes button:active { background: #2c3a60; }
+  /* A pressed button sinks a little */
+  #controls button:active, #modes button:active {
+    background: #2c3a60;
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 #0a1020;
+  }
 
   /* Start screen and result screen */
   #overlay {
@@ -74,24 +194,46 @@
     align-items: center;
     justify-content: center;
     gap: 12px;
-    background: rgba(11,18,32,0.94);
+    background: radial-gradient(90% 60% at 50% 35%, rgba(30,46,84,0.96) 0%, rgba(11,18,32,0.96) 75%);
     text-align: center;
     padding: 24px;
   }
   #overlay.hidden { display: none; }
-  #overlay h1 { margin: 0; font-size: 30px; }
+  /* Two little glossy pieces above the title */
+  #logo { display: flex; margin-bottom: 2px; }
+  #logo span {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 3px solid rgba(0,0,0,0.25);
+    box-shadow: 0 5px 8px rgba(0,0,0,0.5), inset 0 -4px 6px rgba(0,0,0,0.3);
+  }
+  #logo .red   { background: radial-gradient(circle at 35% 28%, #ffd2cc 0%, #ff6b6b 42%, #b53535 100%); }
+  #logo .green { background: radial-gradient(circle at 35% 28%, #d2fff0 0%, #4dd4ac 42%, #17805f 100%); margin-left: -10px; }
+  #overlay h1 {
+    margin: 0;
+    font-size: 34px;
+    letter-spacing: 0.5px;
+    color: #f4d35e;
+    text-shadow: 0 2px 0 rgba(0,0,0,0.45);
+  }
   #overlay p  { margin: 0 0 6px; font-size: 16px; color: rgba(255,255,255,0.8); }
   #modes { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 300px; }
   #modes button { flex: none; height: 54px; }
-  #modes button.main { background: #2a6f5c; }
+  #modes button.main {
+    background: linear-gradient(#34917a, #24634f);
+    box-shadow: 0 3px 0 #123a2e, inset 0 1px 0 rgba(255,255,255,0.18);
+  }
+  #modes button.main:active { background: #2a6f5c; box-shadow: 0 1px 0 #123a2e; }
 </style>
 </head>
 <body>
 <div id="app">
   <div id="top">
-    <div class="side"><span class="dot red"></span><span id="countRed">12</span></div>
+    <div class="side" id="sideRed"><span class="dot red"></span><span id="countRed">12</span></div>
     <div id="status">Dam Haji</div>
-    <div class="side"><span id="countGreen">12</span><span class="dot green"></span></div>
+    <div class="side" id="sideGreen"><span id="countGreen">12</span><span class="dot green"></span></div>
+    <button id="sound" aria-label="Sound on or off"></button>
   </div>
 
   <div id="boardWrap"><canvas id="board"></canvas></div>
@@ -102,6 +244,7 @@
   </div>
 
   <div id="overlay">
+    <div id="logo"><span class="red"></span><span class="green"></span></div>
     <h1 id="msgTitle">Dam Haji</h1>
     <p id="msgLine">Choose how to play</p>
     <div id="modes">
@@ -112,6 +255,7 @@
     </div>
   </div>
 </div>
+<canvas id="fx"></canvas>
 
 <script>
 // =====================================================
@@ -123,9 +267,15 @@
 // - It captures ("makan") by jumping over an enemy piece next to it, and keeps
 //   jumping in the same move while it can.
 // - If you can capture, you must.
-// - A piece that reaches the far side becomes a Haji (marked with a ring).
+// - A piece that reaches the far side becomes a Haji (marked with a gold crown).
 //   A Haji moves and captures any distance along a diagonal, forward or backward.
 // - You win when the other side has no pieces left, or cannot move.
+//
+// Looks and sound:
+// - The wooden board and the glossy pieces are painted once into hidden canvases
+//   (and again when the screen size changes), then stamped on screen. That keeps it fast.
+// - Pieces slide to their new square, captured pieces pop in a puff, and a win gets confetti.
+// - All sounds are made by code. The speaker button (top right) turns them on and off.
 // =====================================================
 
 // ---------- Settings (change these to match your own house rules) ----------
@@ -135,6 +285,14 @@ const FLYING_HAJI          = true;    // true = a Haji moves any distance; false
 const DRAW_AFTER           = 60;      // moves in a row with no capture and no new Haji = draw
 const AI_DEPTH = { easy: 2, medium: 3, hard: 5 };   // how many moves ahead the computer thinks
 const EASY_RANDOM = 0.25;             // on Easy, chance that the computer plays a random move
+
+const SOUND_VOLUME   = 0.25;          // 0 = silent, 1 = very loud
+const SLIDE_MS       = 200;           // how long a piece takes to slide one step (milliseconds)
+const SLIDE_EXTRA_MS = 70;            // extra time for every extra jump in the same move
+const SLIDE_MAX_MS   = 340;           // longest slide. Keep it under 350, the computer's waiting time
+const FRAME_SHARE    = 0.028;         // width of the wooden frame, as a share of the board size
+const MAX_PARTICLES  = 150;           // most puff + confetti bits alive at once (keeps cheap phones smooth)
+const CONFETTI_COUNT = 90;            // confetti pieces thrown on a win
 
 // ---------- Board basics ----------
 // The board is 8 x 8. Each square holds a number:
@@ -300,12 +458,158 @@ function chooseMove(b, side, difficulty) {
 const canvas    = document.getElementById('board');
 const boardWrap = document.getElementById('boardWrap');
 const ctx       = canvas.getContext('2d');
+const fxCanvas  = document.getElementById('fx');         // see-through layer for confetti
+const fxCtx     = fxCanvas.getContext('2d');
 const overlay   = document.getElementById('overlay');
 const msgTitle  = document.getElementById('msgTitle');
 const msgLine   = document.getElementById('msgLine');
 const elStatus  = document.getElementById('status');
 const elRed     = document.getElementById('countRed');
 const elGreen   = document.getElementById('countGreen');
+const elSideRed   = document.getElementById('sideRed');
+const elSideGreen = document.getElementById('sideGreen');
+
+// ---------- Sound ----------
+// All sounds are made by code (short notes), so there are no sound files to upload.
+// Phones only allow sound after a touch, so the sound engine starts on the first touch.
+// The on/off choice is remembered, and is shared by all the games on this site.
+const btnSound = document.getElementById('sound');
+let audio = null;                // the sound engine (created on first touch)
+let muted = false;
+try { muted = localStorage.getItem('gamesMuted') === '1'; } catch (e) { /* storage blocked: start with sound on */ }
+
+function showSoundButton() {
+  btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
+  btnSound.classList.toggle('off', muted);
+}
+showSoundButton();
+
+function startAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (e) { audio = null; }                                  // no sound support: the game still works
+}
+// Different phones accept different kinds of touch for this, so listen for all of them
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, startAudio, true);
+}
+
+// Play one note.
+//   freq  = pitch in Hz (higher number = higher note)
+//   dur   = length in seconds
+//   type  = 'sine' (soft), 'triangle' (round), 'square' (retro), 'sawtooth' (buzzy)
+//   delay = seconds to wait before it starts (used to build little tunes)
+//   slide = pitch to glide to by the end (optional)
+//   volume = 0 to 1, share of SOUND_VOLUME
+function beep(freq, dur, type = 'sine', delay = 0, slide = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME * volume, t + 0.01);   // quick fade in (no click)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);                   // fade out
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// Play a burst of hiss (used here for the wooden "clack" of a piece).
+//   dur = length in seconds, tone = how bright it is in Hz (300 = deep boom, 4000 = sharp crack)
+let noiseBuffer = null;
+function noise(dur, tone = 1000, delay = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  if (!noiseBuffer) {                                            // one second of random hiss, made once
+    noiseBuffer = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  const t = audio.currentTime + delay;
+  const src = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const gain = audio.createGain();
+  src.buffer = noiseBuffer;
+  src.loop = true;
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(tone, t);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(60, tone * 0.25), t + dur);
+  gain.gain.setValueAtTime(SOUND_VOLUME * volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(filter).connect(gain).connect(audio.destination);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+}
+
+// Short buzz on Android phones (iPhone does not allow this from a web page)
+function buzz(ms) {
+  if (!muted && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
+}
+
+btnSound.addEventListener('click', () => {
+  muted = !muted;
+  try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {}
+  showSoundButton();
+  startAudio();
+  if (!muted) setTimeout(() => beep(740, 0.05, 'sine', 0, 0, 0.6), 60);   // small note to confirm sound is on
+});
+
+// The game's own sounds: one small function for each thing that happens
+const sfx = {
+  // Tapping one of your pieces: a short, light "tick"
+  select() {
+    beep(620, 0.06, 'triangle', 0, 0, 0.5);
+  },
+  // A piece landing on its square: a wooden "clack" (a bit of hiss plus a low note)
+  move() {
+    noise(0.05, 1600, 0, 0.5);
+    beep(170, 0.09, 'sine', 0, 95, 0.9);
+  },
+  // Jumping over an enemy piece: a sharper knock that drops in pitch
+  capture() {
+    noise(0.10, 2600, 0, 0.6);
+    beep(300, 0.13, 'triangle', 0, 110, 0.8);
+    buzz(12);
+  },
+  // A piece becomes a Haji: four notes climbing up, like a little chime
+  haji() {
+    beep(660,  0.12, 'sine', 0.00, 0, 0.7);
+    beep(880,  0.12, 'sine', 0.09, 0, 0.7);
+    beep(1175, 0.12, 'sine', 0.18, 0, 0.7);
+    beep(1568, 0.25, 'sine', 0.27, 0, 0.7);
+    buzz(30);
+  },
+  // Tapping somewhere that is not allowed: a soft low blip
+  illegal() {
+    beep(150, 0.10, 'sine', 0, 110, 0.5);
+  },
+  // Pressing one of the big buttons
+  button() {
+    beep(520, 0.05, 'triangle', 0, 0, 0.4);
+  },
+  // You won: a short happy tune going up (it waits a moment so the last "clack" is heard first)
+  win() {
+    beep(523,  0.14, 'triangle', 0.45, 0, 0.8);
+    beep(659,  0.14, 'triangle', 0.59, 0, 0.8);
+    beep(784,  0.14, 'triangle', 0.73, 0, 0.8);
+    beep(1047, 0.35, 'triangle', 0.87, 0, 0.8);
+    buzz(35);
+  },
+  // The computer won: a short gentle tune going down
+  lose() {
+    beep(392, 0.18, 'sine', 0.45, 0, 0.8);
+    beep(330, 0.18, 'sine', 0.63, 0, 0.8);
+    beep(262, 0.40, 'sine', 0.81, 196, 0.8);
+  },
+  // Nobody won: two even notes
+  drawn() {
+    beep(440, 0.16, 'sine', 0.45, 0, 0.7);
+    beep(440, 0.28, 'sine', 0.65, 0, 0.7);
+  }
+};
 
 // ---------- Game state ----------
 let board = newBoard();
@@ -320,6 +624,17 @@ let thinking = false;            // true while the computer is choosing
 let cell = 40;                   // size of one square in CSS pixels (set by resize)
 let aiTimer = null;
 
+// ---------- Effects state (looks only: none of this changes the rules) ----------
+let edge = 10;                   // width of the wooden frame around the squares, in CSS pixels (set by resize)
+let slide = null;                // the piece that is sliding right now, or null
+let landing = null;              // the piece that has just landed and does a small bounce: { r, c, start }
+let particles = [];              // puff and sparkle bits on the board
+let confetti = [];               // confetti bits on the whole page
+let shakeUntil = 0;              // the board shakes a little until this time
+let loopRunning = false;         // true while the next animation frame is already booked
+let lastFrameTime = 0;
+let fxDirty = false;             // true when the confetti layer has something on it to wipe
+
 function startGame(newMode) {
   if (newMode) mode = newMode;
   clearTimeout(aiTimer);
@@ -330,6 +645,11 @@ function startGame(newMode) {
   quietMoves = 0;
   thinking = false;
   playing = true;
+  // Clear any effects left over from the last game
+  slide = null;
+  landing = null;
+  particles = [];
+  confetti = [];
   overlay.classList.add('hidden');
   beginTurn();
 }
@@ -357,11 +677,19 @@ function beginTurn() {
 }
 
 function play(m) {
+  // Remember what the board looked like, so the slide and the capture puffs can be shown
+  const movingPiece = board[m.fr][m.fc];
+  const capturedPieces = m.caps.map(([r, c]) => board[r][c]);
+
   const wasHaji = Math.abs(board[m.fr][m.fc]) === 2;
   board = applyMove(board, m);
   const nowHaji = Math.abs(board[m.tr][m.tc]) === 2;
   quietMoves = (m.caps.length || (nowHaji && !wasHaji)) ? 0 : quietMoves + 1;
   lastMove = m;
+
+  // The rules are already done above. This only starts the picture of the piece sliding.
+  startSlide(m, movingPiece, capturedPieces, nowHaji && !wasHaji);
+
   turn = -turn;
   beginTurn();
 }
@@ -375,47 +703,560 @@ function endGame(winner) {
   msgTitle.textContent = title;
   msgLine.textContent = 'Play again?';
   updateHud();
+  elStatus.textContent = title;                // the top bar shows the result too
+  elSideRed.classList.remove('turn');
+  elSideGreen.classList.remove('turn');
+
+  // Tune and confetti. Against the computer only your own win is a party.
+  if (winner === 0) sfx.drawn();
+  else if (mode !== 'two' && winner === RED) sfx.lose();
+  else { sfx.win(); throwConfetti(); }
+
   draw();
   setTimeout(() => overlay.classList.remove('hidden'), 900);   // let the final position be seen
 }
 
+// Show a piece count, with a little "pop" when the number has changed
+function showCount(el, n) {
+  const text = String(n);
+  if (el.textContent === text) return;
+  el.textContent = text;
+  if (!playing) return;
+  el.classList.remove('bump');
+  void el.offsetWidth;                         // makes the browser restart the pop animation
+  el.classList.add('bump');
+}
+
 function updateHud() {
-  elRed.textContent = countPieces(board, RED);
-  elGreen.textContent = countPieces(board, GREEN);
+  showCount(elRed, countPieces(board, RED));
+  showCount(elGreen, countPieces(board, GREEN));
   if (!playing) return;
   let text;
   if (mode === 'two') text = (turn === GREEN ? 'Green' : 'Red') + ' to move';
   else text = thinking ? 'Computer is thinking' : 'Your move';
-  if (!thinking && MUST_CAPTURE && legal.length && legal[0].caps.length) text += ' (must capture)';
   elStatus.textContent = text;
+
+  // Blinking dots while the computer thinks. The last word and the dots are kept together
+  // in one piece, so on a narrow phone the dots never drop onto a line of their own.
+  if (mode !== 'two' && thinking) {
+    elStatus.textContent = 'Computer is ';
+    const lastWord = document.createElement('span');
+    lastWord.className = 'dots';
+    lastWord.textContent = 'thinking';
+    for (let i = 0; i < 3; i++) lastWord.appendChild(document.createElement('i'));
+    elStatus.appendChild(lastWord);
+  }
+  // A yellow reminder when the side to move has to capture
+  if (!thinking && MUST_CAPTURE && legal.length && legal[0].caps.length) {
+    const must = document.createElement('span');
+    must.className = 'must';
+    must.textContent = 'must capture';
+    elStatus.appendChild(document.createTextNode(' '));
+    elStatus.appendChild(must);
+  }
+
+  // Light up the pill of the side that has to move
+  elSideRed.classList.toggle('turn', turn === RED);
+  elSideGreen.classList.toggle('turn', turn === GREEN);
 }
 
-// ---------- Drawing ----------
-function draw() {
-  const size = SIZE * cell;
-  ctx.clearRect(0, 0, size, size);
+// ---------- Pictures made once: the wooden board and the pieces ----------
+// Painting wood grain and glossy pieces takes many drawing steps. Doing that 60 times a second
+// would be slow on a cheap phone, so each picture is painted once into a hidden canvas
+// and then simply stamped onto the screen.
+let boardImage = null;           // the frame and the 64 wooden squares
+let pieceImages = {};            // one picture for each kind of piece: 1, 2, -1, -2
+let glowImage = null;            // soft light under the selected piece
+let spriteSize = 52;             // width of one piece picture in CSS pixels
 
-  // Squares
+// A "random" number maker that always gives the same numbers for the same seed,
+// so the wood grain looks the same every time the board is rebuilt.
+function makeRandom(seed) {
+  let s = seed;
+  return function () {
+    s = (s * 16807) % 2147483647;
+    return s / 2147483647;
+  };
+}
+
+// Make a hidden canvas of the given size (CSS pixels), ready to draw on sharply
+function makeHiddenCanvas(width, height, dpr) {
+  const c = document.createElement('canvas');
+  c.width  = Math.max(1, Math.round(width * dpr));
+  c.height = Math.max(1, Math.round(height * dpr));
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { canvas: c, g: g };
+}
+
+// Draw a few wavy grain lines across a rectangle of wood
+function drawGrain(g, x, y, w, h, lines, colour, rnd) {
+  g.save();
+  g.beginPath();
+  g.rect(x, y, w, h);
+  g.clip();                                       // keep the lines inside this rectangle
+  g.strokeStyle = colour;
+  for (let i = 0; i < lines; i++) {
+    const y0 = y + rnd() * h;
+    const bend = (rnd() - 0.5) * h * 0.3;
+    g.globalAlpha = 0.25 + rnd() * 0.75;
+    g.lineWidth = 0.5 + rnd() * 1.2;
+    g.beginPath();
+    g.moveTo(x - 2, y0);
+    g.bezierCurveTo(x + w * 0.3, y0 + bend, x + w * 0.7, y0 - bend, x + w + 2, y0 + bend * 0.5);
+    g.stroke();
+  }
+  g.restore();
+}
+
+// Trace a rectangle with rounded corners (older phones do not have a built-in one)
+function roundedRect(g, x, y, w, h, radius) {
+  g.beginPath();
+  g.moveTo(x + radius, y);
+  g.arcTo(x + w, y, x + w, y + h, radius);
+  g.arcTo(x + w, y + h, x, y + h, radius);
+  g.arcTo(x, y + h, x, y, radius);
+  g.arcTo(x, y, x + w, y, radius);
+  g.closePath();
+}
+
+// Paint the whole board: frame first, then the squares
+function buildBoardImage(dpr) {
+  const inner = SIZE * cell;                      // the 8 x 8 squares
+  const full = inner + edge * 2;                  // squares plus frame
+  const made = makeHiddenCanvas(full, full, dpr);
+  const g = made.g;
+  const rnd = makeRandom(20240);
+
+  // Frame: dark walnut, lighter at the top, with long grain lines
+  const frameShade = g.createLinearGradient(0, 0, 0, full);
+  frameShade.addColorStop(0, '#7a4d2b');
+  frameShade.addColorStop(0.5, '#5c3719');
+  frameShade.addColorStop(1, '#40240f');
+  g.fillStyle = frameShade;
+  roundedRect(g, 0, 0, full, full, 10);
+  g.fill();
+  g.save();
+  roundedRect(g, 0, 0, full, full, 10);
+  g.clip();
+  drawGrain(g, 0, 0, full, full, 60, 'rgba(0,0,0,0.20)', rnd);
+  g.restore();
+  // A thin bright line on the outer edge so the frame looks rounded
+  g.strokeStyle = 'rgba(255,214,150,0.35)';
+  g.lineWidth = 1;
+  roundedRect(g, 0.75, 0.75, full - 1.5, full - 1.5, 9.5);
+  g.stroke();
+
+  // Squares: light maple and dark walnut, each with its own grain
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
-      ctx.fillStyle = (r + c) % 2 === 0 ? '#d8c9a8' : '#5a4634';
-      ctx.fillRect(c * cell, r * cell, cell, cell);
+      const x = edge + c * cell, y = edge + r * cell;
+      const light = (r + c) % 2 === 0;
+      const shade = g.createLinearGradient(x, y, x + cell, y + cell);
+      const tint = rnd() * 0.5;                   // every square is a slightly different plank
+      if (light) {
+        shade.addColorStop(0, tint > 0.25 ? '#efd9a8' : '#ebd3a0');
+        shade.addColorStop(1, tint > 0.25 ? '#d8bb82' : '#d2b47a');
+      } else {
+        shade.addColorStop(0, tint > 0.25 ? '#75492a' : '#6e4426');
+        shade.addColorStop(1, tint > 0.25 ? '#553418' : '#4e2f15');
+      }
+      g.fillStyle = shade;
+      g.fillRect(x, y, cell, cell);
+      drawGrain(g, x, y, cell, cell, 7, light ? 'rgba(120,80,30,0.22)' : 'rgba(0,0,0,0.25)', rnd);
+
+      // Tiny bevel: bright line on top and left, dark line on bottom and right
+      g.fillStyle = 'rgba(255,255,255,0.10)';
+      g.fillRect(x, y, cell, 1);
+      g.fillRect(x, y, 1, cell);
+      g.fillStyle = 'rgba(0,0,0,0.18)';
+      g.fillRect(x, y + cell - 1, cell, 1);
+      g.fillRect(x + cell - 1, y, 1, cell);
     }
   }
 
-  // Last move: tint the squares it went from and to
+  // A dark groove and a thin gold line where the squares meet the frame
+  g.strokeStyle = 'rgba(0,0,0,0.6)';
+  g.lineWidth = 2;
+  g.strokeRect(edge - 1, edge - 1, inner + 2, inner + 2);
+  g.strokeStyle = 'rgba(244,211,94,0.45)';
+  g.lineWidth = 1;
+  g.strokeRect(edge - 2.5, edge - 2.5, inner + 5, inner + 5);
+
+  // The corners of the playing area are a touch darker, like light falling on the middle
+  const corner = g.createRadialGradient(full / 2, full / 2, inner * 0.35, full / 2, full / 2, inner * 0.75);
+  corner.addColorStop(0, 'rgba(0,0,0,0)');
+  corner.addColorStop(1, 'rgba(0,0,0,0.22)');
+  g.fillStyle = corner;
+  g.fillRect(edge, edge, inner, inner);
+
+  boardImage = made.canvas;
+}
+
+// Paint one piece: a thick glossy disc, with a gold crown if it is a Haji
+function buildPieceImage(value, dpr) {
+  const made = makeHiddenCanvas(spriteSize, spriteSize, dpr);
+  const g = made.g;
+  const mid = spriteSize / 2;
+  const rad = cell * 0.38;
+  const thick = cell * 0.07;                      // how tall the side of the disc looks
+  const green = value > 0;
+  const colours = green
+    ? { light: '#b6ffe6', base: '#3fcda3', dark: '#1c8d6b', side: '#0f5a44', groove: '#14705a' }
+    : { light: '#ffd0c8', base: '#f76464', dark: '#bb3838', side: '#7d2020', groove: '#9c2c2c' };
+
+  // Soft shadow on the board (blur is fine here because this is painted only once)
+  g.save();
+  g.shadowColor = 'rgba(0,0,0,0.55)';
+  g.shadowBlur = cell * 0.10 * dpr;             // shadow sizes are in real screen pixels, so scale them
+  g.shadowOffsetY = cell * 0.05 * dpr;
+  g.fillStyle = colours.side;
+  g.beginPath();
+  g.arc(mid, mid + thick, rad, 0, Math.PI * 2);
+  g.fill();
+  g.restore();
+
+  // Top face: lit from the upper left
+  const face = g.createRadialGradient(mid - rad * 0.35, mid - rad * 0.45, rad * 0.1, mid, mid, rad);
+  face.addColorStop(0, colours.light);
+  face.addColorStop(0.45, colours.base);
+  face.addColorStop(1, colours.dark);
+  g.fillStyle = face;
+  g.beginPath();
+  g.arc(mid, mid, rad, 0, Math.PI * 2);
+  g.fill();
+
+  // Rim: a bright edge, then a carved groove inside it
+  g.strokeStyle = 'rgba(255,255,255,0.35)';
+  g.lineWidth = Math.max(1, cell * 0.025);
+  g.beginPath(); g.arc(mid, mid, rad - g.lineWidth / 2, 0, Math.PI * 2); g.stroke();
+  g.strokeStyle = colours.groove;
+  g.lineWidth = Math.max(1.5, cell * 0.04);
+  g.beginPath(); g.arc(mid, mid, rad * 0.76, 0, Math.PI * 2); g.stroke();
+  g.strokeStyle = 'rgba(255,255,255,0.22)';
+  g.lineWidth = 1;
+  g.beginPath(); g.arc(mid, mid, rad * 0.76 - cell * 0.03, 0, Math.PI * 2); g.stroke();
+
+  if (Math.abs(value) === 2) {
+    // Haji: gold ring and a gold crown in the middle
+    g.strokeStyle = '#f4d35e';
+    g.lineWidth = Math.max(2, cell * 0.055);
+    g.beginPath(); g.arc(mid, mid, rad * 0.9, 0, Math.PI * 2); g.stroke();
+
+    const w = rad * 1.05, h = rad * 0.72;        // crown width and height
+    const left = mid - w / 2, top = mid - h / 2 - rad * 0.04;
+    g.beginPath();
+    g.moveTo(left, top + h);                      // bottom left
+    g.lineTo(left, top + h * 0.15);               // left point
+    g.lineTo(left + w * 0.27, top + h * 0.55);    // dip
+    g.lineTo(left + w * 0.5, top);                // middle point (the tallest)
+    g.lineTo(left + w * 0.73, top + h * 0.55);    // dip
+    g.lineTo(left + w, top + h * 0.15);           // right point
+    g.lineTo(left + w, top + h);                  // bottom right
+    g.closePath();
+    const gold = g.createLinearGradient(0, top, 0, top + h);
+    gold.addColorStop(0, '#fff3b0');
+    gold.addColorStop(0.5, '#f4d35e');
+    gold.addColorStop(1, '#c9992a');
+    g.fillStyle = gold;
+    g.fill();
+    g.strokeStyle = '#6b4a10';
+    g.lineWidth = Math.max(1, cell * 0.03);
+    g.lineJoin = 'round';
+    g.stroke();
+    // Band along the bottom of the crown
+    g.fillStyle = '#6b4a10';
+    g.fillRect(left + 1, top + h * 0.72, w - 2, Math.max(1, cell * 0.03));
+    // Little balls on the three points
+    g.fillStyle = '#fff3b0';
+    for (const [px, py] of [[left, top + h * 0.15], [left + w * 0.5, top], [left + w, top + h * 0.15]]) {
+      g.beginPath(); g.arc(px, py, Math.max(1.5, cell * 0.045), 0, Math.PI * 2); g.fill();
+      g.stroke();
+    }
+  } else {
+    // Ordinary piece: a second, smaller groove in the middle
+    g.strokeStyle = colours.groove;
+    g.lineWidth = Math.max(1, cell * 0.03);
+    g.beginPath(); g.arc(mid, mid, rad * 0.42, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,0.20)';
+    g.lineWidth = 1;
+    g.beginPath(); g.arc(mid, mid, rad * 0.42 - cell * 0.025, 0, Math.PI * 2); g.stroke();
+  }
+
+  // Gloss: a soft white shine across the top half
+  g.save();
+  g.beginPath();
+  g.arc(mid, mid, rad * 0.94, 0, Math.PI * 2);
+  g.clip();
+  const shine = g.createLinearGradient(0, mid - rad, 0, mid + rad * 0.1);
+  shine.addColorStop(0, 'rgba(255,255,255,0.50)');
+  shine.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = shine;
+  g.beginPath();
+  g.ellipse(mid, mid - rad * 0.55, rad * 0.85, rad * 0.5, 0, 0, Math.PI * 2);
+  g.fill();
+  g.restore();
+
+  return made.canvas;
+}
+
+// Paint the soft green light that sits under the selected piece
+function buildGlowImage(dpr) {
+  const size = cell * 1.6;
+  const made = makeHiddenCanvas(size, size, dpr);
+  const g = made.g;
+  const glow = g.createRadialGradient(size / 2, size / 2, cell * 0.25, size / 2, size / 2, size / 2);
+  glow.addColorStop(0, 'rgba(120,255,214,0.95)');
+  glow.addColorStop(0.5, 'rgba(77,212,172,0.45)');
+  glow.addColorStop(1, 'rgba(77,212,172,0)');
+  g.fillStyle = glow;
+  g.fillRect(0, 0, size, size);
+  glowImage = made.canvas;
+}
+
+function buildPictures(dpr) {
+  spriteSize = Math.ceil(cell * 1.3);
+  buildBoardImage(dpr);
+  pieceImages = {};
+  for (const value of [1, 2, -1, -2]) pieceImages[value] = buildPieceImage(value, dpr);
+  buildGlowImage(dpr);
+}
+
+// ---------- Effects: sliding piece, puffs, sparkles, confetti ----------
+
+// Work out the squares a move passes through, so the slide follows the real jumps
+function slidePath(m) {
+  const points = [{ r: m.fr, c: m.fc }];
+  let r = m.fr, c = m.fc;
+  for (let i = 0; i < m.caps.length; i++) {
+    const cr = m.caps[i][0], cc = m.caps[i][1];
+    const dr = Math.sign(cr - r), dc = Math.sign(cc - c);
+    let lr = cr + dr, lc = cc + dc;               // the square just behind the captured piece
+    if (i === m.caps.length - 1) {
+      lr = m.tr; lc = m.tc;                       // the last jump ends where the move ends
+    } else {
+      // A Haji may land further along: slide on until the next captured piece is on a diagonal
+      const nr = m.caps[i + 1][0], nc = m.caps[i + 1][1];
+      let guard = 0;
+      while (Math.abs(nr - lr) !== Math.abs(nc - lc) && inside(lr + dr, lc + dc) && guard < SIZE) {
+        lr += dr; lc += dc; guard++;
+      }
+    }
+    points.push({ r: lr, c: lc });
+    r = lr; c = lc;
+  }
+  if (m.caps.length === 0) points.push({ r: m.tr, c: m.tc });
+  return points;
+}
+
+// Start showing a piece sliding. The board itself has already changed; this is only the picture.
+function startSlide(m, movingPiece, capturedPieces, becameHaji) {
+  if (slide) finishSlide(false);                  // an older slide still running: finish it at once
+  const points = slidePath(m);
+  const steps = points.length - 1;
+  slide = {
+    piece: movingPiece,                           // drawn as it was before the move (no crown yet)
+    points: points,
+    tr: m.tr, tc: m.tc,
+    start: performance.now(),
+    dur: Math.min(SLIDE_MS + SLIDE_EXTRA_MS * (steps - 1), SLIDE_MAX_MS),
+    becameHaji: becameHaji,
+    // Captured pieces stay visible until the sliding piece jumps over them
+    ghosts: m.caps.map((cap, i) => ({
+      r: cap[0], c: cap[1], piece: capturedPieces[i],
+      popAt: (i + 0.5) / steps, popped: false
+    }))
+  };
+  if (m.caps.length >= 2) shakeUntil = slide.start + slide.dur + 120;   // a big multi-capture shakes the board
+  keepAnimating();
+}
+
+// A captured piece disappears in a puff
+function popGhost(ghost, withSound) {
+  ghost.popped = true;
+  const x = ghost.c * cell + cell / 2, y = ghost.r * cell + cell / 2;
+  const colour = ghost.piece > 0 ? '#4dd4ac' : '#ff6b6b';
+  addRing(x, y, colour);
+  for (let i = 0; i < 12; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = cell * (2 + Math.random() * 3);
+    addParticle(x, y, Math.cos(angle) * speed, Math.sin(angle) * speed,
+                0.35 + Math.random() * 0.25, cell * (0.05 + Math.random() * 0.06),
+                i % 3 === 0 ? '#ffffff' : colour);
+  }
+  if (withSound) sfx.capture();
+}
+
+// The slide is over: the piece lands with a clack and a small bounce
+function finishSlide(withSound) {
+  const s = slide;
+  slide = null;
+  for (const ghost of s.ghosts) if (!ghost.popped) popGhost(ghost, false);
+  landing = { r: s.tr, c: s.tc, start: performance.now() };
+  if (withSound) sfx.move();
+  if (s.becameHaji) {
+    // New Haji: gold sparkles fly out and a chime plays
+    const x = s.tc * cell + cell / 2, y = s.tr * cell + cell / 2;
+    addRing(x, y, '#f4d35e');
+    for (let i = 0; i < 16; i++) {
+      const angle = (i / 16) * Math.PI * 2;
+      const speed = cell * (2.4 + Math.random() * 1.6);
+      addParticle(x, y, Math.cos(angle) * speed, Math.sin(angle) * speed,
+                  0.5 + Math.random() * 0.3, cell * 0.06, i % 2 ? '#f4d35e' : '#fff3b0');
+    }
+    if (withSound) sfx.haji();
+  }
+}
+
+// One small flying dot (position and speed are in CSS pixels on the board)
+function addParticle(x, y, vx, vy, life, size, colour) {
+  if (particles.length + confetti.length >= MAX_PARTICLES) return;
+  particles.push({ ring: false, x: x, y: y, vx: vx, vy: vy, life: life, maxLife: life, size: size, colour: colour });
+}
+
+// One ring that grows and fades
+function addRing(x, y, colour) {
+  if (particles.length + confetti.length >= MAX_PARTICLES) return;
+  particles.push({ ring: true, x: x, y: y, vx: 0, vy: 0, life: 0.3, maxLife: 0.3, size: cell * 0.3, colour: colour });
+}
+
+// Confetti falls over the whole page when somebody wins
+function throwConfetti() {
+  const colours = ['#f4d35e', '#4dd4ac', '#ff6b6b', '#6fb7ff', '#ffffff', '#c792ff'];
+  const width = window.innerWidth, height = window.innerHeight;
+  for (let i = 0; i < CONFETTI_COUNT; i++) {
+    if (particles.length + confetti.length >= MAX_PARTICLES) break;
+    confetti.push({
+      x: Math.random() * width,
+      y: -20 - Math.random() * height * 0.5,      // they start above the screen, spread out
+      vx: (Math.random() - 0.5) * 60,
+      vy: 140 + Math.random() * 160,
+      spin: Math.random() * Math.PI * 2,
+      spinSpeed: (Math.random() - 0.5) * 10,
+      w: 6 + Math.random() * 5,
+      h: 9 + Math.random() * 6,
+      colour: colours[i % colours.length]
+    });
+  }
+  keepAnimating();
+}
+
+// Move every effect forward by a small step of time (dt, in seconds)
+function updateEffects(now, dt) {
+  if (slide) {
+    const t = (now - slide.start) / slide.dur;
+    for (const ghost of slide.ghosts) if (!ghost.popped && t >= ghost.popAt) popGhost(ghost, true);
+    if (t >= 1) finishSlide(true);
+  }
+  if (landing && now - landing.start > 220) landing = null;
+
+  for (const p of particles) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    const slow = Math.pow(0.004, dt);             // they slow down, like dust in the air
+    p.vx *= slow;
+    p.vy *= slow;
+    p.life -= dt;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  const floor = window.innerHeight + 30;
+  for (const f of confetti) {
+    f.x += (f.vx + Math.sin(f.spin) * 40) * dt;   // a little side-to-side sway
+    f.y += f.vy * dt;
+    f.spin += f.spinSpeed * dt;
+  }
+  confetti = confetti.filter(f => f.y < floor);
+
+  // Board shake: a few pixels, for a very short time
+  if (now < shakeUntil) {
+    const dx = (Math.random() - 0.5) * 5, dy = (Math.random() - 0.5) * 5;
+    canvas.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)';
+  } else if (canvas.style.transform) {
+    canvas.style.transform = '';
+  }
+}
+
+// Is there anything on screen that still needs to move?
+function somethingIsMoving() {
+  return playing || slide !== null || landing !== null || particles.length > 0 ||
+         confetti.length > 0 || performance.now() < shakeUntil;
+}
+
+// Book the next animation frame (only one at a time)
+function keepAnimating() {
+  if (loopRunning) return;
+  loopRunning = true;
+  requestAnimationFrame(animationFrame);
+}
+
+function animationFrame(now) {
+  loopRunning = false;
+  const dt = Math.min(50, now - lastFrameTime) / 1000;   // seconds since the last frame (never a big jump)
+  lastFrameTime = now;
+  updateEffects(now, dt);
+  draw(now);                                      // draw books the next frame if something still moves
+}
+
+// ---------- Drawing ----------
+
+// Stamp one piece picture with its middle at (x, y). scale 1 = normal size.
+function stampPiece(value, x, y, scale) {
+  const size = spriteSize * scale;
+  ctx.drawImage(pieceImages[value], x - size / 2, y - size / 2, size, size);
+}
+
+// Gold corner marks on a square (used to show the last move)
+function drawCorners(r, c) {
+  const x = c * cell, y = r * cell;
+  const inset = Math.max(2, cell * 0.07), arm = cell * 0.24;
+  ctx.beginPath();
+  for (const [cx, cy, sx, sy] of [[x + inset, y + inset, 1, 1], [x + cell - inset, y + inset, -1, 1],
+                                  [x + inset, y + cell - inset, 1, -1], [x + cell - inset, y + cell - inset, -1, -1]]) {
+    ctx.moveTo(cx + arm * sx, cy);
+    ctx.lineTo(cx, cy);
+    ctx.lineTo(cx, cy + arm * sy);
+  }
+  ctx.stroke();
+}
+
+function draw(now) {
+  if (now === undefined) now = performance.now();
+  const full = SIZE * cell + edge * 2;
+  const pulse = 0.5 + 0.5 * Math.sin(now / 260);  // goes smoothly between 0 and 1, for gentle pulsing
+
+  // The wooden board (one stamp of the ready-made picture)
+  ctx.clearRect(0, 0, full, full);
+  if (boardImage) ctx.drawImage(boardImage, 0, 0, full, full);
+
+  // From here on, (0, 0) is the top left corner of the squares, inside the frame
+  ctx.save();
+  ctx.translate(edge, edge);
+
+  // Last move: a gold tint and gold corner marks on the squares it went from and to
   if (lastMove) {
-    ctx.fillStyle = 'rgba(244,211,94,0.35)';
+    ctx.fillStyle = 'rgba(244,211,94,0.22)';
     ctx.fillRect(lastMove.fc * cell, lastMove.fr * cell, cell, cell);
     ctx.fillRect(lastMove.tc * cell, lastMove.tr * cell, cell, cell);
+    ctx.strokeStyle = 'rgba(244,211,94,0.95)';
+    ctx.lineWidth = Math.max(2, cell * 0.06);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    drawCorners(lastMove.fr, lastMove.fc);
+    drawCorners(lastMove.tr, lastMove.tc);
   }
 
   const humanTurn = playing && !thinking && (mode === 'two' || turn === GREEN);
 
-  // Selected piece
+  // Selected piece: tinted square with a soft pulsing light under the piece
   if (selected) {
-    ctx.fillStyle = 'rgba(77,212,172,0.45)';
+    ctx.fillStyle = 'rgba(77,212,172,0.35)';
     ctx.fillRect(selected.c * cell, selected.r * cell, cell, cell);
+    const glowSize = cell * 1.6;
+    ctx.globalAlpha = 0.6 + 0.4 * pulse;
+    ctx.drawImage(glowImage, selected.c * cell + cell / 2 - glowSize / 2,
+                  selected.r * cell + cell / 2 - glowSize / 2, glowSize, glowSize);
+    ctx.globalAlpha = 1;
   }
 
   // Pieces
@@ -423,42 +1264,58 @@ function draw() {
     for (let c = 0; c < SIZE; c++) {
       const v = board[r][c];
       if (v === 0) continue;
-      const x = c * cell + cell / 2, y = r * cell + cell / 2, rad = cell * 0.38;
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';                    // shadow
-      ctx.beginPath(); ctx.arc(x, y + cell * 0.04, rad, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = v > 0 ? '#4dd4ac' : '#ff6b6b';
-      ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = v > 0 ? '#2a8f72' : '#b84444';       // rim
-      ctx.lineWidth = Math.max(2, cell * 0.05);
-      ctx.beginPath(); ctx.arc(x, y, rad * 0.78, 0, Math.PI * 2); ctx.stroke();
-      if (Math.abs(v) === 2) {
-        // Haji: white ring and the letter H
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = Math.max(2, cell * 0.07);
-        ctx.beginPath(); ctx.arc(x, y, rad * 0.55, 0, Math.PI * 2); ctx.stroke();
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '700 ' + Math.round(cell * 0.34) + 'px system-ui, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('H', x, y + 1);
+      if (slide && slide.tr === r && slide.tc === c) continue;       // this one is still sliding (drawn later)
+      const x = c * cell + cell / 2;
+      let y = r * cell + cell / 2;
+      let scale = 1;
+      if (selected && selected.r === r && selected.c === c) {
+        scale = 1.1;                                                 // the selected piece is lifted a little
+        y -= cell * 0.05;
       }
+      if (landing && landing.r === r && landing.c === c) {
+        const t = (now - landing.start) / 220;                       // 0 to 1 while it bounces
+        scale = 1 + 0.14 * Math.sin(t * Math.PI) * (1 - t);
+      }
+      stampPiece(v, x, y, scale);
+    }
+  }
+
+  // Captured pieces that the sliding piece has not jumped over yet
+  if (slide) {
+    for (const ghost of slide.ghosts) {
+      if (!ghost.popped) stampPiece(ghost.piece, ghost.c * cell + cell / 2, ghost.r * cell + cell / 2, 1);
     }
   }
 
   if (humanTurn) {
     if (selected) {
-      // Dots on the squares the selected piece can go to
+      // Marks on the squares the selected piece can go to:
+      // a white dot for a plain move, a red dot with a white edge for a capture
       for (const m of legal) {
         if (m.fr !== selected.r || m.fc !== selected.c) continue;
-        ctx.fillStyle = m.caps.length ? 'rgba(255,107,107,0.9)' : 'rgba(255,255,255,0.8)';
+        const x = m.tc * cell + cell / 2, y = m.tr * cell + cell / 2;
+        const capture = m.caps.length > 0;
+        ctx.strokeStyle = capture ? 'rgba(255,107,107,0.9)' : 'rgba(255,255,255,0.7)';
+        ctx.lineWidth = Math.max(2, cell * 0.045);
+        ctx.globalAlpha = 0.35 + 0.5 * (1 - pulse);
         ctx.beginPath();
-        ctx.arc(m.tc * cell + cell / 2, m.tr * cell + cell / 2, cell * 0.15, 0, Math.PI * 2);
+        ctx.arc(x, y, cell * (0.22 + 0.10 * pulse), 0, Math.PI * 2);   // ring that breathes in and out
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = capture ? '#ff6b6b' : 'rgba(255,255,255,0.92)';
+        ctx.beginPath();
+        ctx.arc(x, y, cell * (capture ? 0.17 : 0.14), 0, Math.PI * 2);
         ctx.fill();
+        if (capture) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = Math.max(1.5, cell * 0.04);
+          ctx.stroke();
+        }
       }
     } else {
       // White outline on every piece that can move (helps when you must capture)
       const seen = {};
-      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.strokeStyle = 'rgba(255,255,255,' + (0.6 + 0.35 * pulse).toFixed(2) + ')';
       ctx.lineWidth = Math.max(2, cell * 0.05);
       for (const m of legal) {
         const key = m.fr + ',' + m.fc;
@@ -470,18 +1327,81 @@ function draw() {
       }
     }
   }
+
+  // The sliding piece, on top of everything else on the board
+  if (slide) {
+    const steps = slide.points.length - 1;
+    const t = Math.min(1, Math.max(0, (now - slide.start) / slide.dur));
+    const at = Math.min(steps - 1, Math.floor(t * steps));           // which step of the path it is on
+    let part = t * steps - at;                                       // 0 to 1 inside that step
+    part = part * part * (3 - 2 * part);                             // start and stop gently
+    const a = slide.points[at], b = slide.points[at + 1];
+    const x = (a.c + (b.c - a.c) * part) * cell + cell / 2;
+    const y = (a.r + (b.r - a.r) * part) * cell + cell / 2;
+    const lift = Math.sin(part * Math.PI);                           // highest in the middle of a step
+    stampPiece(slide.piece, x, y - lift * cell * 0.08, 1 + lift * 0.12);
+  }
+
+  // Puffs and sparkles
+  for (const p of particles) {
+    const left = p.life / p.maxLife;                                 // 1 = just made, 0 = gone
+    ctx.globalAlpha = Math.max(0, left);
+    if (p.ring) {
+      ctx.strokeStyle = p.colour;
+      ctx.lineWidth = Math.max(1.5, cell * 0.05);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size + (1 - left) * cell * 0.45, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = p.colour;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * (0.5 + left * 0.5), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  drawConfetti();
+  if (somethingIsMoving()) keepAnimating();
+}
+
+// Confetti is drawn on its own see-through layer, so it can fall over the whole page
+function drawConfetti() {
+  if (!confetti.length && !fxDirty) return;       // nothing there and nothing to wipe
+  fxCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  fxDirty = confetti.length > 0;
+  for (const f of confetti) {
+    fxCtx.save();
+    fxCtx.translate(f.x, f.y);
+    fxCtx.rotate(f.spin);
+    fxCtx.fillStyle = f.colour;
+    // Squashing the height makes the paper look like it is tumbling
+    fxCtx.fillRect(-f.w / 2, -f.h / 2 * Math.cos(f.spin * 1.7), f.w, f.h * Math.cos(f.spin * 1.7));
+    fxCtx.restore();
+  }
 }
 
 // ---------- Fit the board to the screen ----------
 function resize() {
   const dpr = window.devicePixelRatio || 1;       // keep drawing sharp on phone screens
-  cell = Math.floor(Math.min(boardWrap.clientWidth, boardWrap.clientHeight) / SIZE);
+  const space = Math.min(boardWrap.clientWidth, boardWrap.clientHeight);
+  edge = Math.max(6, Math.round(space * FRAME_SHARE));              // wooden frame around the squares
+  cell = Math.floor((space - edge * 2) / SIZE);
   cell = Math.max(cell, 20);
-  canvas.style.width  = SIZE * cell + 'px';
-  canvas.style.height = SIZE * cell + 'px';
-  canvas.width  = Math.round(SIZE * cell * dpr);
-  canvas.height = Math.round(SIZE * cell * dpr);
+  const full = SIZE * cell + edge * 2;
+  canvas.style.width  = full + 'px';
+  canvas.style.height = full + 'px';
+  canvas.width  = Math.round(full * dpr);
+  canvas.height = Math.round(full * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // The confetti layer covers the whole page
+  fxCanvas.width  = Math.round(window.innerWidth * dpr);
+  fxCanvas.height = Math.round(window.innerHeight * dpr);
+  fxCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  buildPictures(dpr);                             // repaint the board and piece pictures at the new size
   draw();
 }
 
@@ -491,8 +1411,8 @@ canvas.addEventListener('click', (e) => {
   if (mode !== 'two' && turn !== GREEN) return;
 
   const rect = canvas.getBoundingClientRect();
-  const c = Math.floor((e.clientX - rect.left) / cell);
-  const r = Math.floor((e.clientY - rect.top) / cell);
+  const c = Math.floor((e.clientX - rect.left - edge) / cell);      // "edge" skips the wooden frame
+  const r = Math.floor((e.clientY - rect.top - edge) / cell);
   if (!inside(r, c)) return;
 
   // Tapped a square the selected piece can go to: play that move.
@@ -506,13 +1426,17 @@ canvas.addEventListener('click', (e) => {
     }
   }
   // Tapped one of your pieces that can move: select it. Anything else clears the selection.
+  const hadSelection = selected !== null;
   selected = legal.some(m => m.fr === r && m.fc === c) ? { r, c } : null;
+  if (selected) sfx.select();
+  else if (board[r][c] !== 0 || hadSelection) sfx.illegal();        // a piece that cannot move, or a wrong square
   draw();
 });
 
 // ---------- Input: buttons ----------
-document.getElementById('btnNew').addEventListener('click', () => startGame());
+document.getElementById('btnNew').addEventListener('click', () => { sfx.button(); startGame(); });
 document.getElementById('btnMode').addEventListener('click', () => {
+  sfx.button();
   clearTimeout(aiTimer);
   playing = false;
   msgTitle.textContent = 'Dam Haji';
@@ -520,7 +1444,7 @@ document.getElementById('btnMode').addEventListener('click', () => {
   overlay.classList.remove('hidden');
 });
 for (const btn of document.querySelectorAll('#modes button')) {
-  btn.addEventListener('click', () => startGame(btn.dataset.mode));
+  btn.addEventListener('click', () => { sfx.button(); startGame(btn.dataset.mode); });
 }
 
 // ---------- Start ----------

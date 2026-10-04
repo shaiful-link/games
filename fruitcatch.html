@@ -25,23 +25,76 @@
     height: 100dvh;
   }
 
-  /* Top bar: score, level, caught, lives */
+  /* Top bar: score, level, caught, lives, and the sound button */
   #top {
     display: flex;
-    align-items: center;
-    justify-content: space-around;
-    padding: 8px 10px;
+    align-items: stretch;
+    gap: 6px;
+    padding: 8px 8px 6px;
   }
-  .stat { text-align: center; min-width: 60px; }
+  /* Each stat sits in its own small rounded card */
+  .stat {
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: center;
+    padding: 4px 2px 5px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 12px;
+  }
+  .stat.wide { flex: 1.45 1 0; }                 /* the lives card needs room for the hearts */
   .stat span {
     display: block;
-    font-size: 11px;
+    font-size: 10px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.55);
+    color: rgba(255,255,255,0.6);
   }
-  .stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
-  .stat b.low { color: #ff6b6b; }               /* last life */
+  .stat b {
+    display: block;
+    height: 22px;
+    line-height: 22px;
+    font-size: 18px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  #score  { color: #ffd166; }                    /* gold */
+  #level  { color: #7cc4ff; }                    /* sky blue */
+  #caught { color: #7be495; }                    /* green */
+  .stat b.low { color: #ff6b6b; }                /* last life */
+
+  /* Lives are shown as little hearts */
+  #lives { display: flex; align-items: center; justify-content: center; }
+  .heart { width: 14px; height: 13px; margin: 0 1px; fill: #ff5d73; flex: none; }
+  .heart.empty { fill: rgba(255,255,255,0.18); }
+  #lives.low .heart { animation: lastLife 0.7s ease-in-out infinite; }   /* last life: hearts throb */
+  @keyframes lastLife { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+  .stat.hit { animation: hit 0.35s; }            /* the lives card shakes when a life is lost */
+  @keyframes hit {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+  }
+  @media (max-width: 350px) {                    /* small phones: slightly smaller hearts */
+    .heart { width: 11px; height: 10px; margin: 0 0.5px; }
+    .stat b { font-size: 16px; }
+  }
+
+  /* Sound on/off button (top right, away from the finger strip) */
+  #sound {
+    flex: none;
+    width: 40px;
+    min-height: 40px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.10);
+    color: #fff;
+    font-size: 18px;
+    font-family: inherit;
+    touch-action: manipulation;
+  }
+  #sound.off { opacity: .45; }
 
   #stage { flex: 1; min-height: 0; }
   #game { display: block; width: 100%; height: 100%; }
@@ -53,7 +106,8 @@
     <div class="stat"><span>Score</span><b id="score">0</b></div>
     <div class="stat"><span>Level</span><b id="level">1/10</b></div>
     <div class="stat"><span>Caught</span><b id="caught">0/0</b></div>
-    <div class="stat"><span>Lives</span><b id="lives">5</b></div>
+    <div class="stat wide" id="livesBox"><span>Lives</span><b id="lives">5</b></div>
+    <button id="sound" aria-label="Sound on or off"></button>
   </div>
   <div id="stage"><canvas id="game"></canvas></div>
 </div>
@@ -67,6 +121,12 @@
 // Do not catch a bomb: that also costs a life.
 // Star = bonus points. Heart = one extra life.
 // Keyboard (for laptop testing): arrows or A/D move, Space = start
+// The speaker button (top right) turns the sound on or off.
+//
+// How the pictures work: every fruit, the bomb, the basket and the
+// background are drawn by code ONCE onto small hidden canvases
+// ("sprites"). Each frame the game only stamps those ready-made
+// pictures onto the screen, which is fast even on a cheap phone.
 // =====================================================
 
 // ---------- Settings (change these to experiment) ----------
@@ -85,6 +145,10 @@ const STAR_CHANCE   = 0.06;           // chance that a falling item is a star
 const HEART_CHANCE  = 0.04;           // chance of a heart (only when a life is missing)
 const LEVEL_BONUS   = 200;            // bonus for finishing a level (multiplied by the level number)
 const KEY_SPEED     = 420;            // basket speed with the keyboard, units per second
+const SOUND_VOLUME  = 0.25;           // 0 = silent, 1 = very loud
+const MAX_PARTICLES = 150;            // most juice drops / confetti pieces on screen at once
+const SHAKE_SIZE    = 5;              // how far the screen shakes when a bomb goes off (game units)
+const SHAKE_TIME    = 0.3;            // how long that shake lasts (seconds)
 
 // ---------- Levels ----------
 // goal = fruit to catch to finish the level
@@ -105,6 +169,8 @@ const LEVELS = [
   { goal: 30, fall: 400, gap: 0.60, bomb: 0.30 }    // 10
 ];
 
+// The kinds of fruit. Each one has a drawing further down (see FRUIT_ART, same order).
+// If you add a fruit here without a drawing, the game simply shows this emoji instead.
 const FRUITS = ['🍎', '🍌', '🍇', '🍉', '🍓', '🍊', '🍍', '🥭'];
 const BOMB = '💣', STAR = '⭐', HEART = '❤️';
 
@@ -116,17 +182,183 @@ const elScore  = document.getElementById('score');
 const elLevel  = document.getElementById('level');
 const elCaught = document.getElementById('caught');
 const elLives  = document.getElementById('lives');
+const elLivesBox = document.getElementById('livesBox');
+
+// ---------- Sound ----------
+// All sounds are made by code (short notes), so there are no sound files to upload.
+// Phones only allow sound after a touch, so the sound engine starts on the first touch.
+// The on/off choice is remembered, and is shared by all the games on this site.
+const btnSound = document.getElementById('sound');
+let audio = null;                // the sound engine (created on first touch)
+let muted = false;
+try { muted = localStorage.getItem('gamesMuted') === '1'; } catch (e) { /* storage blocked: start with sound on */ }
+
+function showSoundButton() {
+  btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
+  btnSound.classList.toggle('off', muted);
+}
+showSoundButton();
+
+function startAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (e) { audio = null; }                                  // no sound support: the game still works
+}
+// Different phones accept different kinds of touch for this, so listen for all of them
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, startAudio, true);
+}
+
+// Play one note.
+//   freq  = pitch in Hz (higher number = higher note)
+//   dur   = length in seconds
+//   type  = 'sine' (soft), 'triangle' (round), 'square' (retro), 'sawtooth' (buzzy)
+//   delay = seconds to wait before it starts (used to build little tunes)
+//   slide = pitch to glide to by the end (optional)
+//   volume = 0 to 1, share of SOUND_VOLUME
+function beep(freq, dur, type = 'sine', delay = 0, slide = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME * volume, t + 0.01);   // quick fade in (no click)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);                   // fade out
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// Play a burst of hiss (for explosions, crashes, whooshes).
+//   dur = length in seconds, tone = how bright it is in Hz (300 = deep boom, 4000 = sharp crack)
+let noiseBuffer = null;
+function noise(dur, tone = 1000, delay = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  if (!noiseBuffer) {                                            // one second of random hiss, made once
+    noiseBuffer = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  const t = audio.currentTime + delay;
+  const src = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const gain = audio.createGain();
+  src.buffer = noiseBuffer;
+  src.loop = true;
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(tone, t);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(60, tone * 0.25), t + dur);
+  gain.gain.setValueAtTime(SOUND_VOLUME * volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(filter).connect(gain).connect(audio.destination);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+}
+
+// Short buzz on Android phones (iPhone does not allow this from a web page)
+function buzz(ms) {
+  if (!muted && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
+}
+
+btnSound.addEventListener('click', () => {
+  muted = !muted;
+  try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {}
+  showSoundButton();
+  startAudio();
+  btnSound.blur();                                               // so the Space key does not press it again
+  if (!muted) setTimeout(() => beep(740, 0.05, 'sine', 0, 0, 0.6), 60);   // small note to confirm sound is on
+});
+
+// A sound that could repeat very quickly is skipped if it played under 60 ms ago
+const lastPlayed = {};
+function tooSoon(name) {
+  const now = performance.now();
+  if (now - (lastPlayed[name] || 0) < 60) return true;
+  lastPlayed[name] = now;
+  return false;
+}
+
+// Each kind of fruit pops at its own pitch (apple lowest ... mango highest)
+const CATCH_NOTES = [523, 587, 659, 698, 784, 880, 988, 1047];
+
+// The game's sounds: one small function for each thing that can happen
+const sfx = {
+  // Tap to start / next level / retry: two quick notes
+  start() {
+    beep(523, 0.07, 'triangle', 0, 0, 0.6);
+    beep(784, 0.10, 'triangle', 0.07, 0, 0.6);
+  },
+  // Fruit lands in the basket: a soft "pop" that slides upward
+  catchFruit(type) {
+    if (tooSoon('catch')) return;
+    const note = CATCH_NOTES[type % CATCH_NOTES.length];
+    beep(note, 0.10, 'sine', 0, note * 1.5, 0.5);
+  },
+  // Star: three bright rising notes
+  star() {
+    beep(988, 0.07, 'triangle', 0, 0, 0.6);
+    beep(1319, 0.07, 'triangle', 0.06, 0, 0.6);
+    beep(1568, 0.14, 'triangle', 0.12, 0, 0.6);
+  },
+  // Heart: two warm notes
+  heart() {
+    beep(523, 0.10, 'sine', 0, 0, 0.7);
+    beep(784, 0.18, 'sine', 0.09, 0, 0.7);
+  },
+  // A fruit hit the ground: a soft falling "bwoop" and a little thud
+  miss() {
+    if (tooSoon('miss')) return;
+    beep(300, 0.22, 'triangle', 0, 140, 0.7);
+    noise(0.08, 500, 0, 0.3);
+    buzz(12);
+  },
+  // Bomb: a deep boom of hiss plus a low growl, and a buzz on Android
+  bomb() {
+    noise(0.45, 900, 0, 1);
+    beep(110, 0.35, 'sawtooth', 0, 45, 0.6);
+    buzz(35);
+  },
+  // Level finished: a short rising tune
+  levelClear() {
+    const tune = [523, 659, 784, 1047];
+    for (let i = 0; i < tune.length; i++) beep(tune[i], 0.14, 'triangle', i * 0.11, 0, 0.7);
+  },
+  // All ten levels finished: a longer happy tune
+  win() {
+    const tune = [523, 659, 784, 1047, 784, 1047, 1319];
+    for (let i = 0; i < tune.length; i++) beep(tune[i], i === tune.length - 1 ? 0.4 : 0.14, 'triangle', i * 0.12, 0, 0.7);
+  },
+  // No lives left: a short falling tune (starts a moment later so it does not cover the boom)
+  gameOver() {
+    const tune = [392, 330, 262, 196];
+    for (let i = 0; i < tune.length; i++) beep(tune[i], i === tune.length - 1 ? 0.35 : 0.16, 'triangle', 0.35 + i * 0.16, 0, 0.7);
+  }
+};
 
 // ---------- Game state ----------
 let screen = 'title';            // 'title' | 'play' | 'clear' | 'over' | 'won'
 let level = 1, score = 0, levelStartScore = 0;
 let lives = START_LIVES, caught = 0;
 let basketX = WORLD_W / 2;       // centre of the basket
-let items = [];                  // falling things: { kind, symbol, x, y, speed }
+let items = [];                  // falling things: { kind, symbol, type, x, y, speed, angle, spin }
 let effects = [];                // floating text such as "+10"
+let particles = [];              // juice drops, smoke and confetti
+let basketFruit = [];            // the last few fruit caught (they peek out of the basket)
 let spawnTimer = 0;
 let lastSpawnX = WORLD_W / 2;
 const keys = {};
+
+// Timers for the little animations (each one counts down to 0)
+let clock = 0;                   // seconds since the page opened (drives pulsing and bobbing)
+let squashTime = 0;              // basket squashes for a moment after a catch
+let shakeTime = 0;               // screen shake after a bomb
+let flashTime = 0;               // bright flash after a bomb
+let blast = null;                // the growing fireball: { x, y, t }
+const SQUASH_TIME = 0.18, FLASH_TIME = 0.25, BLAST_TIME = 0.35;
 
 // Screen fitting
 let dpr = 1, scale = 1, offX = 0, offY = 0, screenW = 0, screenH = 0;
@@ -138,6 +370,9 @@ function startLevel(n) {
   caught = 0;
   items = [];
   effects = [];
+  particles = [];
+  basketFruit = [];
+  blast = null;
   spawnTimer = 0.6;              // short wait before the first item
   screen = 'play';
   updateHud();
@@ -148,20 +383,52 @@ function advance() {
   if (screen === 'title' || screen === 'won') { score = 0; lives = START_LIVES; startLevel(1); }
   else if (screen === 'clear') { lives = Math.max(lives, START_LIVES); startLevel(level + 1); }
   else if (screen === 'over') { score = levelStartScore; lives = START_LIVES; startLevel(level); }   // retry same level
+  sfx.start();
 }
 
+// ---------- Top bar ----------
+// The shape of one heart, used for the lives display
+const HEART_PATH = 'M12 21 C5 15 1 11 1 6.5 C1 3 3.5 1 6.5 1 C9 1 11 2.5 12 4.5 C13 2.5 15 1 17.5 1 C20.5 1 23 3 23 6.5 C23 11 19 15 12 21 Z';
+let shownHud = '';               // what the top bar shows now (so it is only rewritten when something changes)
+let shownLives = -1;
+
 function updateHud() {
+  const now = score + '|' + level + '|' + caught + '|' + lives;
+  if (now === shownHud) return;                  // nothing changed since last frame
+  shownHud = now;
+
   elScore.textContent = score;
   elLevel.textContent = level + '/' + LEVELS.length;
   elCaught.textContent = caught + '/' + LEVELS[level - 1].goal;
-  elLives.textContent = lives;
   elLives.classList.toggle('low', lives <= 1);
+
+  if (lives !== shownLives) {
+    if (START_LIVES <= 6) {
+      // One heart per life: red while you still have it, grey once it is lost
+      let html = '';
+      for (let i = 0; i < START_LIVES; i++) {
+        html += '<svg class="heart' + (i < lives ? '' : ' empty') + '" viewBox="0 0 24 22"><path d="' + HEART_PATH + '"/></svg>';
+      }
+      elLives.innerHTML = html;
+    } else {
+      // Too many lives to fit as hearts: show one heart and the number
+      elLives.innerHTML = '<svg class="heart" viewBox="0 0 24 22"><path d="' + HEART_PATH + '"/></svg>&nbsp;' + lives;
+    }
+    // Shake the lives card when a life has just been lost
+    if (shownLives !== -1 && lives < shownLives) {
+      elLivesBox.classList.remove('hit');
+      void elLivesBox.offsetWidth;               // lets the same animation play again
+      elLivesBox.classList.add('hit');
+    }
+    shownLives = lives;
+  }
 }
 
 // ---------- Falling items ----------
 function spawnItem() {
   const def = LEVELS[level - 1];
-  let kind = 'fruit', symbol = FRUITS[Math.floor(Math.random() * FRUITS.length)];
+  const type = Math.floor(Math.random() * FRUITS.length);        // which fruit (its place in the FRUITS list)
+  let kind = 'fruit', symbol = FRUITS[type];
   const roll = Math.random();
   if (roll < def.bomb) { kind = 'bomb'; symbol = BOMB; }
   else if (roll < def.bomb + STAR_CHANCE) { kind = 'star'; symbol = STAR; }
@@ -174,40 +441,131 @@ function spawnItem() {
   const x = lo + Math.random() * (hi - lo);
   lastSpawnX = x;
 
-  items.push({ kind, symbol, x, y: -ITEM_SIZE, speed: def.fall * (0.9 + Math.random() * 0.2) });
+  items.push({
+    kind, symbol, type, x, y: -ITEM_SIZE,
+    speed: def.fall * (0.9 + Math.random() * 0.2),
+    angle: Math.random() * 6.28,                 // fruit tumbles gently as it falls (looks only)
+    spin: (Math.random() - 0.5) * 3
+  });
 }
 
 function floatText(text, x, y, color) {
   effects.push({ text, x, y, color, t: 0, life: 0.8 });
 }
 
+// ---------- Particles (juice drops, smoke, confetti) ----------
+function addParticle(p) {
+  if (particles.length >= MAX_PARTICLES) particles.shift();      // full: drop the oldest one
+  particles.push(p);
+}
+
+// A burst of little drops flying up and out from one point
+function splash(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    addParticle({
+      shape: 'dot', color, x, y,
+      vx: (Math.random() - 0.5) * 240,
+      vy: -60 - Math.random() * 200,
+      gravity: 620,
+      size: 1.8 + Math.random() * 2.4,
+      t: 0, life: 0.4 + Math.random() * 0.3
+    });
+  }
+}
+
+// Bits of coloured paper thrown up from the bottom of the field
+const CONFETTI_COLORS = ['#ffd166', '#ff6b6b', '#7be495', '#7cc4ff', '#c79bff', '#ff9f43'];
+function confetti(count) {
+  for (let i = 0; i < count; i++) {
+    addParticle({
+      shape: 'paper',
+      color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+      x: Math.random() * WORLD_W,
+      y: -10 - Math.random() * 120,
+      vx: (Math.random() - 0.5) * 60,
+      vy: 60 + Math.random() * 90,
+      gravity: 60,
+      size: 4 + Math.random() * 3,
+      flutter: 6 + Math.random() * 8,
+      t: 0, life: 2.6 + Math.random() * 1.2
+    });
+  }
+}
+
+// The bomb goes off: flash, fireball, flying sparks and smoke, and a short shake
+function explode(x, y) {
+  flashTime = FLASH_TIME;
+  shakeTime = SHAKE_TIME;
+  blast = { x, y, t: 0 };
+  splash(x, y, '#ffb347', 14);
+  splash(x, y, '#ff5d3a', 10);
+  splash(x, y, '#5b6170', 8);
+}
+
 function loseLife(x, y) {
   lives--;
   floatText('-1 life', x, y, '#ff6b6b');
-  if (lives <= 0) { lives = 0; screen = 'over'; }
+  if (lives <= 0) { lives = 0; screen = 'over'; sfx.gameOver(); }
 }
 
 // What happens when the basket catches an item
 function catchItem(it) {
+  squashTime = SQUASH_TIME;                      // the basket dips a little
   if (it.kind === 'fruit') {
     caught++;
     score += FRUIT_POINTS * level;
     floatText('+' + FRUIT_POINTS * level, it.x, BASKET_Y - 10, '#ffffff');
+    splash(it.x, BASKET_Y, juiceColor(it.type), 10);
+    basketFruit.push(it.type);                   // show it peeking out of the basket
+    if (basketFruit.length > 3) basketFruit.shift();
+    sfx.catchFruit(it.type);
   } else if (it.kind === 'star') {
     score += STAR_POINTS * level;
     floatText('+' + STAR_POINTS * level, it.x, BASKET_Y - 10, '#f4d35e');
+    splash(it.x, BASKET_Y, '#ffe27a', 16);
+    sfx.star();
   } else if (it.kind === 'heart') {
     lives = Math.min(START_LIVES, lives + 1);
     floatText('+1 life', it.x, BASKET_Y - 10, '#4dd4ac');
+    splash(it.x, BASKET_Y, '#ff7d95', 12);
+    sfx.heart();
   } else {
-    loseLife(it.x, BASKET_Y - 10);            // bomb
+    explode(it.x, BASKET_Y);                     // bomb
+    sfx.bomb();
+    loseLife(it.x, BASKET_Y - 10);
   }
 }
 
 // ---------- Update: move the whole game forward by dt seconds ----------
 function update(dt) {
+  clock += dt;
+
   for (const e of effects) e.t += dt;
   effects = effects.filter(e => e.t < e.life);
+
+  // Particles fly, fall and fade on every screen
+  for (const p of particles) {
+    p.t += dt;
+    p.vy += p.gravity * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+  }
+  particles = particles.filter(p => p.t < p.life);
+
+  // Clouds drift slowly across the sky and come back in on the other side
+  for (const c of clouds) {
+    c.x += c.speed * dt;
+    if (c.x > WORLD_W + 80) c.x = -80;
+  }
+
+  // Animation timers count down
+  squashTime = Math.max(0, squashTime - dt);
+  shakeTime  = Math.max(0, shakeTime - dt);
+  flashTime  = Math.max(0, flashTime - dt);
+  if (blast) { blast.t += dt; if (blast.t >= BLAST_TIME) blast = null; }
+
+  // On the "You win!" screen confetti keeps drifting down
+  if (screen === 'won' && particles.length < 70) confetti(2);
 
   if (screen !== 'play') return;
 
@@ -227,6 +585,7 @@ function update(dt) {
   for (const it of items) {
     const before = it.y;
     it.y += it.speed * dt;
+    it.angle += it.spin * dt;
     if (it.done) continue;
 
     // Caught: the item crosses the top of the basket while over it
@@ -237,7 +596,11 @@ function update(dt) {
     } else if (it.y > FIELD_H + ITEM_SIZE) {
       // Fell past the ground: only a missed fruit costs a life
       it.done = true;
-      if (it.kind === 'fruit') loseLife(it.x, FIELD_H - 30);
+      if (it.kind === 'fruit') {
+        splash(it.x, FIELD_H - 26, juiceColor(it.type), 8);      // splat on the grass
+        sfx.miss();
+        loseLife(it.x, FIELD_H - 30);
+      }
     }
     if (screen !== 'play') break;
   }
@@ -248,108 +611,913 @@ function update(dt) {
     score += LEVEL_BONUS * level;
     items = [];
     screen = level === LEVELS.length ? 'won' : 'clear';
+    if (screen === 'won') { sfx.win(); confetti(90); }
+    else { sfx.levelClear(); confetti(45); }
   }
   updateHud();
 }
 
-// ---------- Drawing ----------
+// =====================================================
+// PICTURES
+// Everything below draws the art. The "draw...Art" functions each draw
+// one picture around the point (0, 0), about 34 units across.
+// buildSprites() runs them once and keeps the results as sprites.
+// =====================================================
+
+// ---------- Small drawing helpers ----------
+// A colour blend that makes a flat circle look like a round ball lit from the top left
+function ballShade(g, x, y, r, light, mid, dark) {
+  const grad = g.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r * 1.05);
+  grad.addColorStop(0, light);
+  grad.addColorStop(0.55, mid);
+  grad.addColorStop(1, dark);
+  return grad;
+}
+
+// A soft white glint
+function drawShine(g, x, y, rx, ry, angle) {
+  g.save();
+  g.translate(x, y);
+  g.rotate(angle);
+  g.fillStyle = 'rgba(255,255,255,0.6)';
+  g.beginPath();
+  g.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  g.fill();
+  g.restore();
+}
+
+// A pointed leaf starting at (x, y) and pointing along "angle"
+function drawLeaf(g, x, y, length, angle, color) {
+  g.save();
+  g.translate(x, y);
+  g.rotate(angle);
+  g.fillStyle = color;
+  g.beginPath();
+  g.moveTo(0, 0);
+  g.quadraticCurveTo(length * 0.5, -length * 0.45, length, 0);
+  g.quadraticCurveTo(length * 0.5, length * 0.45, 0, 0);
+  g.fill();
+  g.strokeStyle = 'rgba(0,60,20,0.45)';          // the vein down the middle
+  g.lineWidth = 0.7;
+  g.beginPath();
+  g.moveTo(1, 0);
+  g.lineTo(length * 0.85, 0);
+  g.stroke();
+  g.restore();
+}
+
+// A short brown stalk
+function drawStem(g, x1, y1, bendX, bendY, x2, y2) {
+  g.strokeStyle = '#6d4c2f';
+  g.lineWidth = 2.2;
+  g.lineCap = 'round';
+  g.beginPath();
+  g.moveTo(x1, y1);
+  g.quadraticCurveTo(bendX, bendY, x2, y2);
+  g.stroke();
+}
+
+// A box with rounded corners (path only: call fill() or stroke() after it)
+function roundedBox(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+// ---------- The fruit drawings ----------
+function drawAppleArt(g) {
+  g.fillStyle = ballShade(g, 0, 2, 15, '#ff9a8d', '#e53935', '#8e1b1b');
+  g.beginPath();                                 // two round shoulders with a dip at the top
+  g.moveTo(0, -8);
+  g.bezierCurveTo(-5, -14, -16, -11, -15, 0);
+  g.bezierCurveTo(-15, 10, -8, 16, 0, 14);
+  g.bezierCurveTo(8, 16, 15, 10, 15, 0);
+  g.bezierCurveTo(16, -11, 5, -14, 0, -8);
+  g.fill();
+  drawStem(g, 0, -8, 0, -13, 3, -16);
+  drawLeaf(g, 1, -11, 10, -0.45, '#58c45a');
+  drawShine(g, -8, -3, 2.4, 5, 0.5);
+}
+
+function drawBananaArt(g) {
+  const yellow = g.createLinearGradient(0, -10, 0, 16);
+  yellow.addColorStop(0, '#fff59d');
+  yellow.addColorStop(0.5, '#ffd83a');
+  yellow.addColorStop(1, '#d99a00');
+  g.fillStyle = yellow;
+  g.beginPath();                                 // a curved "smile" shape
+  g.moveTo(-14, -10);
+  g.bezierCurveTo(-14, 9, 2, 18, 15, 6);
+  g.quadraticCurveTo(16, 3.5, 13, 3);
+  g.bezierCurveTo(4, 7, -6, 1, -9.5, -11);
+  g.closePath();
+  g.fill();
+  g.strokeStyle = 'rgba(150,100,0,0.5)';         // the ridge along the side
+  g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(-11.5, -8);
+  g.bezierCurveTo(-10, 6, 3, 12.5, 14, 5);
+  g.stroke();
+  g.fillStyle = '#6d4c2f';                       // stalk end
+  g.beginPath();
+  g.moveTo(-14.3, -9.5);
+  g.lineTo(-9.2, -10.5);
+  g.lineTo(-10, -14.5);
+  g.lineTo(-13.5, -14);
+  g.closePath();
+  g.fill();
+  g.beginPath();                                 // dark tip
+  g.arc(14.6, 4.6, 1.4, 0, Math.PI * 2);
+  g.fill();
+  drawShine(g, -9, 0, 1.2, 4.5, -0.25);
+}
+
+function drawGrapesArt(g) {
+  drawStem(g, 0, -9, 0, -13, 2, -16);
+  drawLeaf(g, 1, -12, 10, -0.2, '#58c45a');
+  // Six round grapes in a triangle: three, then two, then one
+  const spots = [[-7.5, -4], [0, -5.5], [7.5, -4], [-4, 3], [4, 3], [0, 10]];
+  for (const [x, y] of spots) {
+    g.fillStyle = ballShade(g, x, y, 5.6, '#e3b8ff', '#9b4dca', '#4a1766');
+    g.beginPath();
+    g.arc(x, y, 5.6, 0, Math.PI * 2);
+    g.fill();
+    drawShine(g, x - 2, y - 2, 1.1, 1.6, 0.6);
+  }
+}
+
+function drawMelonArt(g) {
+  g.save();
+  g.rotate(-0.3);                                // the slice sits at a jaunty angle
+  g.translate(0, -7);
+  g.fillStyle = '#2e9e4f';                       // green rind
+  g.beginPath(); g.arc(0, 0, 16.5, 0, Math.PI); g.closePath(); g.fill();
+  g.fillStyle = '#e4f7cf';                       // pale layer under the rind
+  g.beginPath(); g.arc(0, 0, 14, 0, Math.PI); g.closePath(); g.fill();
+  const red = g.createLinearGradient(0, 0, 0, 13);
+  red.addColorStop(0, '#ff7a8c');
+  red.addColorStop(1, '#e8324f');
+  g.fillStyle = red;                             // juicy red middle
+  g.beginPath(); g.arc(0, 0, 12.6, 0, Math.PI); g.closePath(); g.fill();
+  g.fillStyle = '#3b1a1a';                       // seeds
+  for (const [x, y] of [[-7, 3.5], [-2.5, 7.5], [2.5, 3.5], [7, 4.5], [3, 8.5], [-5.5, 8]]) {
+    g.beginPath();
+    g.ellipse(x, y, 0.9, 1.5, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.fillStyle = 'rgba(255,255,255,0.35)';        // light catching the cut edge
+  g.fillRect(-12, 0, 24, 1.2);
+  g.restore();
+}
+
+function drawStrawberryArt(g) {
+  g.fillStyle = ballShade(g, 0, 1, 15, '#ff9a9a', '#e5213b', '#8f0f24');
+  g.beginPath();                                 // wide at the top, pointed at the bottom
+  g.moveTo(0, 15.5);
+  g.bezierCurveTo(-7, 11, -15, 1, -12, -6);
+  g.bezierCurveTo(-10, -11.5, 10, -11.5, 12, -6);
+  g.bezierCurveTo(15, 1, 7, 11, 0, 15.5);
+  g.fill();
+  g.fillStyle = '#ffe58a';                       // seeds
+  for (const [x, y] of [[-6, -3], [0, -4], [6, -3], [-4, 2], [3, 2.5], [-1, 7.5], [7.5, 1.5], [-8, 1.5], [3.5, 8]]) {
+    g.beginPath();
+    g.ellipse(x, y, 0.8, 1.2, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+  // Leafy green cap
+  for (const angle of [Math.PI * 0.95, Math.PI * 0.72, Math.PI * 0.28, Math.PI * 0.05]) {
+    drawLeaf(g, 0, -10.5, 9, angle, '#3fae4f');
+  }
+  drawStem(g, 0, -10, 0, -13, 1, -15.5);
+  drawShine(g, -6.5, -5.5, 1.8, 3, 0.6);
+}
+
+function drawOrangeArt(g) {
+  g.fillStyle = ballShade(g, 0, 1.5, 14.5, '#ffd9a0', '#ff9a1f', '#c25e00');
+  g.beginPath();
+  g.arc(0, 1.5, 14.5, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = 'rgba(160,70,0,0.3)';            // dimples in the peel
+  for (const [x, y] of [[4, 5], [8, -1], [-3, 9], [1, -2], [7, 9], [-8, 5], [-1, 4], [10, 4]]) {
+    g.beginPath();
+    g.arc(x, y, 0.7, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.fillStyle = '#3f8f3f';                       // green button where the stalk was
+  g.beginPath();
+  g.arc(0, -12, 2.2, 0, Math.PI * 2);
+  g.fill();
+  drawLeaf(g, 1, -12.5, 10, -0.35, '#58c45a');
+  drawShine(g, -7, -4, 2.4, 4.5, 0.6);
+}
+
+function drawPineappleArt(g) {
+  // Spiky green crown first, so the fruit covers its base
+  const spikes = [-2.3, -1.95, -1.57, -1.2, -0.85];
+  for (let i = 0; i < spikes.length; i++) {
+    drawLeaf(g, 0, -4, i === 2 ? 13 : 11, spikes[i], i % 2 ? '#3fae4f' : '#2f8f43');
+  }
+  // Golden oval body
+  g.fillStyle = ballShade(g, 0, 5, 12, '#ffe98a', '#f2a51d', '#a86400');
+  g.beginPath();
+  g.ellipse(0, 5, 10.5, 12, 0, 0, Math.PI * 2);
+  g.fill();
+  // Criss-cross pattern, kept inside the oval
+  g.save();
+  g.clip();
+  g.strokeStyle = 'rgba(120,60,0,0.5)';
+  g.lineWidth = 0.9;
+  g.beginPath();
+  for (let d = -30; d <= 30; d += 5.5) {
+    g.moveTo(d - 14, -8); g.lineTo(d + 14, 18);
+    g.moveTo(d + 14, -8); g.lineTo(d - 14, 18);
+  }
+  g.stroke();
+  g.restore();
+  drawShine(g, -5, 0, 1.6, 3.5, 0.3);
+}
+
+function drawMangoArt(g) {
+  // Red where the sun reached it, yellow underneath
+  const skin = g.createLinearGradient(10, -11, -10, 12);
+  skin.addColorStop(0, '#e8412f');
+  skin.addColorStop(0.45, '#ffa126');
+  skin.addColorStop(1, '#ffe14d');
+  g.fillStyle = skin;
+  g.beginPath();                                 // a plump, slightly bent oval
+  g.moveTo(-13.5, 4);
+  g.bezierCurveTo(-14.5, -6, -4, -13, 6, -11);
+  g.bezierCurveTo(14, -9, 16.5, 0, 12.5, 7);
+  g.bezierCurveTo(8, 14.5, -4, 14.5, -9, 11.5);
+  g.bezierCurveTo(-12, 9.5, -13.5, 7, -13.5, 4);
+  g.fill();
+  g.fillStyle = 'rgba(120,40,0,0.18)';           // soft shadow along the bottom
+  g.beginPath();
+  g.ellipse(2, 10, 9, 3, -0.1, 0, Math.PI * 2);
+  g.fill();
+  drawStem(g, 7, -10.5, 8, -13, 10, -15);
+  drawLeaf(g, 8, -12.5, 8, -2.6, '#58c45a');
+  drawShine(g, -6, -3, 2.2, 4.5, 0.9);
+}
+
+// The drawing and the juice colour for each fruit, in the same order as the FRUITS list
+const FRUIT_ART = [
+  { draw: drawAppleArt,      juice: '#ff5252' },
+  { draw: drawBananaArt,     juice: '#ffe04a' },
+  { draw: drawGrapesArt,     juice: '#b266e0' },
+  { draw: drawMelonArt,      juice: '#ff5d7a' },
+  { draw: drawStrawberryArt, juice: '#ff3b5c' },
+  { draw: drawOrangeArt,     juice: '#ffa126' },
+  { draw: drawPineappleArt,  juice: '#ffd23f' },
+  { draw: drawMangoArt,      juice: '#ffb02e' }
+];
+function juiceColor(type) {
+  return FRUIT_ART[type] ? FRUIT_ART[type].juice : '#ffffff';
+}
+
+// ---------- Bomb, star and heart drawings ----------
+const FUSE_TIP_X = 14.5, FUSE_TIP_Y = -14;       // where the spark sits on the bomb picture
+
+function drawBombArt(g) {
+  // Fuse and the little metal cap it comes out of
+  g.strokeStyle = '#d2a86a';
+  g.lineWidth = 2;
+  g.lineCap = 'round';
+  g.beginPath();
+  g.moveTo(8, -9);
+  g.quadraticCurveTo(9.5, -16, FUSE_TIP_X, FUSE_TIP_Y);
+  g.stroke();
+  g.save();
+  g.translate(6.5, -7);
+  g.rotate(Math.PI / 4);
+  g.fillStyle = '#7d859c';
+  roundedBox(g, -4.5, -4, 9, 6, 1.5);
+  g.fill();
+  g.restore();
+  // Round black body with a grey highlight so it reads as a ball
+  g.fillStyle = ballShade(g, -1, 3, 12.5, '#8a91a6', '#2b2f3c', '#0b0c11');
+  g.beginPath();
+  g.arc(-1, 3, 12.5, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.3)';       // thin pale rim so it shows up against the night sky
+  g.lineWidth = 1;
+  g.stroke();
+  drawShine(g, -6.5, -2.5, 1.8, 3.4, 0.7);
+}
+
+function drawStarArt(g) {
+  const gold = g.createLinearGradient(0, -15, 0, 14);
+  gold.addColorStop(0, '#fff7a8');
+  gold.addColorStop(0.5, '#ffc928');
+  gold.addColorStop(1, '#ff9100');
+  g.fillStyle = gold;
+  g.strokeStyle = '#b36b00';
+  g.lineWidth = 1.2;
+  g.lineJoin = 'round';
+  g.beginPath();                                 // ten corners: long point, short point, long point...
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? 15.5 : 7;
+    const a = -Math.PI / 2 + i * Math.PI / 5;
+    if (i === 0) g.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+    else g.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  g.closePath();
+  g.fill();
+  g.stroke();
+  drawShine(g, -3.5, -4, 1.6, 3.6, 0.6);
+}
+
+function drawHeartArt(g) {
+  g.save();
+  g.scale(1.25, 1.25);
+  g.translate(-12, -10.5);                       // the heart shape is written for a 24 x 22 box
+  g.fillStyle = ballShade(g, 12, 9, 13, '#ffb0bb', '#ff3b5c', '#a80f2e');
+  g.beginPath();
+  g.moveTo(12, 21);
+  g.bezierCurveTo(5, 15, 1, 11, 1, 6.5);
+  g.bezierCurveTo(1, 3, 3.5, 1, 6.5, 1);
+  g.bezierCurveTo(9, 1, 11, 2.5, 12, 4.5);
+  g.bezierCurveTo(13, 2.5, 15, 1, 17.5, 1);
+  g.bezierCurveTo(20.5, 1, 23, 3, 23, 6.5);
+  g.bezierCurveTo(23, 11, 19, 15, 12, 21);
+  g.fill();
+  drawShine(g, 6.5, 6, 1.6, 3, 0.7);
+  g.restore();
+}
+
+// ---------- Basket drawing ----------
+function drawBasketArt(g) {
+  const w = BASKET_W, top = -BASKET_H / 2, bottom = BASKET_H / 2;
+
+  // Body: wider at the top than the bottom, with rounded bottom corners
+  g.save();
+  g.beginPath();
+  g.moveTo(-w / 2, top);
+  g.lineTo(w / 2, top);
+  g.lineTo(w / 2 - 9, bottom - 5);
+  g.quadraticCurveTo(w / 2 - 10, bottom, w / 2 - 15, bottom);
+  g.lineTo(-w / 2 + 15, bottom);
+  g.quadraticCurveTo(-w / 2 + 10, bottom, -w / 2 + 9, bottom - 5);
+  g.closePath();
+  g.fillStyle = '#b97a45';
+  g.fill();
+  g.clip();                                      // keep the weave inside the body shape
+
+  // Weave: rows of little blocks, light and dark in turn, shifted on every other row
+  const rowH = BASKET_H / 4, blockW = 9;
+  for (let row = 0; row < 4; row++) {
+    for (let col = -5; col <= 5; col++) {
+      g.fillStyle = (row + col) % 2 === 0 ? 'rgba(255,225,170,0.30)' : 'rgba(70,35,10,0.28)';
+      g.fillRect(col * blockW - blockW / 2 + 0.5, top + row * rowH + 0.5, blockW - 1, rowH - 1);
+    }
+  }
+  // Darker towards the left and right edges, so the basket looks round
+  const sides = g.createLinearGradient(-w / 2, 0, w / 2, 0);
+  sides.addColorStop(0, 'rgba(50,22,5,0.45)');
+  sides.addColorStop(0.3, 'rgba(50,22,5,0)');
+  sides.addColorStop(0.7, 'rgba(50,22,5,0)');
+  sides.addColorStop(1, 'rgba(50,22,5,0.45)');
+  g.fillStyle = sides;
+  g.fillRect(-w / 2, top, w, BASKET_H);
+  g.restore();
+
+  // Rim: a rounded bar along the top, lighter than the body
+  const rim = g.createLinearGradient(0, top - 4, 0, top + 4);
+  rim.addColorStop(0, '#f6d29a');
+  rim.addColorStop(1, '#cf9450');
+  g.fillStyle = rim;
+  roundedBox(g, -w / 2 - 3, top - 4, w + 6, 8, 4);
+  g.fill();
+  g.fillStyle = 'rgba(120,70,25,0.55)';          // little wrapping marks on the rim
+  for (let x = -w / 2 + 4; x < w / 2; x += 8) g.fillRect(x, top - 2.5, 1.5, 5);
+  g.fillStyle = 'rgba(255,255,255,0.35)';
+  g.fillRect(-w / 2, top - 3, w, 1.2);
+}
+
+// The round thumb marker in the finger strip (shows where the basket is)
+function drawKnobArt(g) {
+  g.fillStyle = 'rgba(224,169,109,0.28)';        // soft outer ring
+  g.beginPath(); g.arc(0, 0, 20, 0, Math.PI * 2); g.fill();
+  g.fillStyle = ballShade(g, 0, 0, 13, '#ffe0b0', '#e0a96d', '#a56a35');
+  g.beginPath(); g.arc(0, 0, 13, 0, Math.PI * 2); g.fill();
+  g.fillStyle = 'rgba(80,40,10,0.7)';            // small left and right arrows
+  g.beginPath(); g.moveTo(-8, 0); g.lineTo(-3, -4); g.lineTo(-3, 4); g.closePath(); g.fill();
+  g.beginPath(); g.moveTo(8, 0); g.lineTo(3, -4); g.lineTo(3, 4); g.closePath(); g.fill();
+}
+
+// A puffy cloud made from a few overlapping circles
+function drawCloudArt(g) {
+  g.fillStyle = '#dbe7ff';
+  for (const [x, y, r] of [[-26, 6, 13], [-10, -2, 17], [10, -5, 19], [28, 5, 14], [0, 8, 16]]) {
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.fillRect(-30, 6, 62, 13);
+}
+
+// ---------- Turning drawings into sprites ----------
+let sprites = null;              // all the ready-made pictures (made in buildSprites)
+let bgCanvas = null;             // the sky, orchard and grass, drawn once
+let zoneCanvas = null;           // the finger strip, drawn once
+
+// Make one sprite: a small hidden canvas "width" x "height" game units big,
+// sharp enough for this screen, with the drawing in its centre.
+//   drawFn = the function that draws the picture around (0, 0)
+//   glow   = optional colour of a soft halo behind the picture
+//   shadow = true to give the picture a soft dark shadow (helps it stand out from the sky)
+function makeSprite(width, height, drawFn, glow, shadow) {
+  const pixelsPerUnit = Math.max(0.05, scale * dpr);
+  const w = Math.max(2, Math.ceil(width * pixelsPerUnit));
+  const h = Math.max(2, Math.ceil(height * pixelsPerUnit));
+
+  // Step 1: draw the plain picture
+  const plain = document.createElement('canvas');
+  plain.width = w; plain.height = h;
+  const pg = plain.getContext('2d');
+  pg.scale(pixelsPerUnit, pixelsPerUnit);
+  pg.translate(width / 2, height / 2);
+  drawFn(pg);
+
+  // Step 2: copy it onto the final sprite, adding the halo and the shadow
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  if (glow) {
+    const r = Math.min(w, h) / 2;
+    const halo = g.createRadialGradient(w / 2, h / 2, r * 0.35, w / 2, h / 2, r);
+    halo.addColorStop(0, glow);
+    halo.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = halo;
+    g.fillRect(0, 0, w, h);
+  }
+  if (shadow) {
+    g.shadowColor = 'rgba(0,0,0,0.5)';
+    g.shadowBlur = 3 * pixelsPerUnit;            // the slow shadow maths happens here, once, not every frame
+    g.shadowOffsetY = 1.5 * pixelsPerUnit;
+  }
+  g.drawImage(plain, 0, 0);
+  return { canvas: c, width, height };
+}
+
+// Stamp a sprite with its centre at (x, y). It can be turned and stretched.
+function stamp(sprite, x, y, angle = 0, stretchX = 1, stretchY = 1) {
+  if (angle === 0 && stretchX === 1 && stretchY === 1) {
+    ctx.drawImage(sprite.canvas, x - sprite.width / 2, y - sprite.height / 2, sprite.width, sprite.height);
+    return;
+  }
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.scale(stretchX, stretchY);
+  ctx.drawImage(sprite.canvas, -sprite.width / 2, -sprite.height / 2, sprite.width, sprite.height);
+  ctx.restore();
+}
+
+function buildSprites() {
+  const box = ITEM_SIZE + 16;                    // a little spare room around each picture for shadow and glow
+  const artScale = ITEM_SIZE / 34;               // the drawings are made for size 34; this follows ITEM_SIZE
+  const sized = (drawFn) => (g) => { g.scale(artScale, artScale); drawFn(g); };
+
+  sprites = { fruits: [] };
+  for (let i = 0; i < FRUITS.length; i++) {
+    if (FRUIT_ART[i]) {
+      sprites.fruits.push(makeSprite(box, box, sized(FRUIT_ART[i].draw), null, true));
+    } else {
+      // A fruit in the FRUITS list with no drawing: show its emoji
+      const emoji = FRUITS[i];
+      sprites.fruits.push(makeSprite(box, box, (g) => {
+        g.font = ITEM_SIZE + 'px system-ui, sans-serif';
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText(emoji, 0, 0);
+      }, null, true));
+    }
+  }
+  sprites.bomb   = makeSprite(box, box, sized(drawBombArt), 'rgba(255,70,70,0.55)', true);
+  sprites.star   = makeSprite(box, box, sized(drawStarArt), 'rgba(255,220,90,0.55)', true);
+  sprites.heart  = makeSprite(box, box, sized(drawHeartArt), 'rgba(255,120,150,0.5)', true);
+  sprites.basket = makeSprite(BASKET_W + 20, BASKET_H + 20, drawBasketArt, null, true);
+  sprites.knob   = makeSprite(48, 48, drawKnobArt, null, false);
+  sprites.cloud  = makeSprite(100, 60, drawCloudArt, null, false);
+}
+
+// ---------- Background: night sky, moon, hills, orchard trees and grass ----------
+// A "random" number list that is the same every time, so the stars do not jump around on resize
+let seed = 1;
+function seededRandom() {
+  seed = (seed * 16807) % 2147483647;
+  return seed / 2147483647;
+}
+
+function drawTree(g, x, groundY, size) {
+  // Trunk
+  g.fillStyle = '#3d2c22';
+  g.fillRect(x - 3 * size, groundY - 30 * size, 6 * size, 32 * size);
+  // Leafy top: dark blobs, then lighter blobs on the upper side
+  g.fillStyle = '#1d4d35';
+  for (const [dx, dy, r] of [[-15, -42, 17], [14, -44, 18], [0, -58, 20], [0, -38, 16]]) {
+    g.beginPath(); g.arc(x + dx * size, groundY + dy * size, r * size, 0, Math.PI * 2); g.fill();
+  }
+  g.fillStyle = '#286344';
+  for (const [dx, dy, r] of [[-12, -49, 11], [10, -52, 12], [-1, -64, 12]]) {
+    g.beginPath(); g.arc(x + dx * size, groundY + dy * size, r * size, 0, Math.PI * 2); g.fill();
+  }
+  // A few small fruit hanging in the tree
+  const colors = ['#d9534f', '#e8963a', '#d9534f', '#e0c341'];
+  const spots = [[-17, -40], [12, -36], [3, -55], [-6, -68], [20, -50]];
+  for (let i = 0; i < spots.length; i++) {
+    g.fillStyle = colors[i % colors.length];
+    g.beginPath(); g.arc(x + spots[i][0] * size, groundY + spots[i][1] * size, 2.6 * size, 0, Math.PI * 2); g.fill();
+  }
+}
+
+function buildBackground() {
+  const pixelsPerUnit = Math.max(0.05, scale * dpr);
+  bgCanvas = document.createElement('canvas');
+  bgCanvas.width  = Math.max(2, Math.round(WORLD_W * pixelsPerUnit));
+  bgCanvas.height = Math.max(2, Math.round(WORLD_H * pixelsPerUnit));
+  const g = bgCanvas.getContext('2d');
+  g.scale(pixelsPerUnit, pixelsPerUnit);
+  const groundY = FIELD_H - 30;                  // top of the grass
+
+  // Evening sky: deep navy at the top, lighter blue near the hills
+  const sky = g.createLinearGradient(0, 0, 0, FIELD_H);
+  sky.addColorStop(0, '#0e1838');
+  sky.addColorStop(0.55, '#1a3162');
+  sky.addColorStop(1, '#2d5c86');
+  g.fillStyle = sky;
+  g.fillRect(0, 0, WORLD_W, WORLD_H);
+
+  // Stars, thicker near the top
+  seed = 20240;
+  for (let i = 0; i < 60; i++) {
+    const x = seededRandom() * WORLD_W;
+    const y = seededRandom() * seededRandom() * (FIELD_H * 0.7);
+    const r = 0.4 + seededRandom() * 0.9;
+    g.fillStyle = 'rgba(255,255,255,' + (0.25 + seededRandom() * 0.5).toFixed(2) + ')';
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  }
+
+  // Moon with a soft glow and a couple of craters
+  const moonX = WORLD_W - 62, moonY = 74;
+  const glow = g.createRadialGradient(moonX, moonY, 16, moonX, moonY, 60);
+  glow.addColorStop(0, 'rgba(255,244,200,0.28)');
+  glow.addColorStop(1, 'rgba(255,244,200,0)');
+  g.fillStyle = glow;
+  g.fillRect(moonX - 60, moonY - 60, 120, 120);
+  g.fillStyle = ballShade(g, moonX, moonY, 20, '#fffbe6', '#f3e9bd', '#d6c98f');
+  g.beginPath(); g.arc(moonX, moonY, 20, 0, Math.PI * 2); g.fill();
+  g.fillStyle = 'rgba(170,155,100,0.35)';
+  for (const [dx, dy, r] of [[5, -6, 4], [-7, 4, 3], [6, 8, 2.5]]) {
+    g.beginPath(); g.arc(moonX + dx, moonY + dy, r, 0, Math.PI * 2); g.fill();
+  }
+
+  // Far hills, then nearer hills
+  g.fillStyle = '#1c3d5e';
+  g.beginPath();
+  g.moveTo(0, groundY);
+  g.lineTo(0, groundY - 60);
+  g.bezierCurveTo(60, groundY - 110, 120, groundY - 50, 190, groundY - 80);
+  g.bezierCurveTo(250, groundY - 105, 310, groundY - 60, WORLD_W, groundY - 85);
+  g.lineTo(WORLD_W, groundY);
+  g.fill();
+  g.fillStyle = '#1b4650';
+  g.beginPath();
+  g.moveTo(0, groundY);
+  g.lineTo(0, groundY - 30);
+  g.bezierCurveTo(70, groundY - 62, 150, groundY - 18, 220, groundY - 40);
+  g.bezierCurveTo(280, groundY - 58, 320, groundY - 30, WORLD_W, groundY - 38);
+  g.lineTo(WORLD_W, groundY);
+  g.fill();
+
+  // Orchard trees (kept dark so the bright fruit and basket stand out in front)
+  drawTree(g, 34, groundY, 0.95);
+  drawTree(g, 128, groundY - 4, 0.6);
+  drawTree(g, 236, groundY - 4, 0.65);
+  drawTree(g, 328, groundY, 1.0);
+
+  // Grass
+  const grass = g.createLinearGradient(0, groundY, 0, FIELD_H);
+  grass.addColorStop(0, '#3f8a4c');
+  grass.addColorStop(1, '#245a33');
+  g.fillStyle = grass;
+  g.fillRect(0, groundY, WORLD_W, WORLD_H - groundY);
+  g.fillStyle = '#5db266';                       // bright edge and little tufts along the top of the grass
+  g.fillRect(0, groundY, WORLD_W, 2);
+  for (let x = 4; x < WORLD_W; x += 9) {
+    const tall = 3 + seededRandom() * 4;
+    g.beginPath();
+    g.moveTo(x - 2.5, groundY + 1);
+    g.lineTo(x + seededRandom() * 2 - 1, groundY - tall);
+    g.lineTo(x + 2.5, groundY + 1);
+    g.fill();
+  }
+  g.fillStyle = 'rgba(0,0,0,0.12)';              // darker flecks in the grass
+  for (let i = 0; i < 40; i++) {
+    g.fillRect(seededRandom() * WORLD_W, groundY + 6 + seededRandom() * 22, 5, 1.5);
+  }
+}
+
+// The finger strip, drawn once (the moving thumb marker is stamped on top each frame)
+function buildControlZone() {
+  const pixelsPerUnit = Math.max(0.05, scale * dpr);
+  zoneCanvas = document.createElement('canvas');
+  zoneCanvas.width  = Math.max(2, Math.round(WORLD_W * pixelsPerUnit));
+  zoneCanvas.height = Math.max(2, Math.round(CONTROL_ZONE * pixelsPerUnit));
+  const g = zoneCanvas.getContext('2d');
+  g.scale(pixelsPerUnit, pixelsPerUnit);
+
+  const panel = g.createLinearGradient(0, 0, 0, CONTROL_ZONE);
+  panel.addColorStop(0, '#131e40');
+  panel.addColorStop(1, '#0b1228');
+  g.fillStyle = panel;
+  g.fillRect(0, 0, WORLD_W, CONTROL_ZONE);
+  g.fillStyle = 'rgba(255,255,255,0.16)';        // thin light line along the top edge
+  g.fillRect(0, 0, WORLD_W, 1);
+
+  // A rounded groove for the thumb marker to slide in
+  const midY = CONTROL_ZONE / 2 - 6;
+  g.fillStyle = 'rgba(255,255,255,0.06)';
+  roundedBox(g, 10, midY - 23, WORLD_W - 20, 46, 23);
+  g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.10)';
+  g.lineWidth = 1;
+  g.stroke();
+
+  // "slide here" with an arrow on each side
+  g.fillStyle = 'rgba(255,255,255,0.5)';
+  g.font = '500 13px system-ui, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText('slide here', WORLD_W / 2, CONTROL_ZONE - 14);
+  const arrowY = CONTROL_ZONE - 14;
+  g.beginPath(); g.moveTo(WORLD_W / 2 - 52, arrowY); g.lineTo(WORLD_W / 2 - 44, arrowY - 5); g.lineTo(WORLD_W / 2 - 44, arrowY + 5); g.closePath(); g.fill();
+  g.beginPath(); g.moveTo(WORLD_W / 2 + 52, arrowY); g.lineTo(WORLD_W / 2 + 44, arrowY - 5); g.lineTo(WORLD_W / 2 + 44, arrowY + 5); g.closePath(); g.fill();
+}
+
+// Clouds: where each one is, how fast it drifts, how big and how see-through it is
+const clouds = [
+  { x: 60,  y: 70,  speed: 5, size: 1.0,  alpha: 0.16 },
+  { x: 250, y: 150, speed: 8, size: 0.7,  alpha: 0.12 },
+  { x: 150, y: 250, speed: 4, size: 0.85, alpha: 0.10 }
+];
+
+// ---------- Drawing (runs every frame) ----------
 function draw() {
   // Clear the whole canvas
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = '#0b1220';
   ctx.fillRect(0, 0, screenW, screenH);
+  // If the screen is taller than the game, continue the sky colour above and the strip colour below
+  if (offY > 0) {
+    ctx.fillStyle = '#0e1838';
+    ctx.fillRect(offX, 0, WORLD_W * scale, offY + 1);
+    ctx.fillStyle = '#0b1228';
+    ctx.fillRect(offX, screenH - offY - 1, WORLD_W * scale, offY + 1);
+  }
 
   // From here on, draw in game units (scaled and centred on screen)
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
 
-  // Sky and ground
-  const sky = ctx.createLinearGradient(0, 0, 0, WORLD_H);
-  sky.addColorStop(0, '#16284d');
-  sky.addColorStop(1, '#1f3d5c');
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-  ctx.fillStyle = '#2f5d3a';
-  ctx.fillRect(0, FIELD_H - 30, WORLD_W, 30);
+  // Nothing may be drawn outside the game area
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, WORLD_W, WORLD_H);
+  ctx.clip();
+
+  // Sky, hills, trees and grass (one ready-made picture), then the drifting clouds
+  ctx.drawImage(bgCanvas, 0, 0, WORLD_W, WORLD_H);
+  for (const c of clouds) {
+    ctx.globalAlpha = c.alpha;
+    stamp(sprites.cloud, c.x, c.y, 0, c.size, c.size);
+  }
+  ctx.globalAlpha = 1;
+
+  // Screen shake: everything that moves is nudged by a few units, less and less until it stops
+  ctx.save();
+  if (shakeTime > 0) {
+    const strength = SHAKE_SIZE * (shakeTime / SHAKE_TIME);
+    ctx.translate((Math.random() * 2 - 1) * strength, (Math.random() * 2 - 1) * strength);
+  }
 
   // Falling items
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = ITEM_SIZE + 'px system-ui, sans-serif';
-  ctx.fillStyle = '#ffffff';
-  for (const it of items) ctx.fillText(it.symbol, it.x, it.y);
+  for (const it of items) drawItem(it);
 
   drawBasket();
+  drawBlast();
+  drawParticles();
+  ctx.restore();                                 // end of the shaken part
+
   drawControlZone();
 
-  // Floating text
+  // All the words on the canvas are centred on the point they are drawn at
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Bright flash when a bomb goes off
+  if (flashTime > 0) {
+    ctx.fillStyle = 'rgba(255,236,190,' + (0.4 * flashTime / FLASH_TIME).toFixed(3) + ')';
+    ctx.fillRect(0, 0, WORLD_W, FIELD_H);
+  }
+
+  // Floating text: pops up a little bigger, drifts up and fades
   for (const e of effects) {
-    ctx.globalAlpha = 1 - e.t / e.life;
+    const part = e.t / e.life;
+    const size = 18 + 6 * Math.max(0, 1 - part * 4);
+    ctx.globalAlpha = 1 - part;
+    ctx.font = '800 ' + size.toFixed(1) + 'px system-ui, sans-serif';
+    ctx.lineWidth = 3.5;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(11,18,32,0.75)';     // dark outline keeps it readable over anything
+    ctx.strokeText(e.text, e.x, e.y - 40 * part);
     ctx.fillStyle = e.color;
-    ctx.font = '700 18px system-ui, sans-serif';
-    ctx.fillText(e.text, e.x, e.y - 40 * (e.t / e.life));
+    ctx.fillText(e.text, e.x, e.y - 40 * part);
     ctx.globalAlpha = 1;
   }
 
-  // Messages
-  let text = null;
-  if (screen === 'title')      text = ['Fruit Catch', 'Slide in the bottom strip to move', 'Catch the fruit, avoid the bombs', 'Tap to start'];
-  else if (screen === 'clear') text = ['Level ' + level + ' clear!', 'Tap for level ' + (level + 1)];
-  else if (screen === 'won')   text = ['You win!', 'Score ' + score, 'Tap to play again'];
-  else if (screen === 'over')  text = ['Game over', 'Tap to retry level ' + level];
-  if (text) {
-    ctx.fillStyle = 'rgba(11,18,32,0.78)';
-    ctx.fillRect(0, 0, WORLD_W, FIELD_H);
-    ctx.fillStyle = '#ffffff';
-    const gap = 32;
-    const top = FIELD_H / 2 - (text.length - 1) * gap / 2;
-    for (let i = 0; i < text.length; i++) {
-      ctx.font = i === 0 ? '700 28px system-ui, sans-serif' : '500 17px system-ui, sans-serif';
-      ctx.fillText(text[i], WORLD_W / 2, top + i * gap);
+  drawMessage();
+  ctx.restore();                                 // end of "nothing outside the game area"
+
+  // The strip of extra sky above the game area gets the same flash and the same dimming as the field,
+  // so no edge shows between them
+  if (offY > 0) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (flashTime > 0) {
+      ctx.fillStyle = 'rgba(255,236,190,' + (0.4 * flashTime / FLASH_TIME).toFixed(3) + ')';
+      ctx.fillRect(offX, 0, WORLD_W * scale, offY + 0.5);
     }
+    if (screen !== 'play') {
+      ctx.fillStyle = 'rgba(11,18,32,0.6)';
+      ctx.fillRect(offX, 0, WORLD_W * scale, offY + 0.5);
+    }
+  }
+}
+
+// One falling item
+function drawItem(it) {
+  if (it.kind === 'fruit') {
+    stamp(sprites.fruits[it.type], it.x, it.y, it.angle);
+  } else if (it.kind === 'star') {
+    const twinkle = 1 + 0.08 * Math.sin(clock * 9 + it.x);
+    stamp(sprites.star, it.x, it.y, Math.sin(clock * 3 + it.x) * 0.25, twinkle, twinkle);
+  } else if (it.kind === 'heart') {
+    const beat = 1 + 0.1 * Math.sin(clock * 8);
+    stamp(sprites.heart, it.x, it.y, 0, beat, beat);
+  } else {
+    // Bomb: it rocks from side to side, with a flickering spark on the end of the fuse
+    const rock = Math.sin(clock * 5 + it.x) * 0.2;
+    stamp(sprites.bomb, it.x, it.y, rock);
+    const k = ITEM_SIZE / 34;
+    const sparkX = it.x + (FUSE_TIP_X * Math.cos(rock) - FUSE_TIP_Y * Math.sin(rock)) * k;
+    const sparkY = it.y + (FUSE_TIP_X * Math.sin(rock) + FUSE_TIP_Y * Math.cos(rock)) * k;
+    drawSpark(sparkX, sparkY);
+  }
+}
+
+// The lit end of the fuse: a flickering dot with a few short rays
+function drawSpark(x, y) {
+  const r = 2.6 + Math.random() * 1.6;
+  ctx.strokeStyle = '#ffb347';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const a = Math.random() * Math.PI * 2, len = r + 2 + Math.random() * 3;
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
+  }
+  ctx.stroke();
+  ctx.fillStyle = '#ffd54a';
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(x, y, r * 0.45, 0, Math.PI * 2); ctx.fill();
+}
+
+// The growing, fading fireball of a bomb
+function drawBlast() {
+  if (!blast) return;
+  const part = blast.t / BLAST_TIME;
+  ctx.globalAlpha = 0.75 * (1 - part);
+  ctx.fillStyle = '#ff8a3d';
+  ctx.beginPath(); ctx.arc(blast.x, blast.y, 14 + 62 * part, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffe9a6';
+  ctx.beginPath(); ctx.arc(blast.x, blast.y, 8 + 36 * part, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const part = p.t / p.life;
+    ctx.globalAlpha = part < 0.7 ? 1 : (1 - part) / 0.3;         // fade out over the last part of its life
+    ctx.fillStyle = p.color;
+    if (p.shape === 'paper') {
+      // Confetti: a little rectangle that looks like it flutters because its width keeps changing
+      const w = p.size * Math.abs(Math.cos(p.t * p.flutter)) + 1;
+      ctx.fillRect(p.x - w / 2, p.y - p.size / 2, w, p.size * 0.7);
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * (1 - part * 0.5), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Title, level clear, win and game over messages, on a rounded card
+function drawMessage() {
+  let text = null, titleColor = '#ffd166';
+  if (screen === 'title')      text = ['Fruit Catch', 'Slide in the bottom strip to move', 'Catch the fruit, avoid the bombs', 'Tap to start'];
+  else if (screen === 'clear') { text = ['Level ' + level + ' clear!', 'Level bonus +' + LEVEL_BONUS * level, 'Tap for level ' + (level + 1)]; titleColor = '#7be495'; }
+  else if (screen === 'won')   text = ['You win!', 'Score ' + score, 'Tap to play again'];
+  else if (screen === 'over')  { text = ['Game over', 'Tap to retry level ' + level]; titleColor = '#ff6b6b'; }
+  if (!text) return;
+
+  // Dim the field a little so the card stands out
+  ctx.fillStyle = 'rgba(11,18,32,0.6)';
+  ctx.fillRect(0, 0, WORLD_W, FIELD_H);
+
+  // The card
+  const gap = 30, artH = 56;
+  const cardW = 308, cardH = artH + 58 + (text.length - 1) * gap + 14;
+  const cardX = (WORLD_W - cardW) / 2, cardY = (FIELD_H - cardH) / 2;
+  ctx.fillStyle = 'rgba(17,27,58,0.94)';
+  roundedBox(ctx, cardX, cardY, cardW, cardH, 20);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // A row of little pictures at the top of the card, gently bobbing
+  const artY = cardY + 38;
+  let art = [];
+  if (screen === 'title')      art = sprites.fruits.slice(0, 5);
+  else if (screen === 'clear') art = [sprites.star, sprites.star, sprites.star];
+  else if (screen === 'won')   art = [sprites.star, sprites.fruits[0], sprites.heart, sprites.fruits[4 % sprites.fruits.length], sprites.star];
+  else                         art = [sprites.bomb];
+  const spacing = 46;
+  for (let i = 0; i < art.length; i++) {
+    const x = WORLD_W / 2 + (i - (art.length - 1) / 2) * spacing;
+    const bob = Math.sin(clock * 3 + i * 0.9) * 3;
+    stamp(art[i], x, artY + bob, Math.sin(clock * 2 + i) * 0.12);
+  }
+
+  // The words: big title, plain middle lines, and a pulsing last line ("Tap to ...")
+  const top = cardY + artH + 34;
+  for (let i = 0; i < text.length; i++) {
+    const y = top + i * gap + (i === 0 ? 0 : 6);             // a little extra room under the title
+    if (i === 0) {
+      ctx.font = '800 30px system-ui, sans-serif';
+      ctx.fillStyle = titleColor;
+    } else if (i === text.length - 1) {
+      const pulse = 0.5 + 0.5 * Math.sin(clock * 4);
+      ctx.font = '700 ' + (17 + pulse).toFixed(2) + 'px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,' + (0.55 + 0.45 * pulse).toFixed(3) + ')';
+    } else {
+      ctx.font = '500 16px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.88)';
+    }
+    ctx.fillText(text[i], WORLD_W / 2, y);
   }
 }
 
 // The finger strip at the bottom (drawn over the items so they disappear behind it)
 function drawControlZone() {
-  ctx.fillStyle = '#0e1730';
-  ctx.fillRect(0, FIELD_H, WORLD_W, CONTROL_ZONE);
-  ctx.fillStyle = 'rgba(255,255,255,0.12)';
-  ctx.fillRect(0, FIELD_H, WORLD_W, 1);
+  ctx.drawImage(zoneCanvas, 0, FIELD_H, WORLD_W, CONTROL_ZONE);
 
   // Small marker showing where the basket is
-  ctx.fillStyle = 'rgba(224,169,109,0.4)';
-  ctx.beginPath();
-  ctx.arc(basketX, FIELD_H + CONTROL_ZONE / 2 - 6, 20, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = 'rgba(255,255,255,0.45)';
-  ctx.font = '500 13px system-ui, sans-serif';
-  ctx.fillText('\u25C0  slide here  \u25B6', WORLD_W / 2, WORLD_H - 14);
+  stamp(sprites.knob, basketX, FIELD_H + CONTROL_ZONE / 2 - 6);
 }
 
 function drawBasket() {
-  const x = basketX, y = BASKET_Y, w = BASKET_W, h = BASKET_H;
-  // Body: wider at the top than the bottom
-  ctx.fillStyle = '#b97a45';
+  const x = basketX, y = BASKET_Y, h = BASKET_H;
+
+  // Soft shadow on the grass under the basket
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
   ctx.beginPath();
-  ctx.moveTo(x - w / 2, y);
-  ctx.lineTo(x + w / 2, y);
-  ctx.lineTo(x + w / 2 - 10, y + h);
-  ctx.lineTo(x - w / 2 + 10, y + h);
-  ctx.closePath();
+  ctx.ellipse(x, y + h + 5, BASKET_W * 0.42, 4, 0, 0, Math.PI * 2);
   ctx.fill();
-  // Weave lines
-  ctx.strokeStyle = '#8a5a3c';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  for (let i = 1; i < 3; i++) {
-    ctx.moveTo(x - w / 2 + i * 3.3, y + i * h / 3);
-    ctx.lineTo(x + w / 2 - i * 3.3, y + i * h / 3);
+
+  // Just after a catch the basket squashes down a little and springs back
+  const dip = squashTime > 0 ? Math.sin(Math.PI * (1 - squashTime / SQUASH_TIME)) : 0;
+  const stretchX = 1 + 0.10 * dip, stretchY = 1 - 0.16 * dip;
+
+  // The last few fruit caught peek out over the rim (drawn first so the basket covers their lower half)
+  const rimY = y + h * (1 - stretchY);           // the rim moves down while the basket is squashed
+  for (let i = 0; i < basketFruit.length; i++) {
+    const side = (i - (basketFruit.length - 1) / 2) * 22;
+    stamp(sprites.fruits[basketFruit[i]], x + side, rimY - 3, side * 0.012, 0.62, 0.62);
   }
-  ctx.stroke();
-  // Rim
-  ctx.fillStyle = '#e0a96d';
-  ctx.fillRect(x - w / 2 - 3, y - 4, w + 6, 8);
+
+  // The basket itself, squashed from its bottom edge
+  ctx.save();
+  ctx.translate(x, y + h);
+  ctx.scale(stretchX, stretchY);
+  ctx.drawImage(sprites.basket.canvas, -sprites.basket.width / 2, -(h + 10), sprites.basket.width, sprites.basket.height);
+  ctx.restore();
 }
 
 // ---------- Fit the game area to the screen ----------
@@ -362,6 +1530,11 @@ function resize() {
   scale = Math.min(screenW / WORLD_W, screenH / WORLD_H);
   offX = (screenW - WORLD_W * scale) / 2;
   offY = (screenH - WORLD_H * scale) / 2;
+
+  // The ready-made pictures are redrawn at the new size so they stay sharp
+  buildSprites();
+  buildBackground();
+  buildControlZone();
 }
 
 // ---------- Input: drag to move the basket ----------

@@ -35,15 +35,35 @@
     justify-content: space-between;
     padding: 0 22px 10px;
     background: #0e1730;
-    border-top: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(#111c3a, #0b1328);
+    border-top: 1px solid rgba(255,255,255,0.10);
+    box-shadow: 0 -6px 14px rgba(0,0,0,0.35);
   }
+
+  /* Joystick: a sunken dish with a shiny knob (same size and place as before) */
   #joy {
     position: relative;
     width: 116px;
     height: 116px;
     border-radius: 50%;
     background: #1c2742;
+    background: radial-gradient(circle at 50% 40%, #24335a 0%, #18223d 70%, #121a30 100%);
+    box-shadow: inset 0 4px 10px rgba(0,0,0,0.55), 0 0 0 2px rgba(255,255,255,0.08), 0 1px 0 3px rgba(0,0,0,0.25);
     touch-action: none;
+  }
+  /* Four small dots on the dish that hint at up, down, left and right */
+  #joy::before {
+    content: '';
+    position: absolute;
+    left: 55px;
+    top: 55px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: transparent;
+    box-shadow: 0 -44px 0 rgba(255,255,255,0.22), 0 44px 0 rgba(255,255,255,0.22),
+                -44px 0 0 rgba(255,255,255,0.22), 44px 0 0 rgba(255,255,255,0.22);
+    pointer-events: none;
   }
   #knob {
     position: absolute;
@@ -53,8 +73,12 @@
     height: 48px;
     border-radius: 50%;
     background: #4dd4ac;
+    background: radial-gradient(circle at 35% 30%, #c9fff0 0%, #4dd4ac 45%, #1f8f77 100%);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.5), inset 0 -3px 0 rgba(0,0,0,0.18);
     pointer-events: none;
   }
+
+  /* Skill buttons: round, shiny, with a thick bottom edge like real buttons */
   #skills { display: flex; gap: 14px; }
   #skills button {
     width: 72px;
@@ -62,17 +86,55 @@
     border: 0;
     border-radius: 50%;
     color: #0b1220;
+    font-family: inherit;
     font-size: 15px;
     font-weight: 700;
+    font-variant-numeric: tabular-nums;
     touch-action: none;
+    -webkit-tap-highlight-color: transparent;
   }
-  #btnBlast { background: #f4d35e; }
-  #btnHeal  { background: #4dd4ac; }
+  #btnBlast {
+    background: #f4d35e;
+    background: radial-gradient(circle at 35% 28%, #fff6c4 0%, #f4d35e 48%, #cf9f1c 100%);
+    box-shadow: 0 4px 0 #8a6a10, 0 7px 10px rgba(0,0,0,0.45), inset 0 2px 0 rgba(255,255,255,0.55);
+  }
+  #btnHeal {
+    background: #4dd4ac;
+    background: radial-gradient(circle at 35% 28%, #c9fff0 0%, #4dd4ac 48%, #1f8f77 100%);
+    box-shadow: 0 4px 0 #14614f, 0 7px 10px rgba(0,0,0,0.45), inset 0 2px 0 rgba(255,255,255,0.55);
+  }
+  #skills button:active { transform: translateY(2px); }
+  /* While a skill is cooling down the button goes dark and shows the seconds left.
+     The lighter slice shrinks as the skill gets ready (--left = percent still to wait). */
   #skills button.cooling {
     background: #1c2742;
-    color: rgba(255,255,255,0.7);
+    background: conic-gradient(#3a4c7a calc(var(--left, 100) * 1%), #1c2742 0);
+    box-shadow: 0 4px 0 #0c1224, 0 7px 10px rgba(0,0,0,0.45), inset 0 0 0 3px rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.8);
     font-size: 22px;
   }
+
+  /* Sound on/off button: top right corner, far away from the thumbs */
+  #sound {
+    position: fixed;
+    top: 8px;
+    top: calc(8px + env(safe-area-inset-top, 0px));
+    right: 8px;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.10);
+    color: #fff;
+    font-size: 18px;
+    line-height: 38px;
+    text-align: center;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    z-index: 5;
+  }
+  #sound.off { opacity: .45; }
 </style>
 </head>
 <body>
@@ -86,6 +148,7 @@
     </div>
   </div>
 </div>
+<button id="sound" aria-label="Sound on or off"></button>
 
 <script>
 // =====================================================
@@ -93,6 +156,10 @@
 // You = green hero at the bottom. Destroy the red tower to win.
 // Joystick moves, hero attacks automatically, two skills with cooldowns.
 // Keyboard (for laptop testing): WASD/arrows move, J = Blast, K = Heal, Space = start
+//
+// Graphics: the heroes, minions, towers and the ground are painted ONCE onto hidden
+// canvases ("sprites") and then stamped onto the screen every frame, which is fast on phones.
+// Sound: every sound is made by code (no sound files). The speaker button (top right) turns it on/off.
 // =====================================================
 
 // ---------- Settings (change these to experiment) ----------
@@ -120,6 +187,16 @@ const SPAWN = [{ x: 180, y: 612 }, { x: 180, y: 28 }];
 const TOWER = [{ x: 180, y: 500 }, { x: 180, y: 140 }];
 const TEAM_COLOR = ['#4dd4ac', '#ff6b6b'];
 
+// Looks and sound (these change nothing about how the game plays)
+const TEAM_LIGHT = ['#b6f7e2', '#ffc2b8'];   // bright shade of each team colour (highlights)
+const TEAM_DARK  = ['#1f8f77', '#b33a3a'];   // dark shade of each team colour (shadows)
+const SOUND_VOLUME = 0.25;       // 0 = silent, 1 = very loud
+const MAX_PARTICLES = 150;       // most sparks/puffs/confetti alive at once (keeps cheap phones fast)
+const MINION_DRAW_SCALE = 0.72;  // minions are drawn as smaller copies of the hero drawing
+const FLASH_SECONDS = 0.12;      // how long a unit flashes white after being hit
+const SHOW_DAMAGE_FROM = 20;     // hits smaller than this do not show a floating number (less clutter)
+const CONFETTI_COLORS = ['#f4d35e', '#4dd4ac', '#ff6b6b', '#7aa7ff', '#ffffff', '#ff9ad5'];
+
 // ---------- Page elements ----------
 const stage  = document.getElementById('stage');
 const canvas = document.getElementById('game');
@@ -133,17 +210,227 @@ const btnHeal  = document.getElementById('btnHeal');
 let state = 'ready';             // 'ready' | 'playing' | 'over'
 let resultText = '';
 let units = [];                  // every hero, minion and tower
-let effects = [];                // short-lived attack lines and skill rings
+let effects = [];                // short-lived shots, slashes and skill rings
 let player, enemyHero, towers;
 let waveTimer = 0;
 let blastCd = 0, healCd = 0;     // your skill cooldowns in seconds
 
+// Extra "juice" (looks only)
+let particles = [];              // sparks, smoke puffs, stone chips, confetti
+let floaters = [];               // floating damage / heal numbers
+let shakeTime = 0, shakeLife = 0, shakePower = 0;   // screen shake after big hits
+let uiTime = 0;                  // keeps counting up, used for pulsing text and waving flags
+let overTime = 0;                // seconds since the game ended (end screen fades in)
+
 // Screen fitting
 let dpr = 1, scale = 1, offX = 0, offY = 0, screenW = 0, screenH = 0;
+
+// Pre-drawn pictures (built in buildSprites, rebuilt when the screen size changes)
+let bgSprite = null;             // the ground: grass, path and the two bases
+let sprites = null;              // heroes, minions, towers and rubble
 
 // Input
 const joy = { x: 0, y: 0 };      // joystick direction, each value from -1 to 1
 const keys = {};
+
+// ---------- Sound ----------
+// All sounds are made by code (short notes), so there are no sound files to upload.
+// Phones only allow sound after a touch, so the sound engine starts on the first touch.
+// The on/off choice is remembered, and is shared by all the games on this site.
+const btnSound = document.getElementById('sound');
+let audio = null;                // the sound engine (created on first touch)
+let muted = false;
+try { muted = localStorage.getItem('gamesMuted') === '1'; } catch (e) { /* storage blocked: start with sound on */ }
+
+function showSoundButton() {
+  btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
+  btnSound.classList.toggle('off', muted);
+}
+showSoundButton();
+
+function startAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (e) { audio = null; }                                  // no sound support: the game still works
+}
+// Different phones accept different kinds of touch for this, so listen for all of them
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, startAudio, true);
+}
+
+// Play one note.
+//   freq  = pitch in Hz (higher number = higher note)
+//   dur   = length in seconds
+//   type  = 'sine' (soft), 'triangle' (round), 'square' (retro), 'sawtooth' (buzzy)
+//   delay = seconds to wait before it starts (used to build little tunes)
+//   slide = pitch to glide to by the end (optional)
+//   volume = 0 to 1, share of SOUND_VOLUME
+function beep(freq, dur, type = 'sine', delay = 0, slide = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME * volume, t + 0.01);   // quick fade in (no click)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);                   // fade out
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// Play a burst of hiss (for explosions, crashes, whooshes).
+//   dur = length in seconds, tone = how bright it is in Hz (300 = deep boom, 4000 = sharp crack)
+let noiseBuffer = null;
+function noise(dur, tone = 1000, delay = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  if (!noiseBuffer) {                                            // one second of random hiss, made once
+    noiseBuffer = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  const t = audio.currentTime + delay;
+  const src = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const gain = audio.createGain();
+  src.buffer = noiseBuffer;
+  src.loop = true;
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(tone, t);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(60, tone * 0.25), t + dur);
+  gain.gain.setValueAtTime(SOUND_VOLUME * volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(filter).connect(gain).connect(audio.destination);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+}
+
+// Short buzz on Android phones (iPhone does not allow this from a web page)
+function buzz(ms) {
+  if (!muted && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
+}
+
+btnSound.addEventListener('click', () => {
+  muted = !muted;
+  try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {}
+  showSoundButton();
+  startAudio();
+  if (!muted) setTimeout(() => beep(740, 0.05, 'sine', 0, 0, 0.6), 60);   // small note to confirm sound is on
+});
+
+// Some sounds can happen many times per second (a big fight). tooSoon() lets a sound
+// play only if the same sound has not played in the last 'gapMs' milliseconds.
+const lastPlayed = {};
+function tooSoon(name, gapMs) {
+  const now = performance.now();
+  if (now - (lastPlayed[name] || 0) < gapMs) return true;
+  lastPlayed[name] = now;
+  return false;
+}
+
+// The game's sounds: one small function per event
+const sfx = {
+  // Game starts: three quick rising notes
+  start() {
+    beep(392, 0.08, 'triangle', 0, 0, 0.7);
+    beep(523, 0.08, 'triangle', 0.09, 0, 0.7);
+    beep(659, 0.12, 'triangle', 0.18, 0, 0.7);
+  },
+  // Your hero throws a bolt (quiet, it happens a lot)
+  heroShot() {
+    if (tooSoon('heroShot', 80)) return;
+    beep(700, 0.06, 'triangle', 0, 1000, 0.4);
+  },
+  // The enemy hero throws a bolt (lower, so you can tell them apart)
+  enemyShot() {
+    if (tooSoon('enemyShot', 80)) return;
+    beep(480, 0.06, 'triangle', 0, 340, 0.3);
+  },
+  // Minions poking each other (very quiet tick)
+  minionHit() {
+    if (tooSoon('minionHit', 140)) return;
+    beep(240, 0.035, 'square', 0, 170, 0.18);
+  },
+  // A tower fires
+  towerShot() {
+    if (tooSoon('towerShot', 120)) return;
+    beep(300, 0.1, 'sawtooth', 0, 140, 0.3);
+  },
+  // A tower takes damage: dull thud
+  towerHit() {
+    if (tooSoon('towerHit', 150)) return;
+    noise(0.07, 700, 0, 0.35);
+    beep(120, 0.07, 'triangle', 0, 80, 0.4);
+  },
+  // A new wave of minions marches out
+  spawn() {
+    beep(440, 0.06, 'triangle', 0, 0, 0.4);
+    beep(587, 0.08, 'triangle', 0.07, 0, 0.4);
+  },
+  // A minion is defeated: little falling "pew" with a puff
+  minionDeath() {
+    if (tooSoon('minionDeath', 80)) return;
+    beep(330, 0.12, 'triangle', 0, 110, 0.4);
+    noise(0.08, 1500, 0, 0.2);
+  },
+  // The enemy hero is defeated: happy double note
+  enemyHeroDown() {
+    beep(523, 0.08, 'square', 0, 0, 0.5);
+    beep(784, 0.14, 'square', 0.08, 0, 0.5);
+    noise(0.15, 1200, 0, 0.3);
+  },
+  // Your hero is defeated: three falling notes
+  playerDown() {
+    beep(392, 0.12, 'triangle', 0, 0, 0.7);
+    beep(311, 0.12, 'triangle', 0.12, 0, 0.7);
+    beep(233, 0.22, 'triangle', 0.24, 0, 0.7);
+    buzz(30);
+  },
+  // Your hero comes back
+  respawn() {
+    beep(330, 0.07, 'sine', 0, 0, 0.6);
+    beep(494, 0.07, 'sine', 0.07, 0, 0.6);
+    beep(659, 0.12, 'sine', 0.14, 0, 0.6);
+  },
+  // Blast skill: whoosh and a low thump
+  blast() {
+    noise(0.25, 1800, 0, 0.6);
+    beep(200, 0.2, 'sawtooth', 0, 70, 0.4);
+  },
+  // Heal skill: soft rising chime
+  heal() {
+    beep(523, 0.1, 'sine', 0, 0, 0.7);
+    beep(659, 0.1, 'sine', 0.08, 0, 0.7);
+    beep(784, 0.18, 'sine', 0.16, 0, 0.7);
+  },
+  // Skill button pressed while it is still cooling down
+  notReady() {
+    if (tooSoon('notReady', 150)) return;
+    beep(170, 0.06, 'sine', 0, 0, 0.35);
+  },
+  // A tower is destroyed: deep boom
+  towerDown() {
+    noise(0.6, 400, 0, 1);
+    noise(0.25, 2500, 0, 0.4);
+    beep(90, 0.5, 'sawtooth', 0, 40, 0.6);
+    buzz(40);
+  },
+  // Victory: short rising tune (starts after the boom)
+  win() {
+    const notes = [523, 659, 784, 1047, 784, 1047];
+    for (let i = 0; i < notes.length; i++) beep(notes[i], 0.16, 'triangle', 0.55 + i * 0.13, 0, 0.8);
+    beep(1319, 0.4, 'triangle', 0.55 + notes.length * 0.13, 0, 0.8);
+  },
+  // Defeat: short falling tune (starts after the boom)
+  lose() {
+    const notes = [392, 349, 311, 262];
+    for (let i = 0; i < notes.length; i++) beep(notes[i], 0.22, 'triangle', 0.55 + i * 0.2, 0, 0.7);
+    beep(196, 0.5, 'sine', 0.55 + notes.length * 0.2, 0, 0.8);
+  }
+};
 
 // ---------- Create units ----------
 function makeUnit(kind, team, x, y) {
@@ -154,7 +441,13 @@ function makeUnit(kind, team, x, y) {
     interval: s.interval, speed: s.speed,
     atkTimer: 0, alive: true,
     respawn: 0,                  // heroes only: seconds until respawn
-    retreat: false, blastCd: 0   // enemy hero AI only
+    retreat: false, blastCd: 0,  // enemy hero AI only
+    // Looks only (these never change how the game plays):
+    lastX: x, lastY: y,          // where it was last frame (to see if it is walking)
+    walk: 0,                     // grows while walking, picks the leg picture and the bob
+    face: 1,                     // 1 = looking right, -1 = looking left
+    flash: 0,                    // seconds of white flash left after being hit
+    punch: 0                     // 1 right after attacking, shrinks to 0 (small "pop")
   };
 }
 
@@ -164,7 +457,10 @@ function spawnWave() {
       const dx = (i - (WAVE_SIZE - 1) / 2) * 18;       // spread minions side by side
       units.push(makeUnit('minion', team, SPAWN[team].x + dx, SPAWN[team].y));
     }
+    // A soft ring on each base shows where the new minions came from
+    effects.push({ type: 'ring', x: SPAWN[team].x, y: SPAWN[team].y, radius: 34, color: TEAM_COLOR[team], t: 0, life: 0.4 });
   }
+  sfx.spawn();
 }
 
 function startGame() {
@@ -177,10 +473,15 @@ function startGame() {
   ];
   units = [towers[0], towers[1], player, enemyHero];
   effects = [];
+  particles = [];
+  floaters = [];
+  shakeTime = 0;
+  overTime = 0;
   waveTimer = 1;                 // first wave arrives after 1 second
   blastCd = 0;
   healCd = 0;
   state = 'playing';
+  sfx.start();
 }
 
 // ---------- Helpers ----------
@@ -216,10 +517,107 @@ function keepInside(u) {
 function damage(target, amount) {
   if (!target.alive) return;
   target.hp -= amount;
+  showHit(target, amount);                 // looks and sound only
   if (target.hp <= 0) {
     target.hp = 0;
     target.alive = false;
     if (target.kind === 'hero') target.respawn = RESPAWN_SECONDS;
+    showDeath(target);                     // looks and sound only
+  }
+}
+
+// ---------- Juice: particles, floating numbers, screen shake (looks only) ----------
+function rand(min, max) { return min + Math.random() * (max - min); }
+
+// Add one particle, unless there are already too many on screen
+function addParticle(p) {
+  if (particles.length >= MAX_PARTICLES) return;
+  particles.push(p);
+}
+
+// A burst of small bright sparks flying out from a point
+function spawnSparks(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = rand(0, Math.PI * 2), speed = rand(30, 90);
+    addParticle({ kind: 'spark', x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                  gravity: 0, size: rand(1.5, 2.8), color, t: 0, life: rand(0.18, 0.32) });
+  }
+}
+
+// Soft round puffs of smoke that grow and fade
+function spawnPuffs(x, y, color, count, spread) {
+  for (let i = 0; i < count; i++) {
+    const angle = rand(0, Math.PI * 2), speed = rand(8, spread);
+    addParticle({ kind: 'puff', x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 12,
+                  gravity: 0, size: rand(3, 6), color, t: 0, life: rand(0.35, 0.6) });
+  }
+}
+
+// Grey stone chips that jump up and fall back down
+function spawnStones(x, y, count, power) {
+  for (let i = 0; i < count; i++) {
+    const angle = rand(0, Math.PI * 2), speed = rand(20, power);
+    addParticle({ kind: 'stone', x: x + rand(-8, 8), y: y + rand(-14, 6),
+                  vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - power * 0.6,
+                  gravity: 260, size: rand(2, 4.5), color: Math.random() < 0.5 ? '#9aa5bd' : '#6c7893',
+                  t: 0, life: rand(0.5, 0.9) });
+  }
+}
+
+// One piece of confetti falling from the top of the battlefield
+function spawnConfetti(y) {
+  addParticle({ kind: 'confetti', x: rand(0, WORLD_W), y, vx: rand(-25, 25), vy: rand(60, 140),
+                gravity: 0, size: rand(4, 7), spin: rand(0, 6), spinSpeed: rand(4, 10),
+                color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+                t: 0, life: rand(3.5, 5) });
+}
+
+// A number that floats up and fades (damage or healing)
+function addFloater(x, y, text, color) {
+  if (floaters.length >= 24) floaters.shift();          // keep the list short
+  floaters.push({ x: x + rand(-6, 6), y, text, color, t: 0, life: 0.7 });
+}
+
+// Shake the screen a little. power = how many game units, seconds = how long.
+function addShake(power, seconds) {
+  if (power < shakePower && shakeTime > 0) return;       // do not replace a bigger shake with a smaller one
+  shakePower = power;
+  shakeTime = seconds;
+  shakeLife = seconds;
+}
+
+// Called every time a unit is hit: white flash, floating number, thud for towers
+function showHit(target, amount) {
+  target.flash = FLASH_SECONDS;
+  if (amount >= SHOW_DAMAGE_FROM) {
+    const color = target.team === 0 ? '#ff9a9a' : '#ffe9a0';    // red-ish when YOUR side is hurt, gold when the enemy is
+    const top = target.kind === 'tower' ? 34 : target.r + 12;
+    addFloater(target.x, target.y - top, String(Math.round(amount)), color);
+  }
+  if (target.kind === 'tower') {
+    sfx.towerHit();
+    spawnStones(target.x, target.y - 4, 2, 45);
+  }
+  if (target === player && !tooSoon('playerHurt', 250)) buzz(10);
+}
+
+// Called when a unit is defeated: puff of smoke, or a big explosion for a tower
+function showDeath(target) {
+  if (target.kind === 'minion') {
+    spawnPuffs(target.x, target.y, TEAM_LIGHT[target.team], 5, 30);
+    sfx.minionDeath();
+  } else if (target.kind === 'hero') {
+    spawnPuffs(target.x, target.y, TEAM_LIGHT[target.team], 10, 45);
+    spawnSparks(target.x, target.y, '#ffffff', 8);
+    if (target === player) sfx.playerDown(); else sfx.enemyHeroDown();
+  } else {
+    // Tower destroyed: stones fly, smoke, sparks, a shock ring and a screen shake
+    spawnStones(target.x, target.y - 6, 26, 130);
+    spawnPuffs(target.x, target.y - 6, '#c9d2e6', 14, 70);
+    spawnSparks(target.x, target.y - 6, '#f4d35e', 18);
+    effects.push({ type: 'ring', x: target.x, y: target.y, radius: 90, color: '#ffffff', t: 0, life: 0.5 });
+    addShake(6, 0.5);
+    sfx.towerDown();
   }
 }
 
@@ -227,6 +625,9 @@ function damage(target, amount) {
 // Blast: damage every enemy around the hero (half damage to towers)
 function castBlast(u) {
   effects.push({ type: 'ring', x: u.x, y: u.y, radius: BLAST.radius, color: '#f4d35e', t: 0, life: 0.35 });
+  spawnSparks(u.x, u.y, '#f4d35e', 12);
+  addShake(2, 0.15);
+  sfx.blast();
   for (const o of units) {
     if (!o.alive || o.team === u.team) continue;
     if (dist(u, o) - o.r <= BLAST.radius) {
@@ -236,15 +637,24 @@ function castBlast(u) {
 }
 
 function playerBlast() {
-  if (state !== 'playing' || !player.alive || blastCd > 0) return;
+  if (state !== 'playing' || !player.alive) return;
+  if (blastCd > 0) { sfx.notReady(); return; }
   castBlast(player);
   blastCd = BLAST.cooldown;
 }
 
 function playerHeal() {
-  if (state !== 'playing' || !player.alive || healCd > 0) return;
+  if (state !== 'playing' || !player.alive) return;
+  if (healCd > 0) { sfx.notReady(); return; }
   player.hp = Math.min(player.maxHp, player.hp + HEAL.amount);
   effects.push({ type: 'ring', x: player.x, y: player.y, radius: 30, color: '#4dd4ac', t: 0, life: 0.45 });
+  // Little green plus signs float up, and a "+220" number
+  for (let i = 0; i < 7; i++) {
+    addParticle({ kind: 'plus', x: player.x + rand(-14, 14), y: player.y + rand(-6, 10), vx: 0, vy: rand(-45, -25),
+                  gravity: 0, size: rand(3, 5), color: '#7dffcf', t: 0, life: rand(0.5, 0.8) });
+  }
+  addFloater(player.x, player.y - 26, '+' + HEAL.amount, '#7dffcf');
+  sfx.heal();
   healCd = HEAL.cooldown;
 }
 
@@ -336,8 +746,33 @@ function updateAttack(u, dt) {
   if (!t) t = nearestEnemy(u, u.range);
   if (!t) return;
   damage(t, u.dmg);
-  effects.push({ type: 'line', x1: u.x, y1: u.y, x2: t.x, y2: t.y, color: TEAM_COLOR[u.team], t: 0, life: 0.12 });
+  showAttack(u, t);                        // looks and sound only
   u.atkTimer = u.interval;
+}
+
+// The picture and sound of one attack. The damage has already been done;
+// the flying bolt is only for show (it is very quick).
+function showAttack(u, t) {
+  u.punch = 1;
+  if (t.x > u.x + 1) u.face = 1;           // turn to look at the target
+  if (t.x < u.x - 1) u.face = -1;
+
+  if (u.kind === 'minion') {
+    // Minions hit from up close: a tiny white slash and two sparks
+    effects.push({ type: 'slash', x: (u.x + t.x) / 2, y: (u.y + t.y) / 2 - 2, color: '#ffffff', t: 0, life: 0.12 });
+    spawnSparks((u.x + t.x) / 2, (u.y + t.y) / 2 - 2, TEAM_LIGHT[u.team], 2);
+    sfx.minionHit();
+  } else if (u.kind === 'tower') {
+    // Towers fire a big glowing ball from the top of the tower
+    effects.push({ type: 'shot', x1: u.x, y1: u.y - 22, x2: t.x, y2: t.y - 2, color: TEAM_COLOR[u.team],
+                   light: TEAM_LIGHT[u.team], size: 4, t: 0, life: 0.16, sparks: 5 });
+    sfx.towerShot();
+  } else {
+    // Heroes throw a smaller, faster bolt
+    effects.push({ type: 'shot', x1: u.x + u.face * 9, y1: u.y - 5, x2: t.x, y2: t.y - 2, color: TEAM_COLOR[u.team],
+                   light: TEAM_LIGHT[u.team], size: 2.8, t: 0, life: 0.12, sparks: 4 });
+    if (u === player) sfx.heroShot(); else sfx.enemyShot();
+  }
 }
 
 // Heroes heal slowly everywhere and quickly on their own base
@@ -373,11 +808,67 @@ function separateUnits() {
   }
 }
 
+// ---------- Update the looks (runs in every state, never changes the game rules) ----------
+function updateVisuals(dt) {
+  uiTime += dt;
+
+  // Effects get older; a flying shot makes sparks at the moment it lands
+  for (const e of effects) {
+    e.t += dt;
+    if (e.type === 'shot' && e.t >= e.life) spawnSparks(e.x2, e.y2, e.light, e.sparks);
+  }
+  effects = effects.filter(e => e.t < e.life);
+
+  // Particles fly, fall and fade
+  for (const p of particles) {
+    p.t += dt;
+    p.vy += p.gravity * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    if (p.kind === 'confetti') p.spin += p.spinSpeed * dt;
+  }
+  particles = particles.filter(p => p.t < p.life && p.y < WORLD_H + 20);
+
+  // Floating numbers drift up
+  for (const f of floaters) { f.t += dt; f.y -= 28 * dt; }
+  floaters = floaters.filter(f => f.t < f.life);
+
+  // Hit flash and attack "pop" wear off
+  for (const u of units) {
+    if (u.flash > 0) u.flash = Math.max(0, u.flash - dt);
+    if (u.punch > 0) u.punch = Math.max(0, u.punch - dt * 6);
+  }
+
+  // Screen shake runs down
+  if (shakeTime > 0) shakeTime = Math.max(0, shakeTime - dt);
+
+  // End screen: count the time, and keep confetti falling after a victory
+  if (state === 'over') {
+    overTime += dt;
+    if (resultText === 'Victory!' && overTime > 0.5 && particles.length < 110) spawnConfetti(-10);
+  }
+}
+
+// Work out which units walked this frame, so their legs move and they face the right way
+function updateWalking() {
+  for (const u of units) {
+    if (u.kind === 'tower') continue;
+    const dx = u.x - u.lastX, dy = u.y - u.lastY;
+    const moved = Math.hypot(dx, dy);
+    if (u.alive && moved > 0.05 && moved < 30) {
+      u.walk += moved * 0.16;
+      if (dx > 0.15) u.face = 1;
+      if (dx < -0.15) u.face = -1;
+    }
+    u.lastX = u.x;
+    u.lastY = u.y;
+  }
+}
+
 // ---------- Update: move the whole game forward by dt seconds ----------
 function update(dt) {
-  // Effects fade out in every state
-  for (const e of effects) e.t += dt;
-  effects = effects.filter(e => e.t < e.life);
+  // Effects, particles and other looks keep moving in every state
+  updateVisuals(dt);
 
   if (state !== 'playing') return;
 
@@ -399,6 +890,11 @@ function update(dt) {
       h.retreat = false;
       h.x = SPAWN[h.team].x;
       h.y = SPAWN[h.team].y + (h.team === 0 ? -40 : 40);
+      // Looks and sound: a ring where the hero appears
+      h.lastX = h.x;
+      h.lastY = h.y;
+      effects.push({ type: 'ring', x: h.x, y: h.y, radius: 28, color: TEAM_COLOR[h.team], t: 0, life: 0.4 });
+      if (h === player) sfx.respawn();
     }
   }
 
@@ -415,6 +911,7 @@ function update(dt) {
   for (const u of units) {
     if (u.alive && u.kind !== 'tower') keepInside(u);
   }
+  updateWalking();
   for (const u of units) {
     if (u.alive) updateAttack(u, dt);
   }
@@ -423,8 +920,498 @@ function update(dt) {
   units = units.filter(u => u.alive || u.kind !== 'minion');
 
   // Win or lose
-  if (!towers[1].alive) { state = 'over'; resultText = 'Victory!'; }
-  else if (!towers[0].alive) { state = 'over'; resultText = 'Defeat'; }
+  if (!towers[1].alive) { state = 'over'; resultText = 'Victory!'; endGame(true); }
+  else if (!towers[0].alive) { state = 'over'; resultText = 'Defeat'; endGame(false); }
+}
+
+// Looks and sound for the end of the game
+function endGame(won) {
+  overTime = 0;
+  if (won) {
+    sfx.win();
+    for (let i = 0; i < 70; i++) spawnConfetti(rand(-260, -10));     // first shower of confetti
+  } else {
+    sfx.lose();
+  }
+}
+
+// ---------- Painting helpers ----------
+// Trace a rectangle with rounded corners (then call fill() or stroke())
+function roundRectPath(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+}
+
+// Make a hidden canvas of w x h game units, sharp for this screen, and paint on it once.
+// Returns the picture plus its size in game units.
+function makeSprite(w, h, paint) {
+  const pixelsPerUnit = Math.max(0.1, dpr * scale);
+  const c = document.createElement('canvas');
+  c.width  = Math.max(1, Math.ceil(w * pixelsPerUnit));
+  c.height = Math.max(1, Math.ceil(h * pixelsPerUnit));
+  const g = c.getContext('2d');
+  g.scale(c.width / w, c.height / h);
+  paint(g);
+  return { canvas: c, w, h };
+}
+
+// An all-white copy of a sprite (drawn on top for a moment when a unit is hit)
+function makeWhiteCopy(sprite) {
+  const c = document.createElement('canvas');
+  c.width = sprite.canvas.width;
+  c.height = sprite.canvas.height;
+  const g = c.getContext('2d');
+  g.drawImage(sprite.canvas, 0, 0);
+  g.globalCompositeOperation = 'source-in';       // keep the shape, replace the colours
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, c.width, c.height);
+  return { canvas: c, w: sprite.w, h: sprite.h };
+}
+
+// A simple repeatable "random" so the grass looks the same every time it is rebuilt
+let seed = 1;
+function seededRandom() {
+  seed = (seed * 16807) % 2147483647;
+  return seed / 2147483647;
+}
+
+// ---------- Paint the sprites (done once, and again if the screen size changes) ----------
+
+// Paint one little character, centred on (0,0). Hero size; minions are a scaled-down copy.
+//   team 0 = green with a gold crest, team 1 = red with horns (different shapes, not only colours)
+//   legFrame 0 or 1 = which foot is lifted
+function paintCharacter(g, team, kind, legFrame) {
+  const main = TEAM_COLOR[team], light = TEAM_LIGHT[team], dark = TEAM_DARK[team];
+  const outline = 'rgba(8,12,26,0.75)';
+  const skinLight = '#ffe4c4', skinDark = '#e2ad7c';
+
+  // Cape (heroes only), behind everything
+  if (kind === 'hero') {
+    g.fillStyle = dark;
+    g.beginPath();
+    g.moveTo(-8, -1);
+    g.quadraticCurveTo(-13, 6, -11, 12);
+    g.lineTo(11, 12);
+    g.quadraticCurveTo(13, 6, 8, -1);
+    g.closePath();
+    g.fill();
+  }
+
+  // Feet: one is lifted in each leg frame
+  g.fillStyle = '#141b30';
+  g.beginPath();
+  g.ellipse(-4, 11 - (legFrame === 0 ? 2 : 0), 3.4, 2.3, 0, 0, Math.PI * 2);
+  g.ellipse( 4, 11 - (legFrame === 1 ? 2 : 0), 3.4, 2.3, 0, 0, Math.PI * 2);
+  g.fill();
+
+  // Body: rounded tunic in the team colour, lighter at the top
+  const bodyPaint = g.createLinearGradient(0, -3, 0, 11);
+  bodyPaint.addColorStop(0, light);
+  bodyPaint.addColorStop(0.45, main);
+  bodyPaint.addColorStop(1, dark);
+  g.fillStyle = bodyPaint;
+  roundRectPath(g, -7, -2, 14, 13, 5);
+  g.fill();
+  g.strokeStyle = outline;
+  g.lineWidth = 1;
+  g.stroke();
+
+  // Belt with a gold buckle
+  g.fillStyle = 'rgba(8,12,26,0.6)';
+  g.fillRect(-6.5, 5, 13, 2);
+  g.fillStyle = '#f4d35e';
+  g.fillRect(-1.2, 4.6, 2.4, 2.8);
+
+  // Weapon in the right hand: heroes carry a sword, minions a spear
+  g.lineCap = 'round';
+  if (kind === 'hero') {
+    g.strokeStyle = outline;
+    g.lineWidth = 4;
+    g.beginPath(); g.moveTo(10, 2); g.lineTo(15, -12); g.stroke();
+    g.strokeStyle = '#eef3fb';
+    g.lineWidth = 2.4;
+    g.beginPath(); g.moveTo(10, 2); g.lineTo(15, -12); g.stroke();
+    g.strokeStyle = '#f4d35e';                       // gold cross-guard
+    g.lineWidth = 2;
+    g.beginPath(); g.moveTo(7.5, 0.5); g.lineTo(13, 2.5); g.stroke();
+  } else {
+    g.strokeStyle = '#8a5a2b';
+    g.lineWidth = 2;
+    g.beginPath(); g.moveTo(9.5, 10); g.lineTo(11, -11); g.stroke();
+    g.fillStyle = '#eef3fb';                         // spear tip
+    g.beginPath(); g.moveTo(11.3, -17); g.lineTo(14, -10.5); g.lineTo(8.4, -10.5); g.closePath(); g.fill();
+  }
+
+  // Hands
+  g.fillStyle = skinDark;
+  g.beginPath();
+  g.arc(-8.5, 3 + (legFrame === 0 ? 1 : -1), 2.6, 0, Math.PI * 2);
+  g.arc( 9.5, 3 + (legFrame === 0 ? -1 : 1), 2.6, 0, Math.PI * 2);
+  g.fill();
+
+  // Head
+  const facePaint = g.createRadialGradient(-2, -9, 1, 0, -7, 8);
+  facePaint.addColorStop(0, skinLight);
+  facePaint.addColorStop(1, skinDark);
+  g.fillStyle = facePaint;
+  g.beginPath();
+  g.arc(0, -7, 7, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = outline;
+  g.lineWidth = 1;
+  g.stroke();
+
+  // Eyes (the red team gets grumpy eyebrows)
+  g.fillStyle = '#141b30';
+  g.beginPath();
+  g.arc(-2.7, -5.5, 1.3, 0, Math.PI * 2);
+  g.arc( 2.7, -5.5, 1.3, 0, Math.PI * 2);
+  g.fill();
+  if (team === 1) {
+    g.strokeStyle = '#141b30';
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(-4.6, -8.2); g.lineTo(-1.4, -7);
+    g.moveTo( 4.6, -8.2); g.lineTo( 1.4, -7);
+    g.stroke();
+  }
+
+  // Horns for the red team (drawn before the helmet so they poke out from behind it)
+  if (team === 1) {
+    g.fillStyle = '#f1ead8';
+    g.strokeStyle = outline;
+    g.lineWidth = 0.8;
+    g.beginPath(); g.moveTo(-7, -10); g.lineTo(-11.5, -17); g.lineTo(-3.5, -13.5); g.closePath(); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo( 7, -10); g.lineTo( 11.5, -17); g.lineTo( 3.5, -13.5); g.closePath(); g.fill(); g.stroke();
+  }
+
+  // Helmet: a dome in the team colour over the top of the head
+  const helmetPaint = g.createLinearGradient(0, -15, 0, -8);
+  helmetPaint.addColorStop(0, light);
+  helmetPaint.addColorStop(1, main);
+  g.fillStyle = helmetPaint;
+  g.beginPath();
+  g.arc(0, -7.5, 7.6, Math.PI, 0);
+  g.lineTo(7.6, -8.5);
+  g.lineTo(-7.6, -8.5);
+  g.closePath();
+  g.fill();
+  g.strokeStyle = outline;
+  g.lineWidth = 1;
+  g.stroke();
+
+  // Helmet trim: heroes get a gold band; the green team also gets a crest on top
+  if (kind === 'hero') {
+    g.fillStyle = '#f4d35e';
+    g.fillRect(-7.6, -10, 15.2, 1.8);
+  }
+  if (team === 0) {
+    g.fillStyle = kind === 'hero' ? '#f4d35e' : light;
+    g.strokeStyle = outline;
+    g.lineWidth = 0.8;
+    g.beginPath();
+    g.ellipse(0, -16.5, 2.4, kind === 'hero' ? 4 : 2.6, 0, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+  }
+}
+
+// Paint a stone tower, centred on (0,0) = the middle of its base.
+// It is a round turret seen from slightly above, with a band and door in the team colour.
+function paintTower(g, team) {
+  const main = TEAM_COLOR[team], light = TEAM_LIGHT[team], dark = TEAM_DARK[team];
+  const outline = 'rgba(8,12,26,0.7)';
+
+  // Stone colour runs light on the left to dark on the right, so the tower looks round
+  const stone = g.createLinearGradient(-23, 0, 23, 0);
+  stone.addColorStop(0, '#66728e');
+  stone.addColorStop(0.3, '#b4bdd1');
+  stone.addColorStop(0.65, '#7c88a3');
+  stone.addColorStop(1, '#414c69');
+
+  // Main wall (a cylinder: straight sides and a curved bottom)
+  g.beginPath();
+  g.moveTo(-20, -9);
+  g.lineTo(-20, 16);
+  g.ellipse(0, 16, 20, 9, 0, Math.PI, 0, true);
+  g.lineTo(20, -9);
+  g.closePath();
+  g.fillStyle = stone;
+  g.fill();
+  g.strokeStyle = outline;
+  g.lineWidth = 1.2;
+  g.stroke();
+
+  // Brick lines, kept inside the wall shape
+  g.save();
+  g.clip();
+  g.strokeStyle = 'rgba(8,12,26,0.28)';
+  g.lineWidth = 0.8;
+  for (const cy of [-3, 3, 9, 15]) {
+    g.beginPath();
+    g.ellipse(0, cy, 20, 9, 0, 0, Math.PI);
+    g.stroke();
+  }
+  for (let row = 0; row < 4; row++) {
+    for (let i = -3; i <= 3; i++) {
+      const x = i * 6 + (row % 2) * 3;
+      const curve = 9 * Math.sqrt(Math.max(0, 1 - (x * x) / 400));   // how far the wall curves down at this x
+      g.beginPath();
+      g.moveTo(x, -3 + row * 6 + curve);
+      g.lineTo(x, 3 + row * 6 + curve);
+      g.stroke();
+    }
+  }
+  g.restore();
+
+  // Team colour band around the wall
+  const band = g.createLinearGradient(-20, 0, 20, 0);
+  band.addColorStop(0, main);
+  band.addColorStop(0.3, light);
+  band.addColorStop(1, dark);
+  g.beginPath();
+  g.ellipse(0, 0, 20, 9, 0, Math.PI, 0, true);
+  g.lineTo(20, 5);
+  g.ellipse(0, 5, 20, 9, 0, 0, Math.PI, false);
+  g.closePath();
+  g.fillStyle = band;
+  g.fill();
+  g.strokeStyle = outline;
+  g.lineWidth = 0.8;
+  g.stroke();
+
+  // Arched door at the bottom
+  g.beginPath();
+  g.moveTo(-5, 24.6);
+  g.lineTo(-5, 18);
+  g.arc(0, 18, 5, Math.PI, 0);
+  g.lineTo(5, 24.6);
+  g.closePath();
+  g.fillStyle = '#141b30';
+  g.fill();
+  g.strokeStyle = main;
+  g.lineWidth = 1.2;
+  g.stroke();
+
+  // Top ring (a little wider than the wall)
+  g.beginPath();
+  g.moveTo(-23, -17);
+  g.lineTo(-23, -9);
+  g.ellipse(0, -9, 23, 10, 0, Math.PI, 0, true);
+  g.lineTo(23, -17);
+  g.closePath();
+  g.fillStyle = stone;
+  g.fill();
+  g.strokeStyle = outline;
+  g.lineWidth = 1.2;
+  g.stroke();
+
+  // Flat top and the darker floor inside it
+  g.beginPath();
+  g.ellipse(0, -17, 23, 10, 0, 0, Math.PI * 2);
+  g.fillStyle = '#c3cbdc';
+  g.fill();
+  g.stroke();
+  g.beginPath();
+  g.ellipse(0, -17, 16, 6.5, 0, 0, Math.PI * 2);
+  g.fillStyle = '#4a5674';
+  g.fill();
+
+  // Stone teeth around the top: back ones first, then the front ones
+  for (const degrees of [215, 250, 290, 325, 20, 55, 90, 125, 160]) {
+    const a = degrees * Math.PI / 180;
+    const x = 23 * Math.cos(a) * 0.9, y = -17 + 10 * Math.sin(a) * 0.9;
+    roundRectPath(g, x - 4, y - 7, 8, 8, 1.5);
+    g.fillStyle = degrees > 180 ? '#8f9ab4' : '#c9d1e2';
+    g.fill();
+    g.strokeStyle = outline;
+    g.lineWidth = 1;
+    g.stroke();
+  }
+}
+
+// Paint the pile of stones left behind when a tower is destroyed
+function paintRubble(g) {
+  g.fillStyle = 'rgba(5,8,18,0.55)';                 // scorch mark on the ground
+  g.beginPath();
+  g.ellipse(0, 10, 27, 12, 0, 0, Math.PI * 2);
+  g.fill();
+  const stones = [
+    [-16, 8, 12, 9, '#6c7893'], [4, 10, 14, 9, '#7c88a3'], [-6, 2, 13, 10, '#9aa5bd'],
+    [10, 1, 10, 8, '#5d6984'], [-20, 15, 9, 6, '#8793ad'], [-2, 14, 11, 7, '#aab4c8'], [14, 14, 9, 6, '#6c7893']
+  ];
+  for (const s of stones) {
+    roundRectPath(g, s[0], s[1], s[2], s[3], 2);
+    g.fillStyle = s[4];
+    g.fill();
+    g.strokeStyle = 'rgba(8,12,26,0.7)';
+    g.lineWidth = 1;
+    g.stroke();
+  }
+  g.strokeStyle = '#8a5a2b';                         // the broken flag pole
+  g.lineWidth = 2;
+  g.lineCap = 'round';
+  g.beginPath(); g.moveTo(-4, 6); g.lineTo(8, -8); g.stroke();
+}
+
+// Paint the ground: dark grass, a stone path up the middle, and the two glowing bases
+function paintGround(g) {
+  seed = 4242;
+
+  // Grass
+  const grass = g.createLinearGradient(0, 0, 0, WORLD_H);
+  grass.addColorStop(0, '#0f2a36');
+  grass.addColorStop(0.5, '#12323a');
+  grass.addColorStop(1, '#0f2a36');
+  g.fillStyle = grass;
+  g.fillRect(0, 0, WORLD_W, WORLD_H);
+
+  // Soft lighter and darker patches so the grass is not flat
+  for (let i = 0; i < 46; i++) {
+    g.fillStyle = seededRandom() < 0.5 ? 'rgba(40,110,96,0.16)' : 'rgba(5,12,26,0.18)';
+    g.beginPath();
+    g.ellipse(seededRandom() * WORLD_W, seededRandom() * WORLD_H, 12 + seededRandom() * 26, 8 + seededRandom() * 14, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+
+  // The path (lane) up the middle, lighter in the centre where feet have worn it
+  const path = g.createLinearGradient(110, 0, 250, 0);
+  path.addColorStop(0, '#202e4e');
+  path.addColorStop(0.5, '#2e4068');
+  path.addColorStop(1, '#202e4e');
+  g.fillStyle = path;
+  g.fillRect(110, 0, 140, WORLD_H);
+
+  // Paving stones on the path
+  for (let i = 0; i < 95; i++) {
+    const w = 10 + seededRandom() * 14, h = 7 + seededRandom() * 8;
+    const x = 116 + seededRandom() * (128 - w), y = seededRandom() * WORLD_H;
+    roundRectPath(g, x, y, w, h, 3);
+    g.fillStyle = seededRandom() < 0.5 ? 'rgba(255,255,255,0.035)' : 'rgba(5,10,24,0.10)';
+    g.fill();
+    g.strokeStyle = 'rgba(160,185,235,0.07)';
+    g.lineWidth = 0.8;
+    g.stroke();
+  }
+
+  // Kerb stones along both edges of the path
+  for (let y = -4; y < WORLD_H; y += 13) {
+    for (const x of [106, 247]) {
+      roundRectPath(g, x, y + (x === 106 ? 0 : 6), 7, 11, 2.5);
+      g.fillStyle = seededRandom() < 0.5 ? '#3d4d74' : '#33426a';
+      g.fill();
+      g.strokeStyle = 'rgba(5,10,24,0.55)';
+      g.lineWidth = 0.8;
+      g.stroke();
+    }
+  }
+
+  // Grass tufts, pebbles and tiny flowers on both sides of the path
+  for (let i = 0; i < 150; i++) {
+    const left = seededRandom() < 0.5;
+    const x = left ? 4 + seededRandom() * 96 : 260 + seededRandom() * 96;
+    const y = 6 + seededRandom() * (WORLD_H - 12);
+    const pick = seededRandom();
+    if (pick < 0.7) {
+      g.strokeStyle = seededRandom() < 0.5 ? 'rgba(77,212,172,0.30)' : 'rgba(60,150,130,0.35)';
+      g.lineWidth = 1;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(x - 2.5, y - 4); g.lineTo(x, y); g.lineTo(x + 2.5, y - 4.5);
+      g.moveTo(x, y); g.lineTo(x, y - 5.5);
+      g.stroke();
+    } else if (pick < 0.85) {
+      g.fillStyle = 'rgba(150,165,200,0.35)';
+      g.beginPath();
+      g.ellipse(x, y, 2.6, 1.8, 0, 0, Math.PI * 2);
+      g.fill();
+    } else {
+      g.fillStyle = seededRandom() < 0.5 ? 'rgba(244,211,94,0.75)' : 'rgba(255,255,255,0.7)';
+      g.beginPath();
+      g.arc(x, y, 1.4, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+
+  // Bases (healing zones): a glowing circle with a ring and a plus sign
+  for (let team = 0; team < 2; team++) {
+    const cx = SPAWN[team].x, cy = SPAWN[team].y;
+    const glow = g.createRadialGradient(cx, cy, 4, cx, cy, 55);
+    glow.addColorStop(0, TEAM_COLOR[team]);
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    g.globalAlpha = 0.42;
+    g.fillStyle = glow;
+    g.beginPath();
+    g.arc(cx, cy, 55, 0, Math.PI * 2);
+    g.fill();
+    g.globalAlpha = 0.55;
+    g.strokeStyle = TEAM_COLOR[team];
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(cx, cy, 54, 0, Math.PI * 2);
+    g.stroke();
+    g.globalAlpha = 0.3;
+    g.lineWidth = 1;
+    g.setLineDash([3, 5]);
+    g.beginPath();
+    g.arc(cx, cy, 44, 0, Math.PI * 2);
+    g.stroke();
+    g.setLineDash([]);
+    g.globalAlpha = 0.45;
+    g.fillStyle = TEAM_LIGHT[team];
+    g.fillRect(cx - 2, cy - 8, 4, 16);
+    g.fillRect(cx - 8, cy - 2, 16, 4);
+    g.globalAlpha = 1;
+  }
+
+  // Slightly darker top and bottom edges
+  const edge = g.createLinearGradient(0, 0, 0, WORLD_H);
+  edge.addColorStop(0, 'rgba(5,9,20,0.45)');
+  edge.addColorStop(0.12, 'rgba(5,9,20,0)');
+  edge.addColorStop(0.88, 'rgba(5,9,20,0)');
+  edge.addColorStop(1, 'rgba(5,9,20,0.45)');
+  g.fillStyle = edge;
+  g.fillRect(0, 0, WORLD_W, WORLD_H);
+}
+
+// Character sprites are 44 x 48 units with the body centre at (22, 30).
+// Tower sprites are 64 x 84 units with the base centre at (32, 52).
+const CHAR_W = 44, CHAR_H = 48, CHAR_CX = 22, CHAR_CY = 30;
+const TOWER_W = 64, TOWER_H = 84, TOWER_CX = 32, TOWER_CY = 52;
+
+function buildSprites() {
+  bgSprite = makeSprite(WORLD_W, WORLD_H, paintGround);
+
+  sprites = { hero: [], minion: [], tower: [], rubble: null };
+  for (let team = 0; team < 2; team++) {
+    for (const kind of ['hero', 'minion']) {
+      const k = kind === 'hero' ? 1 : MINION_DRAW_SCALE;
+      const frames = [];
+      for (let legFrame = 0; legFrame < 2; legFrame++) {
+        const picture = makeSprite(CHAR_W * k, CHAR_H * k, (g) => {
+          g.translate(CHAR_CX * k, CHAR_CY * k);
+          g.scale(k, k);
+          paintCharacter(g, team, kind, legFrame);
+        });
+        frames.push({ normal: picture, white: makeWhiteCopy(picture) });
+      }
+      sprites[kind][team] = frames;
+    }
+    const towerPicture = makeSprite(TOWER_W, TOWER_H, (g) => {
+      g.translate(TOWER_CX, TOWER_CY);
+      paintTower(g, team);
+    });
+    sprites.tower[team] = { normal: towerPicture, white: makeWhiteCopy(towerPicture) };
+  }
+  sprites.rubble = makeSprite(TOWER_W, TOWER_H, (g) => {
+    g.translate(TOWER_CX, TOWER_CY);
+    paintRubble(g);
+  });
 }
 
 // ---------- Drawing ----------
@@ -434,32 +1421,30 @@ function draw() {
   ctx.fillStyle = '#0b1220';
   ctx.fillRect(0, 0, screenW, screenH);
 
-  // From here on, draw in game units (scaled and centred on screen)
-  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
-
-  // Ground and lane
-  ctx.fillStyle = '#12203a';
-  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-  ctx.fillStyle = '#1b2d4f';
-  ctx.fillRect(110, 0, 140, WORLD_H);
-
-  // Bases (healing zones)
-  for (let team = 0; team < 2; team++) {
-    ctx.globalAlpha = 0.18;
-    ctx.fillStyle = TEAM_COLOR[team];
-    ctx.beginPath();
-    ctx.arc(SPAWN[team].x, SPAWN[team].y, 55, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
+  // Screen shake: nudge everything by a few units, less and less as the shake runs out
+  let shakeX = 0, shakeY = 0;
+  if (shakeTime > 0) {
+    const strength = shakePower * (shakeTime / shakeLife);
+    shakeX = rand(-strength, strength);
+    shakeY = rand(-strength, strength);
   }
 
-  if (state !== 'ready') {
+  // From here on, draw in game units (scaled and centred on screen)
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * (offX + shakeX * scale), dpr * (offY + shakeY * scale));
+
+  // Ground, lane and bases (one pre-drawn picture)
+  ctx.drawImage(bgSprite.canvas, 0, 0, WORLD_W, WORLD_H);
+
+  if (state === 'ready') {
+    // Title screen: show both towers standing on the empty battlefield
+    for (let team = 0; team < 2; team++) drawTowerPicture(team, TOWER[team].x, TOWER[team].y, 0);
+  } else {
     // Tower range rings
     for (const t of towers) {
       if (!t.alive) continue;
       ctx.strokeStyle = TEAM_COLOR[t.team];
-      ctx.globalAlpha = 0.25;
-      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.3;
+      ctx.lineWidth = 1.2;
       ctx.setLineDash([5, 6]);
       ctx.beginPath();
       ctx.arc(t.x, t.y, t.range, 0, Math.PI * 2);
@@ -468,105 +1453,357 @@ function draw() {
       ctx.globalAlpha = 1;
     }
 
-    // Units: towers first, then minions, then heroes on top
-    for (const kind of ['tower', 'minion', 'hero']) {
-      for (const u of units) {
-        if (u.alive && u.kind === kind) drawUnit(u);
-      }
+    // Skill rings lie flat on the ground, under the units
+    for (const e of effects) {
+      if (e.type === 'ring') drawRing(e);
     }
 
-    // Attack lines and skill rings
-    for (const e of effects) {
-      const fade = 1 - e.t / e.life;
-      ctx.globalAlpha = fade;
-      ctx.strokeStyle = e.color;
-      if (e.type === 'line') {
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(e.x1, e.y1);
-        ctx.lineTo(e.x2, e.y2);
-        ctx.stroke();
-      } else {
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, e.radius * (0.4 + 0.6 * e.t / e.life), 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
+    // Units: the ones higher up the screen are drawn first, so nearer ones overlap them
+    const drawList = units.filter(u => u.alive || u.kind === 'tower');
+    drawList.sort((a, b) => a.y - b.y);
+    for (const u of drawList) drawUnit(u);
+
+    // Health bars on top of all the units, so they are never hidden
+    for (const u of drawList) {
+      if (u.alive) drawHealthBar(u);
     }
+
+    // Flying shots and slashes, then particles and floating numbers
+    for (const e of effects) {
+      if (e.type === 'shot') drawShot(e);
+      else if (e.type === 'slash') drawSlash(e);
+    }
+    drawParticles(false);
+    drawFloaters();
 
     // Respawn countdown
     if (state === 'playing' && !player.alive) {
+      roundRectPath(ctx, WORLD_W / 2 - 92, WORLD_H / 2 - 20, 184, 40, 20);
+      ctx.fillStyle = 'rgba(11,18,32,0.78)';
+      ctx.fill();
       drawText('Respawn in ' + Math.ceil(player.respawn), WORLD_W / 2, WORLD_H / 2, 22, 700);
     }
   }
 
   // Start and end screens
+  const pulse = 0.65 + 0.35 * Math.sin(uiTime * 4);          // makes the "Tap to..." line gently pulse
   if (state === 'ready') {
-    shade();
-    drawText('Lane Clash', WORLD_W / 2, WORLD_H / 2 - 40, 30, 700);
-    drawText('Destroy the red tower', WORLD_W / 2, WORLD_H / 2, 16, 500);
-    drawText('Tap to start', WORLD_W / 2, WORLD_H / 2 + 40, 18, 600);
+    shade(0.75);
+    drawPanel(42, 222, 276, 180, 'rgba(255,255,255,0.14)');
+    // The two heroes face each other above the title
+    drawCharacterPicture(sprites.hero[0][0].normal, 1, 150, 258, 1, 1);
+    drawCharacterPicture(sprites.hero[1][0].normal, 1, 210, 258, -1, 1);
+    drawText('vs', WORLD_W / 2, 258, 13, 700, 'rgba(255,255,255,0.6)');
+    drawText('Lane Clash', WORLD_W / 2, 300, 30, 700, '#f4d35e');
+    drawText('Destroy the red tower', WORLD_W / 2, 336, 16, 500);
+    drawText('Tap to start', WORLD_W / 2, 372, 18, 600, '#ffffff', pulse);
   } else if (state === 'over') {
-    shade();
-    drawText(resultText, WORLD_W / 2, WORLD_H / 2 - 20, 32, 700);
-    drawText('Tap to play again', WORLD_W / 2, WORLD_H / 2 + 24, 18, 600);
+    // The end screen fades in after a short moment, so the explosion can be seen first
+    const fade = Math.max(0, Math.min(1, (overTime - 0.45) / 0.4));
+    const won = resultText === 'Victory!';
+    shade(0.75 * fade);
+    ctx.globalAlpha = fade;
+    drawPanel(42, 250, 276, 140, won ? 'rgba(244,211,94,0.6)' : 'rgba(255,107,107,0.5)');
+    ctx.globalAlpha = 1;
+    drawText(resultText, WORLD_W / 2, WORLD_H / 2 - 20, 32, 700, won ? '#f4d35e' : '#ff8a8a', fade);
+    drawText('Tap to play again', WORLD_W / 2, WORLD_H / 2 + 24, 18, 600, '#ffffff', fade * pulse);
+    drawParticles(true);                                      // confetti falls in front of the end screen
   }
+
+  // Tower health and wave timer card (top left), drawn in screen pixels so it stays readable
+  if (state !== 'ready') drawHud();
 }
 
-function shade() {
-  ctx.fillStyle = 'rgba(11,18,32,0.75)';
-  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+// Dark see-through cover over the battlefield (behind the start and end text)
+function shade(alpha) {
+  ctx.fillStyle = 'rgba(11,18,32,' + alpha + ')';
+  ctx.fillRect(-20, -20, WORLD_W + 40, WORLD_H + 40);
 }
 
-function drawText(text, x, y, size, weight) {
-  ctx.fillStyle = '#ffffff';
+// Rounded card behind the start and end text
+function drawPanel(x, y, w, h, borderColor) {
+  roundRectPath(ctx, x, y, w, h, 18);
+  ctx.fillStyle = 'rgba(14,23,48,0.92)';
+  ctx.fill();
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+// Text with a small dark shadow under it so it is easy to read on any background
+function drawText(text, x, y, size, weight, color = '#ffffff', alpha = 1) {
   ctx.font = weight + ' ' + size + 'px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(5,9,20,0.8)';
+  ctx.fillText(text, x, y + Math.max(1, size * 0.07));
+  ctx.fillStyle = color;
   ctx.fillText(text, x, y);
+  ctx.globalAlpha = 1;
+}
+
+// Stamp a character sprite at (x, y). k = draw scale, face = 1 or -1 (mirrors it), pop = size boost.
+function drawCharacterPicture(picture, k, x, y, face, pop) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(face * pop, pop);
+  ctx.drawImage(picture.canvas, -CHAR_CX * k, -CHAR_CY * k, picture.w, picture.h);
+  ctx.restore();
+}
+
+// Draw a standing tower with its shadow and waving flag. flash = 0 to 1 (white hit flash).
+function drawTowerPicture(team, x, y, flash) {
+  // Soft shadow on the ground
+  ctx.fillStyle = 'rgba(5,8,18,0.4)';
+  ctx.beginPath();
+  ctx.ellipse(x + 3, y + 20, 27, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const set = sprites.tower[team];
+  ctx.drawImage(set.normal.canvas, x - TOWER_CX, y - TOWER_CY, TOWER_W, TOWER_H);
+  if (flash > 0) {
+    ctx.globalAlpha = 0.65 * flash;
+    ctx.drawImage(set.white.canvas, x - TOWER_CX, y - TOWER_CY, TOWER_W, TOWER_H);
+    ctx.globalAlpha = 1;
+  }
+
+  // Flag pole and a flag that waves gently
+  const wave = Math.sin(uiTime * 5 + team * 2) * 2;
+  ctx.strokeStyle = '#d9c9a3';
+  ctx.lineWidth = 1.6;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, y - 17);
+  ctx.lineTo(x, y - 48);
+  ctx.stroke();
+  ctx.fillStyle = TEAM_COLOR[team];
+  ctx.beginPath();
+  ctx.moveTo(x, y - 48);
+  ctx.quadraticCurveTo(x + 8, y - 49 + wave, x + 17, y - 43 + wave * 0.6);
+  ctx.quadraticCurveTo(x + 8, y - 40 + wave, x, y - 37);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(8,12,26,0.6)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  ctx.fillStyle = '#f4d35e';                         // gold ball on top of the pole
+  ctx.beginPath();
+  ctx.arc(x, y - 49, 2, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function drawUnit(u) {
-  ctx.fillStyle = TEAM_COLOR[u.team];
   if (u.kind === 'tower') {
-    // Tower: square with a white border
-    ctx.fillRect(u.x - u.r, u.y - u.r, u.r * 2, u.r * 2);
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(u.x - u.r, u.y - u.r, u.r * 2, u.r * 2);
-  } else {
-    // Hero or minion: circle (heroes get a white border)
-    ctx.beginPath();
-    ctx.arc(u.x, u.y, u.r, 0, Math.PI * 2);
-    ctx.fill();
-    if (u.kind === 'hero') {
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
+    // Tower: stone turret while standing, a pile of rubble once destroyed
+    if (u.alive) drawTowerPicture(u.team, u.x, u.y, u.flash / FLASH_SECONDS);
+    else ctx.drawImage(sprites.rubble.canvas, u.x - TOWER_CX, u.y - TOWER_CY, TOWER_W, TOWER_H);
+    return;
   }
 
-  // Health bar above the unit
-  const w = Math.max(18, u.r * 2.4);
-  const h = u.kind === 'minion' ? 3 : 5;
+  // Hero or minion: shadow on the ground, then the sprite with a little walking bob
+  const k = u.kind === 'hero' ? 1 : MINION_DRAW_SCALE;
+  const frame = sprites[u.kind][u.team][Math.floor(u.walk) % 2];
+  const bob = -Math.abs(Math.sin(u.walk * Math.PI)) * 1.6 * k;
+  const pop = 1 + u.punch * 0.16;                    // quick "pop" bigger when attacking
+
+  ctx.fillStyle = 'rgba(5,8,18,0.38)';
+  ctx.beginPath();
+  ctx.ellipse(u.x, u.y + 12 * k, 10 * k, 3.6 * k, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  drawCharacterPicture(frame.normal, k, u.x, u.y + bob, u.face, pop);
+  if (u.flash > 0) {
+    ctx.globalAlpha = 0.7 * (u.flash / FLASH_SECONDS);
+    drawCharacterPicture(frame.white, k, u.x, u.y + bob, u.face, pop);
+    ctx.globalAlpha = 1;
+  }
+}
+
+// Health bar above a unit: dark rounded back, team colour fill, thin highlight
+function drawHealthBar(u) {
+  let w, h, y;
+  if (u.kind === 'tower')     { w = 50; h = 6; y = u.y - 62; }
+  else if (u.kind === 'hero') { w = 30; h = 5; y = u.y - 30; }
+  else                        { w = 18; h = 3; y = u.y - 21; }
   const x = u.x - w / 2;
-  const y = u.y - u.r - 6 - h;
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  ctx.fillRect(x, y, w, h);
+  const part = Math.max(0, u.hp / u.maxHp);
+
+  ctx.fillStyle = 'rgba(5,9,20,0.85)';
+  ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+  ctx.fillStyle = TEAM_DARK[u.team];
+  ctx.fillRect(x, y, w * part, h);
   ctx.fillStyle = TEAM_COLOR[u.team];
-  ctx.fillRect(x, y, w * (u.hp / u.maxHp), h);
+  ctx.fillRect(x, y, w * part, h * 0.6);
+
+  // A small bouncing arrow above YOUR hero, so it is easy to find in a fight
+  if (u === player) {
+    const hop = Math.sin(uiTime * 6) * 1.5;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(u.x - 4, y - 9 + hop);
+    ctx.lineTo(u.x + 4, y - 9 + hop);
+    ctx.lineTo(u.x, y - 3.5 + hop);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+// Skill ring: a soft filled circle with a bright edge that grows and fades
+function drawRing(e) {
+  const fade = 1 - e.t / e.life;
+  const radius = e.radius * (0.4 + 0.6 * e.t / e.life);
+  ctx.fillStyle = e.color;
+  ctx.strokeStyle = e.color;
+  ctx.beginPath();
+  ctx.arc(e.x, e.y, radius, 0, Math.PI * 2);
+  ctx.globalAlpha = fade * 0.2;
+  ctx.fill();
+  ctx.globalAlpha = fade;
+  ctx.lineWidth = 3.5;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+// Flying shot: a bright ball with a fading tail behind it
+function drawShot(e) {
+  const p = Math.min(1, e.t / e.life);                       // 0 = just fired, 1 = arrived
+  const tail = Math.max(0, p - 0.4);
+  const headX = e.x1 + (e.x2 - e.x1) * p,    headY = e.y1 + (e.y2 - e.y1) * p;
+  const tailX = e.x1 + (e.x2 - e.x1) * tail, tailY = e.y1 + (e.y2 - e.y1) * tail;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = e.color;
+  ctx.globalAlpha = 0.35;
+  ctx.lineWidth = e.size * 1.6;
+  ctx.beginPath(); ctx.moveTo(tailX, tailY); ctx.lineTo(headX, headY); ctx.stroke();
+  ctx.globalAlpha = 0.8;
+  ctx.lineWidth = e.size * 0.8;
+  ctx.beginPath(); ctx.moveTo((tailX + headX) / 2, (tailY + headY) / 2); ctx.lineTo(headX, headY); ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = e.color;
+  ctx.beginPath(); ctx.arc(headX, headY, e.size, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(headX, headY, e.size * 0.55, 0, Math.PI * 2); ctx.fill();
+}
+
+// Minion slash: a tiny white curved flash
+function drawSlash(e) {
+  const p = e.t / e.life;
+  ctx.globalAlpha = 1 - p;
+  ctx.strokeStyle = e.color;
+  ctx.lineWidth = 1.6;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(e.x, e.y, 3 + p * 4, -0.9, 0.9);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+// Draw the particles. Confetti is drawn in a separate pass (in front of the end screen).
+function drawParticles(confettiPass) {
+  for (const p of particles) {
+    if ((p.kind === 'confetti') !== confettiPass) continue;
+    const fade = 1 - p.t / p.life;
+    ctx.fillStyle = p.color;
+    if (p.kind === 'spark' || p.kind === 'stone') {
+      ctx.globalAlpha = Math.min(1, fade * 1.6);
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    } else if (p.kind === 'puff') {
+      ctx.globalAlpha = fade * 0.55;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * (1 + p.t / p.life * 1.4), 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.kind === 'plus') {
+      ctx.globalAlpha = fade;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 6, p.size, p.size / 3);
+      ctx.fillRect(p.x - p.size / 6, p.y - p.size / 2, p.size / 3, p.size);
+    } else {
+      // Confetti: a small rectangle that looks like it is spinning (its width squeezes in and out)
+      ctx.globalAlpha = Math.min(1, fade * 3);
+      const w = p.size * Math.abs(Math.cos(p.spin));
+      ctx.fillRect(p.x - w / 2 + Math.sin(p.spin * 0.6) * 4, p.y, w + 0.6, p.size * 0.6);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Floating damage and heal numbers
+function drawFloaters() {
+  ctx.font = '700 11px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const f of floaters) {
+    ctx.globalAlpha = Math.min(1, (1 - f.t / f.life) * 2);
+    ctx.fillStyle = 'rgba(5,9,20,0.85)';
+    ctx.fillText(f.text, f.x, f.y + 1);
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// HUD card in the top left corner: both tower health bars and the time to the next wave.
+// It is drawn in screen pixels (not game units) so the text is the same size on every phone.
+function drawHud() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const x = 8, y = 8, w = 104, h = 60;
+  roundRectPath(ctx, x, y, w, h, 12);
+  ctx.fillStyle = 'rgba(11,18,32,0.78)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // One row per tower: the enemy on top (it is at the top of the field), yours below
+  const rows = [towers[1], towers[0]];
+  for (let i = 0; i < 2; i++) {
+    const t = rows[i];
+    const rowY = y + 14 + i * 15;
+    // Tiny tower icon in the team colour
+    ctx.fillStyle = TEAM_COLOR[t.team];
+    ctx.fillRect(x + 9, rowY - 4, 8, 9);
+    ctx.fillRect(x + 8, rowY - 6, 2.5, 3);
+    ctx.fillRect(x + 11.75, rowY - 6, 2.5, 3);
+    ctx.fillRect(x + 15.5, rowY - 6, 2.5, 3);
+    // Health bar
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(x + 23, rowY - 3, 42, 6);
+    ctx.fillStyle = TEAM_COLOR[t.team];
+    ctx.fillRect(x + 23, rowY - 3, 42 * Math.max(0, t.hp / t.maxHp), 6);
+    // Health number, right-aligned so the digits do not jump about
+    ctx.font = '700 11px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(String(Math.ceil(t.hp)), x + w - 8, rowY + 0.5);
+  }
+
+  // Time until the next minion wave
+  ctx.font = '600 10px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.fillText('Next wave', x + 9, y + 47.5);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#f4d35e';
+  ctx.font = '700 11px system-ui, sans-serif';
+  ctx.fillText(Math.max(0, Math.ceil(waveTimer)) + 's', x + w - 8, y + 47.5);
 }
 
 // Skill buttons show the seconds left while cooling down
 function updateButtons() {
-  setButton(btnBlast, 'Blast', blastCd);
-  setButton(btnHeal, 'Heal', healCd);
+  setButton(btnBlast, 'Blast', blastCd, BLAST.cooldown);
+  setButton(btnHeal, 'Heal', healCd, HEAL.cooldown);
 }
-function setButton(btn, label, cd) {
+function setButton(btn, label, cd, fullCd) {
   const text = cd > 0 ? String(Math.ceil(cd)) : label;
   if (btn.textContent !== text) btn.textContent = text;
   btn.classList.toggle('cooling', cd > 0);
+  // The shrinking slice on the button: percent of the cooldown still left (in steps of 2)
+  const left = String(Math.ceil(cd / fullCd * 50) * 2);
+  if (btn.dataset.left !== left) {
+    btn.dataset.left = left;
+    btn.style.setProperty('--left', left);
+  }
 }
 
 // ---------- Fit the battlefield to the screen ----------
@@ -579,6 +1816,7 @@ function resize() {
   scale = Math.min(screenW / WORLD_W, screenH / WORLD_H);
   offX = (screenW - WORLD_W * scale) / 2;
   offY = (screenH - WORLD_H * scale) / 2;
+  buildSprites();                                // repaint the sprites at the new size so they stay sharp
 }
 
 // ---------- Input: joystick ----------

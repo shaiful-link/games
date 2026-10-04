@@ -11,6 +11,7 @@
     margin: 0;
     height: 100%;
     background: #0b1220;
+    background: radial-gradient(120% 80% at 50% 0%, #1a2550 0%, #0b1220 60%);
     color: #ffffff;
     font-family: system-ui, sans-serif;
     overflow: hidden;
@@ -27,26 +28,59 @@
     gap: 10px;
   }
 
-  /* Top bar: score and target, level, moves left */
+  /* Top bar: score, target, level, moves left, and the sound button */
   #top {
     display: flex;
-    align-items: center;
-    justify-content: space-around;
+    align-items: stretch;
+    gap: 6px;
   }
-  .stat { text-align: center; min-width: 70px; }
+  .stat {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 2px 7px;
+    text-align: center;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.07);
+  }
   .stat span {
     display: block;
-    font-size: 11px;
+    font-size: 10px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: rgba(255,255,255,0.55);
   }
-  .stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stat b { font-size: 19px; font-variant-numeric: tabular-nums; }
   .stat b.low { color: #ff6b6b; }               /* few moves left */
+  #sound {
+    flex: 0 0 44px;
+    padding: 0;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.07);
+    color: #ffffff;
+    font-size: 19px;
+    font-family: inherit;
+    touch-action: manipulation;
+  }
+  #sound:active { background: rgba(255,255,255,0.16); }
+  #sound.off { opacity: 0.45; }
 
   /* Progress toward the level target */
-  #goalTrack { height: 10px; border-radius: 5px; background: #1c2742; overflow: hidden; }
-  #goalBar { height: 100%; width: 0%; background: #4dd4ac; border-radius: 5px; transition: width 0.25s; }
+  #goalTrack {
+    height: 12px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+  }
+  #goalBar {
+    height: 100%;
+    width: 0%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #4dd4ac, #7df0c9 60%, #f4d35e);
+    box-shadow: 0 0 10px rgba(77,212,172,0.7);
+    transition: width 0.25s;
+  }
 
   /* Board area takes all remaining space; canvas is centred inside */
   #boardWrap {
@@ -56,7 +90,11 @@
     align-items: center;
     justify-content: center;
   }
-  #board { border-radius: 10px; background: #111a2e; }
+  #board {
+    border-radius: 14px;
+    background: #0f1830;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,255,255,0.06);
+  }
 </style>
 </head>
 <body>
@@ -64,8 +102,9 @@
   <div id="top">
     <div class="stat"><span>Score</span><b id="score">0</b></div>
     <div class="stat"><span>Target</span><b id="goal">0</b></div>
-    <div class="stat"><span>Level</span><b id="level">1/10</b></div>
+    <div class="stat"><span>Level</span><b id="level">1/20</b></div>
     <div class="stat"><span>Moves</span><b id="moves">0</b></div>
+    <button id="sound" aria-label="Sound on or off"></button>
   </div>
   <div id="goalTrack"><div id="goalBar"></div></div>
   <div id="boardWrap"><canvas id="board"></canvas></div>
@@ -73,11 +112,12 @@
 
 <script>
 // =====================================================
-// JEWEL SWAP - match-three puzzle for phones, with 10 levels
+// JEWEL SWAP - match-three puzzle for phones, with 20 levels
 // Swap two jewels that are next to each other to make a line of 3 or more of the same kind.
 // Slide a jewel toward its neighbour, or tap one jewel and then the one beside it.
 // Reach the target score before you run out of moves.
 // Matches that fall into place by themselves (chains) score extra.
+// The level you reached is saved on the phone, so you can carry on later.
 // =====================================================
 
 // ---------- Settings (change these to experiment) ----------
@@ -86,8 +126,10 @@ const GEM_POINTS  = 10;          // per jewel cleared (multiplied by the chain n
 const BIG_BONUS   = 50;          // extra for clearing 5 or more jewels at once
 const MOVE_BONUS  = 100;         // per unused move when a level is finished
 const SWAP_TIME   = 0.16;        // seconds for two jewels to change places
-const CLEAR_TIME  = 0.22;        // seconds for matched jewels to shrink away
+const CLEAR_TIME  = 0.26;        // seconds for matched jewels to burst
 const FALL_SPEED  = 11;          // how fast jewels drop (squares per second)
+const SOUND_VOLUME = 0.25;       // 0 = silent, 1 = very loud
+const SPARKS_PER_GEM = 6;        // little sparks thrown out by each cleared jewel
 
 // ---------- Levels ----------
 // moves  = swaps allowed       goal = score needed to finish the level
@@ -103,18 +145,28 @@ const LEVELS = [
   { moves: 24, goal: 1850, colors: 6 },   // 7
   { moves: 24, goal: 1300, colors: 7 },   // 8
   { moves: 26, goal: 1450, colors: 7 },   // 9
-  { moves: 28, goal: 1600, colors: 7 }    // 10
+  { moves: 28, goal: 1600, colors: 7 },   // 10
+  { moves: 20, goal: 1700, colors: 6 },   // 11
+  { moves: 28, goal: 1700, colors: 7 },   // 12
+  { moves: 22, goal: 2000, colors: 6 },   // 13
+  { moves: 30, goal: 1900, colors: 7 },   // 14
+  { moves: 15, goal: 2300, colors: 5 },   // 15  short rush level: few moves, big chains
+  { moves: 24, goal: 2300, colors: 6 },   // 16
+  { moves: 30, goal: 2000, colors: 7 },   // 17
+  { moves: 25, goal: 2500, colors: 6 },   // 18
+  { moves: 32, goal: 2200, colors: 7 },   // 19
+  { moves: 35, goal: 2500, colors: 7 }    // 20
 ];
 
 // Each kind of jewel has its own colour AND its own shape, so they are easy to tell apart
 const GEMS = [
-  { color: '#ff6b6b', shape: 'circle'   },
-  { color: '#5b8def', shape: 'diamond'  },
-  { color: '#4dd4ac', shape: 'square'   },
-  { color: '#f4d35e', shape: 'triangle' },
-  { color: '#b388eb', shape: 'hexagon'  },
-  { color: '#f79d65', shape: 'star'     },
-  { color: '#e8ecf5', shape: 'drop'     }
+  { color: '#ff5d6c', shape: 'circle'   },
+  { color: '#4f8cff', shape: 'diamond'  },
+  { color: '#2fd6a3', shape: 'square'   },
+  { color: '#ffd23f', shape: 'triangle' },
+  { color: '#b47cff', shape: 'hexagon'  },
+  { color: '#ff9447', shape: 'star'     },
+  { color: '#dfe7f7', shape: 'drop'     }
 ];
 
 // ---------- Page elements ----------
@@ -126,10 +178,94 @@ const elGoal  = document.getElementById('goal');
 const elLevel = document.getElementById('level');
 const elMoves = document.getElementById('moves');
 const goalBar = document.getElementById('goalBar');
+const btnSound = document.getElementById('sound');
+
+// ---------- Sound ----------
+// All sounds are made by code (short notes), so there are no sound files to upload.
+// Phones only allow sound after a touch, so the sound engine starts on the first touch.
+// The on/off choice is remembered, and is shared by all the games on this site.
+let audio = null;                // the sound engine (created on first touch)
+let muted = false;
+try { muted = localStorage.getItem('gamesMuted') === '1'; } catch (e) { /* storage blocked: start with sound on */ }
+
+function showSoundButton() {
+  btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
+  btnSound.classList.toggle('off', muted);
+}
+showSoundButton();
+
+function startAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (e) { audio = null; }                                  // no sound support: the game still works
+}
+// Different phones accept different kinds of touch for this, so listen for all of them
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, startAudio, true);
+}
+
+// Play one note.
+//   freq  = pitch in Hz (higher number = higher note)
+//   dur   = length in seconds
+//   type  = 'sine' (soft), 'triangle' (round), 'square' (retro)
+//   delay = seconds to wait before it starts (used to build little tunes)
+//   slide = pitch to glide to by the end (optional)
+function beep(freq, dur, type = 'sine', delay = 0, slide = 0, volume = 1) {
+  if (muted || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME * volume, t + 0.01);   // quick fade in (no click)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);                   // fade out
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// Short buzz on Android phones (iPhone does not allow this from a web page)
+function buzz(ms) {
+  if (!muted && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
+}
+
+// Notes that always sound good together. Each chain plays the next note up.
+const SCALE = [523, 587, 659, 784, 880, 1047, 1175, 1319, 1568];
+
+// The sounds used in this game
+const sfx = {
+  pick:  () => beep(740, 0.05, 'sine', 0, 0, 0.6),
+  swap:  () => beep(420, 0.09, 'triangle', 0, 640, 0.7),
+  bad:   () => { beep(220, 0.14, 'square', 0, 150, 0.5); buzz(25); },
+  match: (chain, big) => {
+    const note = SCALE[Math.min(chain - 1, SCALE.length - 1)];
+    beep(note, 0.14, 'triangle');
+    beep(note * 1.5, 0.20, 'sine', 0.06, 0, 0.7);
+    if (big) [2, 2.5, 3].forEach((k, i) => beep(note * k, 0.12, 'sine', 0.12 + i * 0.06, 0, 0.5));
+    buzz(big ? 30 : 12);
+  },
+  shuffle: () => beep(300, 0.25, 'triangle', 0, 900, 0.5),
+  clear: () => [523, 659, 784, 1047].forEach((f, i) => beep(f, 0.20, 'triangle', i * 0.12)),
+  over:  () => [392, 330, 262, 196].forEach((f, i) => beep(f, 0.24, 'triangle', i * 0.16)),
+  won:   () => [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => beep(f, 0.24, 'triangle', i * 0.14))
+};
+
+btnSound.addEventListener('click', () => {
+  muted = !muted;
+  try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {}
+  showSoundButton();
+  startAudio();
+  if (!muted) setTimeout(sfx.pick, 60);                          // small note to confirm sound is on
+});
 
 // ---------- Game state ----------
-// grid[r][c] is a jewel: { type, ox, oy, dying }
+// grid[r][c] is a jewel: { type, ox, oy, dying, squash }
 //   ox, oy = how far (in squares) it is drawn from its real place, used for sliding and falling
+//   dying  = 0 normally, then 0..1 while it bursts
+//   squash = 1 just after landing, fading to 0 (gives a small bounce)
 let grid = [];
 let screen = 'title';            // 'title' | 'play' | 'clear' | 'over' | 'won'
 let phase = 'idle';              // 'idle' | 'swap' | 'back' | 'clear' | 'fall'
@@ -139,12 +275,50 @@ let chain = 0;                   // 1 for the first match of a move, 2 for the n
 let level = 1, score = 0, levelStartScore = 0, movesLeft = 0;
 let selected = null;             // square picked by a tap: { r, c }
 let effects = [];                // floating score text
+let sparks = [];                 // little sparks from cleared jewels and confetti
 let cell = 40;                   // size of one square in CSS pixels (set by resize)
 let fallSpeed = 0;
+let clock = 0;                   // seconds since the page opened (for gentle animations)
+let sprites = [];                // one ready-made picture per kind of jewel
+let boardPicture = null;         // ready-made picture of the empty board
+
+// ---------- Saved progress ----------
+// The phone remembers the level you reached and your score at the start of that level.
+// It is saved each time a level starts, and wiped when all levels are finished.
+const SAVE_KEY = 'jewelSwapSave';
+let saved = null;                // { level, score } or null when there is nothing to continue
+let titleButtons = [];           // buttons drawn on the first screen: { x, y, w, h, action }
+
+function loadSave() {
+  try {
+    const data = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if (data && Number.isInteger(data.level) && data.level >= 2 && data.level <= LEVELS.length &&
+        Number.isFinite(data.score) && data.score >= 0) return { level: data.level, score: data.score };
+  } catch (e) { /* storage blocked or damaged: start fresh */ }
+  return null;
+}
+
+function writeSave() {
+  try {
+    if (level >= 2) {
+      saved = { level, score: levelStartScore };
+      localStorage.setItem(SAVE_KEY, JSON.stringify(saved));
+    } else {
+      saved = null;
+      localStorage.removeItem(SAVE_KEY);
+    }
+  } catch (e) { /* storage blocked: the game still works, it just will not remember */ }
+}
+
+function clearSave() {
+  saved = null;
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+}
 
 // ---------- Board helpers ----------
 function randomType() { return Math.floor(Math.random() * LEVELS[level - 1].colors); }
 function typeAt(r, c) { return grid[r][c] ? grid[r][c].type : -1; }
+function newGem(type, oy) { return { type, ox: 0, oy, dying: 0, squash: 0 }; }
 
 // Find every jewel that is part of a line of 3 or more. Returns a list of [r, c].
 function findMatches() {
@@ -210,7 +384,7 @@ function fillBoard() {
           (c >= 2 && grid[r][c - 1].type === type && grid[r][c - 2].type === type) ||
           (r >= 2 && grid[r - 1][c].type === type && grid[r - 2][c].type === type)
         );
-        grid[r].push({ type, ox: 0, oy: 0, dying: 0 });
+        grid[r].push(newGem(type, 0));
       }
     }
   } while (possibleMoves().length === 0);
@@ -229,15 +403,23 @@ function startLevel(n) {
   chain = 0;
   selected = null;
   effects = [];
+  sparks = [];
   screen = 'play';
+  writeSave();                   // remember this level for next time
   updateHud();
 }
 
+// Carry on from the saved level, or start again from level 1
+function continueGame() { score = saved.score; startLevel(saved.level); sfx.pick(); }
+function newGame()      { clearSave(); score = 0; startLevel(1); sfx.pick(); }
+
 // Tap: what happens depends on the current screen
 function advance() {
+  if (screen === 'title' && saved) { continueGame(); return; }
   if (screen === 'title' || screen === 'won') { score = 0; startLevel(1); }
   else if (screen === 'clear') startLevel(level + 1);
   else if (screen === 'over') { score = levelStartScore; startLevel(level); }   // retry same level
+  sfx.pick();
 }
 
 // Points earned in this level only (the target is per level)
@@ -264,22 +446,55 @@ function trySwap(a, b) {
   grid[b.r][b.c].ox = a.c - b.c; grid[b.r][b.c].oy = a.r - b.r;
   phase = 'swap';
   phaseTimer = SWAP_TIME;
+  sfx.swap();
+}
+
+// Throw out a few sparks from the middle of square (r, c)
+function addSparks(r, c, color, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2, speed = 1.5 + Math.random() * 3.5;
+    sparks.push({
+      x: c + 0.5, y: r + 0.5,
+      vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 1.5,
+      color, size: 0.06 + Math.random() * 0.08,
+      t: 0, life: 0.45 + Math.random() * 0.35
+    });
+  }
+}
+
+// Coloured pieces raining down when a level is finished
+function addConfetti() {
+  for (let i = 0; i < 90; i++) {
+    sparks.push({
+      x: Math.random() * COLS, y: -Math.random() * 3,
+      vx: (Math.random() - 0.5) * 2, vy: 2 + Math.random() * 3,
+      color: GEMS[i % GEMS.length].color, size: 0.09 + Math.random() * 0.08,
+      t: 0, life: 1.6 + Math.random() * 1.2
+    });
+  }
 }
 
 // Mark matched jewels and score them
 function startClear(matches) {
   chain++;
+  const big = matches.length >= 5;
   let points = matches.length * GEM_POINTS * chain;
-  if (matches.length >= 5) points += BIG_BONUS * chain;
+  if (big) points += BIG_BONUS * chain;
   score += points;
   let sr = 0, sc = 0;
-  for (const [r, c] of matches) { grid[r][c].dying = 0.001; sr += r; sc += c; }
+  for (const [r, c] of matches) {
+    grid[r][c].dying = 0.001;
+    sr += r; sc += c;
+    addSparks(r, c, GEMS[grid[r][c].type].color, SPARKS_PER_GEM);
+  }
   effects.push({
     text: '+' + points + (chain > 1 ? '  x' + chain : ''),
-    x: (sc / matches.length + 0.5), y: (sr / matches.length + 0.5), t: 0, life: 0.9
+    x: (sc / matches.length + 0.5), y: (sr / matches.length + 0.5), t: 0, life: 0.9,
+    big: big || chain > 1
   });
   phase = 'clear';
   phaseTimer = CLEAR_TIME;
+  sfx.match(chain, big);
   updateHud();
 }
 
@@ -295,7 +510,7 @@ function dropJewels() {
     }
     const missing = write + 1;
     for (let r = write; r >= 0; r--) {
-      grid[r][c] = { type: randomType(), ox: 0, oy: -missing, dying: 0 };
+      grid[r][c] = newGem(randomType(), -missing);
     }
   }
   phase = 'fall';
@@ -309,8 +524,12 @@ function moveFinished() {
   if (levelScore() >= def.goal) {
     score += movesLeft * MOVE_BONUS;
     screen = level === LEVELS.length ? 'won' : 'clear';
+    if (screen === 'won') clearSave();                       // finished: next game starts from level 1
+    addConfetti();
+    if (screen === 'won') sfx.won(); else sfx.clear();
   } else if (movesLeft <= 0) {
     screen = 'over';
+    sfx.over();
   } else if (possibleMoves().length === 0) {
     // No swap can make a match: deal a fresh board
     fillBoard();
@@ -318,6 +537,7 @@ function moveFinished() {
     effects.push({ text: 'No moves - new board', x: COLS / 2, y: ROWS / 2, t: 0, life: 1.4 });
     phase = 'fall';
     fallSpeed = FALL_SPEED;
+    sfx.shuffle();
     updateHud();
     return;
   }
@@ -327,8 +547,27 @@ function moveFinished() {
 
 // ---------- Update: move the animation forward by dt seconds ----------
 function update(dt) {
+  clock += dt;
   for (const e of effects) e.t += dt;
   effects = effects.filter(e => e.t < e.life);
+
+  // Sparks and confetti: simple flying and falling
+  for (const s of sparks) {
+    s.t += dt;
+    s.vy += 9 * dt;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+  }
+  sparks = sparks.filter(s => s.t < s.life);
+
+  // Landing bounce fades away
+  for (let r = 0; r < grid.length; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const g = grid[r][c];
+      if (g && g.squash > 0) g.squash = Math.max(0, g.squash - dt * 5);
+    }
+  }
+
   if (screen !== 'play') return;
 
   if (phase === 'swap' || phase === 'back') {
@@ -349,6 +588,7 @@ function update(dt) {
       swapCells(swapA, swapB);
       phase = 'back';
       phaseTimer = SWAP_TIME;
+      sfx.bad();
     }
   } else if (phase === 'clear') {
     phaseTimer -= dt;
@@ -364,6 +604,7 @@ function update(dt) {
         if (g.oy < 0) {
           g.oy = Math.min(0, g.oy + fallSpeed * dt);
           if (g.oy < 0) moving = true;
+          else g.squash = 1;                                 // just landed: small bounce
         }
       }
     }
@@ -375,76 +616,204 @@ function update(dt) {
   }
 }
 
-// ---------- Drawing ----------
-function gemPath(shape, x, y, s) {
-  ctx.beginPath();
+// ---------- Drawing: jewel pictures ----------
+// Mix a colour with white (amount above 0) or black (amount below 0). amount is -1 to 1.
+function shade(hex, amount) {
+  const n = parseInt(hex.slice(1), 16);
+  const target = amount > 0 ? 255 : 0, k = Math.abs(amount);
+  const mix = (v) => Math.round(v + (target - v) * k);
+  return 'rgb(' + mix(n >> 16) + ',' + mix((n >> 8) & 255) + ',' + mix(n & 255) + ')';
+}
+
+// Outline of a jewel shape, centred on (x, y), size s
+function gemPath(g, shape, x, y, s) {
+  g.beginPath();
   if (shape === 'circle') {
-    ctx.arc(x, y, s, 0, Math.PI * 2);
+    g.arc(x, y, s, 0, Math.PI * 2);
   } else if (shape === 'square') {
     const k = s * 0.84, rad = s * 0.22;
-    ctx.moveTo(x - k + rad, y - k);
-    ctx.arcTo(x + k, y - k, x + k, y + k, rad);
-    ctx.arcTo(x + k, y + k, x - k, y + k, rad);
-    ctx.arcTo(x - k, y + k, x - k, y - k, rad);
-    ctx.arcTo(x - k, y - k, x + k, y - k, rad);
+    g.moveTo(x - k + rad, y - k);
+    g.arcTo(x + k, y - k, x + k, y + k, rad);
+    g.arcTo(x + k, y + k, x - k, y + k, rad);
+    g.arcTo(x - k, y + k, x - k, y - k, rad);
+    g.arcTo(x - k, y - k, x + k, y - k, rad);
   } else if (shape === 'diamond') {
-    ctx.moveTo(x, y - s * 1.08); ctx.lineTo(x + s * 0.9, y); ctx.lineTo(x, y + s * 1.08); ctx.lineTo(x - s * 0.9, y);
+    g.moveTo(x, y - s * 1.08); g.lineTo(x + s * 0.9, y); g.lineTo(x, y + s * 1.08); g.lineTo(x - s * 0.9, y);
   } else if (shape === 'triangle') {
-    ctx.moveTo(x, y - s); ctx.lineTo(x + s, y + s * 0.82); ctx.lineTo(x - s, y + s * 0.82);
+    g.moveTo(x, y - s); g.lineTo(x + s, y + s * 0.82); g.lineTo(x - s, y + s * 0.82);
   } else if (shape === 'hexagon') {
     for (let i = 0; i < 6; i++) {
       const a = Math.PI / 3 * i + Math.PI / 6;
-      ctx.lineTo(x + Math.cos(a) * s * 1.04, y + Math.sin(a) * s * 1.04);
+      g.lineTo(x + Math.cos(a) * s * 1.04, y + Math.sin(a) * s * 1.04);
     }
   } else if (shape === 'star') {
     for (let i = 0; i < 10; i++) {
       const a = Math.PI / 5 * i - Math.PI / 2, rad = i % 2 ? s * 0.5 : s * 1.1;
-      ctx.lineTo(x + Math.cos(a) * rad, y + Math.sin(a) * rad);
+      g.lineTo(x + Math.cos(a) * rad, y + Math.sin(a) * rad);
     }
   } else {                                                   // drop
-    ctx.moveTo(x, y - s * 1.1);
-    ctx.bezierCurveTo(x + s * 1.3, y + s * 0.1, x + s * 0.8, y + s, x, y + s);
-    ctx.bezierCurveTo(x - s * 0.8, y + s, x - s * 1.3, y + s * 0.1, x, y - s * 1.1);
+    g.moveTo(x, y - s * 1.1);
+    g.bezierCurveTo(x + s * 1.3, y + s * 0.1, x + s * 0.8, y + s, x, y + s);
+    g.bezierCurveTo(x - s * 0.8, y + s, x - s * 1.3, y + s * 0.1, x, y - s * 1.1);
   }
-  ctx.closePath();
+  g.closePath();
 }
 
+// Paint one polished jewel into a 100 x 100 box.
+// Layers, from the back: soft shadow, coloured body, lighter centre facet,
+// glossy shine across the top, dark rim, and a small white sparkle.
+function paintGem(g, def, px) {
+  const s = 35, x = 50, y = 49;
+  g.lineJoin = 'round';
+
+  // Body with a soft shadow underneath
+  const body = g.createLinearGradient(22, 14, 78, 88);
+  body.addColorStop(0, shade(def.color, 0.45));
+  body.addColorStop(0.45, def.color);
+  body.addColorStop(1, shade(def.color, -0.45));
+  g.save();
+  g.shadowColor = 'rgba(0,0,0,0.5)';
+  g.shadowBlur = 5 * px;
+  g.shadowOffsetY = 3 * px;
+  gemPath(g, def.shape, x, y, s);
+  g.fillStyle = body;
+  g.fill();
+  g.restore();
+
+  // Lighter facet in the middle, like a cut stone
+  const facet = g.createLinearGradient(30, 26, 70, 74);
+  facet.addColorStop(0, shade(def.color, 0.6));
+  facet.addColorStop(1, shade(def.color, -0.1));
+  gemPath(g, def.shape, x, y + 1, s * 0.58);
+  g.fillStyle = facet;
+  g.globalAlpha = 0.85;
+  g.fill();
+  g.globalAlpha = 1;
+  g.strokeStyle = 'rgba(255,255,255,0.45)';
+  g.lineWidth = 1.5;
+  g.stroke();
+
+  // Glossy shine across the top half (kept inside the jewel)
+  g.save();
+  gemPath(g, def.shape, x, y, s);
+  g.clip();
+  const shine = g.createLinearGradient(0, 10, 0, 56);
+  shine.addColorStop(0, 'rgba(255,255,255,0.6)');
+  shine.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = shine;
+  g.beginPath();
+  g.ellipse(50, 22, 46, 30, 0, 0, Math.PI * 2);
+  g.fill();
+  g.restore();
+
+  // Dark rim
+  gemPath(g, def.shape, x, y, s);
+  g.strokeStyle = shade(def.color, -0.55);
+  g.lineWidth = 2.5;
+  g.stroke();
+
+  // Small four-point sparkle
+  g.fillStyle = 'rgba(255,255,255,0.95)';
+  g.beginPath();
+  const sx = 38, sy = 35, a = 7, b = 1.8;
+  g.moveTo(sx, sy - a); g.lineTo(sx + b, sy - b); g.lineTo(sx + a, sy); g.lineTo(sx + b, sy + b);
+  g.lineTo(sx, sy + a); g.lineTo(sx - b, sy + b); g.lineTo(sx - a, sy); g.lineTo(sx - b, sy - b);
+  g.closePath();
+  g.fill();
+}
+
+// Jewels are painted once into small pictures, then stamped on the board every frame.
+// This keeps the game smooth even on older phones.
+function buildSprites() {
+  const dpr = window.devicePixelRatio || 1;
+  const size = Math.max(16, Math.round(cell * dpr));
+  sprites = GEMS.map((def) => {
+    const pic = document.createElement('canvas');
+    pic.width = pic.height = size;
+    const g = pic.getContext('2d');
+    g.scale(size / 100, size / 100);
+    paintGem(g, def, size / 100);
+    return pic;
+  });
+
+  // Empty board: rounded tiles in two close shades
+  boardPicture = document.createElement('canvas');
+  boardPicture.width = Math.round(COLS * cell * dpr);
+  boardPicture.height = Math.round(ROWS * cell * dpr);
+  const b = boardPicture.getContext('2d');
+  b.scale(dpr, dpr);
+  b.fillStyle = '#0f1830';
+  b.fillRect(0, 0, COLS * cell, ROWS * cell);
+  const gap = Math.max(1, cell * 0.04), rad = cell * 0.18;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      b.fillStyle = (r + c) % 2 ? '#1a2747' : '#15203c';
+      roundRect(b, c * cell + gap, r * cell + gap, cell - gap * 2, cell - gap * 2, rad);
+      b.fill();
+    }
+  }
+}
+
+function roundRect(g, x, y, w, h, rad) {
+  g.beginPath();
+  g.moveTo(x + rad, y);
+  g.arcTo(x + w, y, x + w, y + h, rad);
+  g.arcTo(x + w, y + h, x, y + h, rad);
+  g.arcTo(x, y + h, x, y, rad);
+  g.arcTo(x, y, x + w, y, rad);
+  g.closePath();
+}
+
+// ---------- Drawing: one frame ----------
 function drawGem(g, r, c) {
-  const def = GEMS[g.type];
-  const x = (c + g.ox + 0.5) * cell, y = (r + g.oy + 0.5) * cell;
-  const s = cell * 0.36 * (g.dying ? 1 - g.dying : 1);
-  if (s <= 0) return;
-  gemPath(def.shape, x, y, s);
-  ctx.fillStyle = def.color;
-  ctx.fill();
-  // Shine in the top-left
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.beginPath();
-  ctx.arc(x - s * 0.3, y - s * 0.3, s * 0.22, 0, Math.PI * 2);
-  ctx.fill();
+  const x = (c + g.ox + 0.5) * cell;
+  let y = (r + g.oy + 0.5) * cell;
+  let w = cell, h = cell;
+
+  if (g.dying) {
+    // Burst: a ring of the jewel's colour grows while the jewel shrinks and fades
+    const k = g.dying;
+    ctx.globalAlpha = 1 - k;
+    ctx.strokeStyle = GEMS[g.type].color;
+    ctx.lineWidth = Math.max(1, cell * 0.08 * (1 - k));
+    ctx.beginPath();
+    ctx.arc(x, y, cell * (0.3 + 0.45 * k), 0, Math.PI * 2);
+    ctx.stroke();
+    w = h = cell * (1 + 0.25 * Math.sin(k * Math.PI) - k);
+    if (w <= 0) { ctx.globalAlpha = 1; return; }
+  } else if (g.squash > 0) {
+    // Landing bounce: a little wider and shorter for a moment
+    const q = Math.sin(g.squash * Math.PI) * 0.14;
+    w = cell * (1 + q);
+    h = cell * (1 - q);
+    y += cell * q * 0.5;
+  } else if (selected && selected.r === r && selected.c === c) {
+    w = h = cell * (1.08 + 0.05 * Math.sin(clock * 8));        // picked jewel gently pulses
+  }
+
+  ctx.drawImage(sprites[g.type], x - w / 2, y - h / 2, w, h);
+  ctx.globalAlpha = 1;
 }
 
 function draw() {
   const w = COLS * cell, h = ROWS * cell;
   ctx.clearRect(0, 0, w, h);
-
-  // Chequered squares
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      ctx.fillStyle = (r + c) % 2 ? '#152039' : '#111a2e';
-      ctx.fillRect(c * cell, r * cell, cell, cell);
-    }
-  }
+  if (boardPicture) ctx.drawImage(boardPicture, 0, 0, w, h);
 
   if (grid.length && screen !== 'title') {
     // Keep falling jewels inside the board
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
 
+    // Glowing square under the picked jewel
     if (selected) {
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 3;
-      ctx.strokeRect(selected.c * cell + 2, selected.r * cell + 2, cell - 4, cell - 4);
+      const pulse = 0.5 + 0.5 * Math.sin(clock * 8);
+      roundRect(ctx, selected.c * cell + 2, selected.r * cell + 2, cell - 4, cell - 4, cell * 0.18);
+      ctx.fillStyle = 'rgba(255,255,255,' + (0.10 + 0.08 * pulse) + ')';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,' + (0.6 + 0.4 * pulse) + ')';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
     }
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (grid[r][c]) drawGem(grid[r][c], r, c);
     ctx.restore();
@@ -453,34 +822,96 @@ function draw() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (const e of effects) {
-      ctx.globalAlpha = 1 - e.t / e.life;
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '700 ' + Math.round(cell * 0.42) + 'px system-ui, sans-serif';
+      const k = e.t / e.life;
+      ctx.globalAlpha = 1 - k;
+      ctx.font = '800 ' + Math.round(cell * (e.big ? 0.56 : 0.44)) + 'px system-ui, sans-serif';
       const x = Math.max(cell * 1.5, Math.min(w - cell * 1.5, e.x * cell));
-      ctx.fillText(e.text, x, e.y * cell - cell * 0.8 * (e.t / e.life));
+      const y = e.y * cell - cell * 0.8 * k;
+      ctx.lineWidth = Math.max(2, cell * 0.08);
+      ctx.strokeStyle = 'rgba(11,18,32,0.85)';
+      ctx.strokeText(e.text, x, y);
+      ctx.fillStyle = e.big ? '#ffd23f' : '#ffffff';
+      ctx.fillText(e.text, x, y);
       ctx.globalAlpha = 1;
     }
   }
 
   // Messages
-  let text = null;
-  if (screen === 'title')      text = ['Jewel Swap', 'Swap two jewels to line up 3 or more', 'Tap to start'];
-  else if (screen === 'clear') text = ['Level ' + level + ' clear!', movesLeft + ' moves to spare', 'Tap for level ' + (level + 1)];
-  else if (screen === 'won')   text = ['You win!', 'Total score ' + score, 'Tap to play again'];
-  else if (screen === 'over')  text = ['Out of moves', 'You needed ' + (LEVELS[level - 1].goal - levelScore()) + ' more', 'Tap to retry level ' + level];
+  let text = null, accent = '#ffffff';
+  const choose = screen === 'title' && saved;                // first screen with a saved game: show two buttons
+  titleButtons = [];
+  if (choose)                  { text = ['Jewel Swap', 'Swap two jewels to line up 3 or more']; accent = '#b47cff'; }
+  else if (screen === 'title') { text = ['Jewel Swap', 'Swap two jewels to line up 3 or more', LEVELS.length + ' levels', 'Tap to start']; accent = '#b47cff'; }
+  else if (screen === 'clear') { text = ['Level ' + level + ' clear!', movesLeft + ' moves to spare', 'Tap for level ' + (level + 1)]; accent = '#2fd6a3'; }
+  else if (screen === 'won')   { text = ['You win!', 'All ' + LEVELS.length + ' levels complete', 'Total score ' + score, 'Tap to play again']; accent = '#ffd23f'; }
+  else if (screen === 'over')  { text = ['Out of moves', 'You needed ' + (LEVELS[level - 1].goal - levelScore()) + ' more', 'Tap to retry level ' + level]; accent = '#ff5d6c'; }
   if (text) {
-    ctx.fillStyle = 'rgba(11,18,32,0.84)';
+    ctx.fillStyle = 'rgba(11,18,32,0.82)';
     ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = '#ffffff';
+
+    const titleSize = Math.min(34, cell * 0.8), lineSize = Math.min(17, cell * 0.42);
+    const gap = lineSize * 1.9;
+    const btnW = Math.min(w * 0.72, 280), btnH = Math.max(44, Math.min(54, cell * 1.1)), btnGap = 12;
+    let top = h / 2 - ((text.length - 1) * gap) / 2;
+    if (choose) top -= btnH * 0.7;                           // make room for the buttons underneath
+
+    // A row of jewels above the title on the first screen
+    if (screen === 'title' && sprites.length) {
+      const size = Math.min(cell, w / (GEMS.length + 1));
+      const left = w / 2 - size * GEMS.length / 2;
+      for (let i = 0; i < GEMS.length; i++) {
+        const lift = Math.sin(clock * 3 + i * 0.7) * size * 0.08;
+        ctx.drawImage(sprites[i], left + i * size, top - titleSize - size * 1.1 + lift, size, size);
+      }
+    }
+
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const gap = 32;
-    const top = h / 2 - (text.length - 1) * gap / 2;
     for (let i = 0; i < text.length; i++) {
-      ctx.font = i === 0 ? '700 26px system-ui, sans-serif' : '500 16px system-ui, sans-serif';
-      ctx.fillText(text[i], w / 2, top + i * gap);
+      const last = i === text.length - 1 && !choose;         // the "Tap to..." line
+      if (i === 0) {
+        ctx.font = '800 ' + titleSize + 'px system-ui, sans-serif';
+        ctx.fillStyle = accent;
+      } else {
+        ctx.font = (last ? '700 ' : '500 ') + lineSize + 'px system-ui, sans-serif';
+        // The "Tap to..." line gently fades in and out
+        ctx.fillStyle = last ? 'rgba(255,255,255,' + (0.65 + 0.35 * Math.sin(clock * 4)) + ')' : 'rgba(255,255,255,0.85)';
+      }
+      ctx.fillText(text[i], w / 2, top + i * gap + (i === 0 ? -gap * 0.25 : 0));
+    }
+
+    // Two buttons: carry on from the saved level, or start again
+    if (choose) {
+      const x = (w - btnW) / 2, y = top + (text.length - 1) * gap + gap * 0.9;
+      titleButtons = [
+        { x, y, w: btnW, h: btnH, action: continueGame, label: 'Continue level ' + saved.level, main: true },
+        { x, y: y + btnH + btnGap, w: btnW, h: btnH, action: newGame, label: 'New game from level 1', main: false }
+      ];
+      for (const b of titleButtons) {
+        roundRect(ctx, b.x, b.y, b.w, b.h, 14);
+        ctx.fillStyle = b.main ? '#2fd6a3' : 'rgba(255,255,255,0.10)';
+        ctx.fill();
+        if (!b.main) { ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5; ctx.stroke(); }
+        ctx.font = '700 ' + lineSize + 'px system-ui, sans-serif';
+        ctx.fillStyle = b.main ? '#06281e' : '#ffffff';
+        ctx.fillText(b.label, w / 2, b.y + b.h / 2 + 1);
+      }
     }
   }
+
+  // Sparks and confetti (drawn last so they show above everything)
+  for (const s of sparks) {
+    const k = s.t / s.life;
+    ctx.globalAlpha = k < 0.7 ? 1 : (1 - k) / 0.3;
+    ctx.fillStyle = s.color;
+    const size = s.size * cell;
+    ctx.save();
+    ctx.translate(s.x * cell, s.y * cell);
+    ctx.rotate(s.t * 9 + s.size * 50);
+    ctx.fillRect(-size / 2, -size / 2, size, size);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
 }
 
 // ---------- Fit the board to the screen ----------
@@ -493,6 +924,7 @@ function resize() {
   canvas.width  = Math.round(COLS * cell * dpr);
   canvas.height = Math.round(ROWS * cell * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  buildSprites();
 }
 
 // ---------- Input: slide a jewel, or tap two jewels ----------
@@ -505,6 +937,15 @@ function cellAt(e) {
 }
 
 canvas.addEventListener('pointerdown', (e) => {
+  // First screen with a saved game: only the two buttons do something
+  if (screen === 'title' && saved) {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    for (const b of titleButtons) {
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { b.action(); return; }
+    }
+    return;
+  }
   if (screen !== 'play') { advance(); return; }
   if (phase !== 'idle') return;
   const at = cellAt(e);
@@ -519,6 +960,7 @@ canvas.addEventListener('pointerdown', (e) => {
     trySwap(from, at);
   } else {
     selected = at;
+    sfx.pick();
   }
 });
 
@@ -553,6 +995,7 @@ function loop(time) {
 
 // ---------- Start ----------
 window.addEventListener('resize', resize);
+saved = loadSave();
 resize();
 updateHud();
 requestAnimationFrame(loop);
