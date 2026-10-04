@@ -25,10 +25,13 @@
     color: #ffffff;
     font-family: system-ui, sans-serif;
   }
+  /* --top and --bottom are the parts of the screen covered by the phone's own bars
+     (clock/battery at the top, Home/Back buttons at the bottom). The script sets them. */
+  :root { --top: 0px; --bottom: 0px; }
   main {
     max-width: 720px;
     margin: 0 auto;
-    padding: 32px 16px 40px;
+    padding: calc(32px + var(--top)) 16px calc(40px + var(--bottom));
   }
   h1 {
     margin: 0 0 4px;
@@ -119,6 +122,7 @@
     inset: 0;
     flex-direction: column;
     background: #0b1220;
+    padding-bottom: var(--bottom);              /* keeps the game above the phone's Home/Back buttons */
   }
   body.playing #player { display: flex; }
   body.playing main { display: none; }
@@ -127,14 +131,15 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    height: 40px;
-    padding: 0 8px;
+    box-sizing: content-box;
+    height: 44px;
+    padding: var(--top) 8px 0;                  /* pushes the Menu button below the clock and camera */
     background: #0e1730;
     border-bottom: 1px solid rgba(255,255,255,0.08);
   }
   #back {
-    height: 30px;
-    padding: 0 12px;
+    height: 36px;
+    padding: 0 16px;
     border: 0;
     border-radius: 8px;
     background: #1c2742;
@@ -281,6 +286,36 @@ const btnBack   = document.getElementById('back');
 const btnInstall = document.getElementById('install');
 const iosHint    = document.getElementById('iosHint');
 
+// ---------- Room for the phone's own bars ----------
+// Inside the Android app the page is drawn behind the clock and the Home/Back buttons.
+// This measures how much is covered and stores it in --top and --bottom for the styles above.
+const isNativeApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+function setSafeAreas() {
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;visibility:hidden;' +
+    'padding-top:var(--safe-area-inset-top, env(safe-area-inset-top, 0px));' +
+    'padding-bottom:var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));';
+  document.body.appendChild(probe);
+  const cs = getComputedStyle(probe);
+  let top = parseFloat(cs.paddingTop) || 0;
+  let bottom = parseFloat(cs.paddingBottom) || 0;
+  probe.remove();
+
+  // Older phones do not report the sizes. On Android 15 and newer the app is always
+  // drawn behind the bars, so use a safe guess there.
+  const android = /Android (\d+)/.exec(navigator.userAgent);
+  if (isNativeApp && android && Number(android[1]) >= 15) {
+    const upright = window.innerHeight >= window.innerWidth;
+    if (top === 0) top = upright ? 40 : 28;
+    if (bottom === 0) bottom = upright ? 48 : 0;
+  }
+  document.documentElement.style.setProperty('--top', top + 'px');
+  document.documentElement.style.setProperty('--bottom', bottom + 'px');
+}
+setSafeAreas();
+window.addEventListener('resize', setSafeAreas);              // also runs when the phone is turned
+window.addEventListener('load', () => setTimeout(setSafeAreas, 300));
+
 // ---------- Opening and closing games ----------
 // Build the list of games from the cards: { 'pong.html': 'Pong', ... }
 const games = {};
@@ -290,16 +325,25 @@ for (const card of document.querySelectorAll('.card')) {
 
 // The part of the address after # says which game is open (nothing = menu).
 // Using the address means the phone's Back button also returns to the menu.
+let openGame = '';                                // file name of the game on screen ('' = menu)
+
+// Loads a page into the game frame without adding a step to the phone's Back history.
+// (Otherwise Back would first flip to the previous game, and need two presses.)
+function loadInFrame(file) {
+  try { frame.contentWindow.location.replace(file); }
+  catch (e) { frame.setAttribute('src', file); }
+}
+
 function showFromAddress() {
   const file = location.hash.slice(1);
   if (games[file]) {
     gameTitle.textContent = games[file];
-    if (frame.getAttribute('src') !== file) frame.setAttribute('src', file);
+    if (openGame !== file) { loadInFrame(file); openGame = file; }
     document.body.classList.add('playing');
     frame.focus();
   } else {
     document.body.classList.remove('playing');
-    frame.removeAttribute('src');                 // stops the game that was running
+    if (openGame) { loadInFrame('about:blank'); openGame = ''; }   // stops the game that was running
   }
 }
 window.addEventListener('hashchange', showFromAddress);
@@ -333,7 +377,8 @@ const isInstalled = window.navigator.standalone === true ||
 if (isApple && !isInstalled) iosHint.classList.add('show');
 
 // ---------- Offline helper ----------
-if ('serviceWorker' in navigator) {
+// Not needed inside the Android app: the games are already stored in the app.
+if ('serviceWorker' in navigator && !isNativeApp) {
   navigator.serviceWorker.register('sw.js').catch(() => { /* the site still works without it */ });
 }
 </script>
