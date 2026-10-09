@@ -549,8 +549,8 @@ def('mo_count','mon','Count the money','Kira wang',L=>{let list=[];
   else{for(let i=R(1,L===3?4:2);i--;)list.push(pick(L===3?[100,500,1000,2000]:[100,500,1000]));for(let i=R(2,4);i--;)list.push(pick([50,20,10,5]))}
   list.sort((a,b)=>b-a);const c=list.reduce((a,b)=>a+b,0);
   return{text:t('How much money is there?','Berapakah jumlah wang ini?'),vis:vMoney(list),parts:[pBlanks([B(c,M)])],hint:t('Add the notes first, then the coins.','Tambah wang kertas dahulu, kemudian duit syiling.')}});
-def('mo_coins','mon','Coins in the piggy bank','Syiling dalam tabung',L=>{const coin=pick(L===1?[50]:[50,20,10]),target=coin===50?R(1,L===1?3:5)*100:coin===20?pick([100,200,300]):pick([50,100]),[A]=two();
-  return{text:t(`${A} changes ${rm(target)} into ${coin} sen coins. Tap the coin to fill the piggy bank. How many coins?`,`${A} menukar ${rm(target)} kepada duit syiling ${coin} sen. Tekan syiling untuk isi tabung. Berapa keping syiling?`),
+def('mo_coins','mon','Coins in the money box','Syiling dalam tabung',L=>{const coin=pick(L===1?[50]:[50,20,10]),target=coin===50?R(1,L===1?3:5)*100:coin===20?pick([100,200,300]):pick([50,100]),[A]=two();
+  return{text:t(`${A} changes ${rm(target)} into ${coin} sen coins. Tap the coin to fill the money box. How many coins?`,`${A} menukar ${rm(target)} kepada duit syiling ${coin} sen. Tekan syiling untuk isi tabung. Berapa keping syiling?`),
     parts:[{type:'coins',coin,target,ans:String(target/coin)}],hint:t(`Keep adding ${coin} sen until you reach ${rm(target)}.`,`Tambah ${coin} sen sehingga cukup ${rm(target)}.`)}});
 def('mo_add','mon','Adding money','Tambah wang',L=>{const a=L===1?R(5,40)*100:R(110,560)*10+pick([0,5]),b=L===1?R(5,40)*100:R(105,380)*10+pick([0,5]);
   return{text:t('Add the money.','Tambah wang.'),parts:[pColumn([a,b],'+',a+b,1)],hint:t('Line up the points. Add the sen first, then the ringgit.','Sejajarkan titik. Tambah sen dahulu, kemudian ringgit.')}});
@@ -693,7 +693,7 @@ W.share=(p,host,api)=>{const pile=el('div','pile'),bs=el('div','baskets'),n=Arra
   return{check(){if(left)return null;return n.every(v=>v===n[0])},reset(){setTimeout(()=>{n.fill(0);left=p.total;draw()},700)},reveal(){n.fill(p.total/p.groups);left=0;draw();back.hidden=true}}};
 W.coins=(p,host,api)=>{let n=0;const box=el('div','vis'),out=el('div','big'),row=el('div','row');row.style.width='100%';
   const add=el('button','btn sun',`+ <span class="coin${p.coin<20?' s':''}">${p.coin}<br>sen</span>`),sub=el('button','btn','− 1');add.type=sub.type='button';
-  function draw(){out.innerHTML='🐷 '+rm(n*p.coin)+'<div class="sub">× '+n+' '+Ts('coins','keping')+'</div>'}
+  function draw(){out.innerHTML='💰 '+rm(n*p.coin)+'<div class="sub">× '+n+' '+Ts('coins','keping')+'</div>'}
   add.onclick=()=>{if(api.locked()||n>=60)return;sfx('tap');n++;draw()};sub.onclick=()=>{if(api.locked()||!n)return;n--;draw()};
   row.appendChild(sub);row.appendChild(add);box.appendChild(out);host.appendChild(box);host.appendChild(row);draw();
   return{check(){return n?n*p.coin===p.target:null},reset(){},reveal(){n=p.target/p.coin;draw();row.hidden=true}}};
