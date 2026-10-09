@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ms">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -216,14 +216,14 @@ const S={lang:'both',c:'jojo',snd:true,mus:true,best:{},stickers:[],hist:[],sk:{
 try{const o=JSON.parse(localStorage.getItem(KEY)||'null');if(o)Object.assign(S,o)}catch(e){}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 
-/* ---------- language ---------- */
+/* ---------- language: Bahasa Melayu is the main language, English is second ---------- */
 const t=(en,bm)=>({en,bm});
 function tx(o){if(o==null)return'';if(typeof o!=='object')return String(o);
   if(S.lang==='en')return o.en;if(S.lang==='bm')return o.bm;
-  return o.en===o.bm?o.en:'<span class="l1">'+o.en+'</span><span class="l2">'+o.bm+'</span>'}
-function ts(o){if(typeof o!=='object')return String(o);if(S.lang==='en')return o.en;if(S.lang==='bm')return o.bm;return o.en===o.bm?o.en:o.en+' / '+o.bm}
+  return o.en===o.bm?o.bm:'<span class="l1">'+o.bm+'</span><span class="l2">'+o.en+'</span>'}
+function ts(o){if(typeof o!=='object')return String(o);if(S.lang==='en')return o.en;if(S.lang==='bm')return o.bm;return o.en===o.bm?o.bm:o.bm+' / '+o.en}
 const T=(en,bm)=>tx({en,bm}), Ts=(en,bm)=>ts({en,bm});
-const qLang=()=>S.lang==='both'?pick(['en','bm']):S.lang;
+const qLang=()=>S.lang==='both'?pick(['bm','bm','en']):S.lang;
 
 const EN1=['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
 const EN10=['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
@@ -324,7 +324,6 @@ const CHARS=[
   <path d="M34 60 Q14 100 18 132 H102 Q106 100 86 60Z" fill="#e23b3b" ${sk}/>
   <path d="M42 44 Q60 36 78 44 L74 98 Q92 110 92 128 H28 Q28 110 46 98Z" fill="#3558c9" ${sk}/>
   <rect x="24" y="126" width="72" height="12" rx="6" fill="#ffc531" ${sk}/>
-  <rect x="57.5" y="2" width="5" height="16" fill="#ffc531" ${sk}/><rect x="52" y="6" width="16" height="5" fill="#ffc531" ${sk}/>
   <polygon points="40,46 37,24 50,33 60,18 70,33 83,24 80,46" fill="#ffc531" ${sk}/>
   ${eye(51,64,7)}${eye(69,64,7)}
   <path class="mi" d="M52 80 Q60 85 68 80" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
@@ -716,8 +715,8 @@ const head=(title,back)=>`<div class="top"><button class="ib" id="bBack" type="b
 const onBack=fn=>{$('#bBack').onclick=()=>{sfx('tap');fn()}};
 
 function home(){SH=null;applyChar();
-  screen(`<div class="top"><div class="seg" role="group" aria-label="Language">${[['en','EN'],['bm','BM'],['both','EN + BM']].map(([k,l])=>`<button type="button" data-l="${k}" aria-pressed="${S.lang===k}">${l}</button>`).join('')}</div><span style="display:flex;gap:8px">${soundBtns()}</span></div>
-  <div class="tent"><h1>${S.lang==='bm'?'Sarkas Matematik':'Circus Math Show'}</h1><br><p>${Ts('Year 2','Tahun 2')}</p></div>
+  screen(`<div class="top"><div class="seg" role="group" aria-label="Language">${[['bm','BM'],['en','EN'],['both','BM + EN']].map(([k,l])=>`<button type="button" data-l="${k}" aria-pressed="${S.lang===k}">${l}</button>`).join('')}</div><span style="display:flex;gap:8px">${soundBtns()}</span></div>
+  <div class="tent"><h1>Circus Math Show</h1><br><p>${Ts('Year 2','Tahun 2')}</p></div>
   <h2>${T('How do you feel today?','Apa perasaan kamu hari ini?')}</h2>
   <div class="chars">${CHARS.map(c=>`<button type="button" class="charcard${c.id===S.c?' sel':''}" data-c="${c.id}">${charHTML(c.id)}<b>${c.name}</b><small>${ts(c.mood)}</small></button>`).join('')}</div>
   <button class="btn primary" id="bPlay" type="button">🎪 ${T('Practice show','Latihan')}</button>
