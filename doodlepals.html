@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Doodle Pals">
+<meta name="theme-color" content="#ff5d8f">
+<title>Doodle Pals</title>
+<style>
+:root{
+  --pink:#ff5d8f; --yellow:#ffd23f; --teal:#2ec4b6; --purple:#7b5cff;
+  --ink:#2b2440; --cream:#fff8ec; --card:#ffffff;
+  --font:"Arial Rounded MT Bold","Chalkboard SE","Comic Sans MS","Trebuchet MS",system-ui,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;height:100%;background:var(--cream);color:var(--ink);font-family:var(--font);
+  overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touch-action:manipulation;cursor:pointer;}
+.screen{position:fixed;inset:0;display:none;flex-direction:column;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);}
+.screen.on{display:flex;}
+
+/* ---------- Home ---------- */
+#home{overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--cream);}
+.awning{flex:none;padding:18px 16px 26px;text-align:center;color:#fff;position:relative;
+  background:repeating-linear-gradient(90deg,var(--pink) 0 34px,#ff86ab 34px 68px);}
+.awning:after{content:"";position:absolute;left:0;right:0;bottom:-11px;height:12px;
+  background:radial-gradient(circle at 17px 0,var(--pink) 11px,transparent 12px) 0 0/68px 12px repeat-x,
+             radial-gradient(circle at 17px 0,#ff86ab 11px,transparent 12px) 34px 0/68px 12px repeat-x;}
+.awning h1{margin:0;font-size:34px;letter-spacing:1px;text-shadow:0 3px 0 rgba(43,36,64,.28);}
+.awning p{margin:4px 0 0;font-size:15px;opacity:.95;}
+.pill{display:inline-block;margin-top:10px;background:#fff;color:var(--ink);border-radius:999px;padding:6px 16px;font-size:17px;
+  box-shadow:0 3px 0 rgba(43,36,64,.18);}
+.pill b{color:#f5a400;}
+#bMuteHome{position:absolute;right:12px;top:14px;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.9);font-size:20px;}
+#gallery{padding:24px 14px 30px;max-width:560px;width:100%;margin:0 auto;}
+.free{display:flex;align-items:center;gap:14px;width:100%;padding:14px 16px;border-radius:22px;color:#fff;text-align:left;
+  background:linear-gradient(120deg,var(--purple),#b06cff);box-shadow:0 5px 0 #5a3fd1;}
+.free .big{font-size:38px;}
+.free .t1{font-size:21px;}
+.free .t2{font-size:14px;opacity:.9;margin-top:2px;}
+.pack{margin:24px 4px 10px;font-size:21px;display:flex;align-items:center;gap:8px;}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.card{background:var(--card);border-radius:22px;padding:10px 10px 12px;box-shadow:0 5px 0 rgba(43,36,64,.14);text-align:center;}
+.card:active,.free:active{transform:translateY(3px);}
+.card .pic{border-radius:16px;overflow:hidden;aspect-ratio:1;display:block;}
+.card .pic canvas,.card .pic img{width:100%;height:100%;display:block;}
+.card .nm{font-size:18px;margin-top:8px;}
+.stars{font-size:20px;letter-spacing:2px;color:#d9d3e6;}
+.stars .y{color:#ffb800;}
+
+/* ---------- Draw ---------- */
+#draw{background:linear-gradient(180deg,#fff1d6,#ffe1ec);overflow:hidden;}
+.top{flex:none;display:flex;align-items:center;gap:8px;padding:8px 10px 4px;}
+.rnd{flex:none;width:44px;height:44px;border-radius:50%;background:#fff;font-size:20px;box-shadow:0 3px 0 rgba(43,36,64,.16);}
+.rnd:active{transform:translateY(2px);}
+.ttl{flex:1;min-width:0;text-align:center;}
+#tName{font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#tStep{font-size:14px;color:#6d6488;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#dots{flex:none;display:flex;justify-content:center;gap:6px;height:18px;align-items:center;}
+#dots i{width:10px;height:10px;border-radius:50%;background:#e4d9ee;display:block;}
+#dots i.done{background:var(--teal);}
+#dots i.now{background:var(--pink);transform:scale(1.35);}
+.stageWrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:6px 12px;}
+#stage{position:relative;background:#fff;border-radius:24px;overflow:hidden;aspect-ratio:1;
+  width:min(calc(100vw - 24px), calc(100vh - 300px), 560px);
+  width:min(calc(100vw - 24px), calc(100dvh - 300px), 560px);
+  box-shadow:0 6px 0 rgba(43,36,64,.14), 0 0 0 4px #fff;touch-action:none;}
+#stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
+#stage.pop{animation:pop .35s ease;}
+@keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.035)}100%{transform:scale(1)}}
+.bar{flex:none;display:none;padding:6px 10px 10px;max-width:560px;width:100%;margin:0 auto;}
+.bar.on{display:block;}
+.row{display:flex;gap:6px;justify-content:center;}
+.tool{flex:1;max-width:96px;min-height:54px;border-radius:16px;background:#fff;font-size:22px;line-height:1.1;
+  box-shadow:0 3px 0 rgba(43,36,64,.16);display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.tool small{font-size:11px;margin-top:2px;}
+.tool:active{transform:translateY(2px);}
+.tool.sel{background:var(--yellow);box-shadow:0 3px 0 #d9a900;}
+.tool.go{background:var(--teal);color:#fff;box-shadow:0 3px 0 #1c9c90;}
+.sizes{display:flex;gap:10px;justify-content:center;align-items:center;margin:8px 0 6px;}
+.sz{width:44px;height:36px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 0 rgba(43,36,64,.14);}
+.sz i{display:block;border-radius:50%;background:var(--ink);}
+.sz.sel{background:var(--yellow);}
+#palette{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;justify-items:center;}
+.sw{width:100%;max-width:40px;aspect-ratio:1;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 0 rgba(43,36,64,.2);}
+.sw.sel{outline:3px solid var(--ink);outline-offset:1px;transform:scale(1.08);}
+
+/* ---------- Celebration ---------- */
+#party{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(43,36,64,.62);z-index:20;padding:16px;}
+#party.on{display:flex;}
+.sheet{background:#fff;border-radius:28px;padding:18px 18px 16px;width:100%;max-width:380px;text-align:center;
+  animation:rise .4s cubic-bezier(.2,1.4,.4,1);}
+@keyframes rise{from{transform:translateY(40px) scale(.9);opacity:0}to{transform:none;opacity:1}}
+.sheet h2{margin:0 0 8px;font-size:28px;color:var(--pink);}
+#pImg{width:62%;border-radius:18px;box-shadow:0 0 0 4px var(--yellow);-webkit-touch-callout:default;-webkit-user-select:auto;user-select:auto;}
+#pStars{font-size:46px;letter-spacing:6px;margin-top:8px;height:58px;}
+#pStars span{display:inline-block;color:#e3deee;transition:color .2s;}
+#pStars span.y{color:#ffb800;animation:starpop .45s cubic-bezier(.2,1.8,.4,1);}
+@keyframes starpop{from{transform:scale(.2) rotate(-40deg)}to{transform:none}}
+#pMsg{font-size:15px;color:#6d6488;min-height:20px;margin:2px 0 12px;}
+.btns{display:flex;gap:8px;}
+.btn{flex:1;min-height:52px;border-radius:16px;font-size:16px;color:#fff;background:var(--purple);box-shadow:0 4px 0 #5a3fd1;}
+.btn.alt{background:var(--teal);box-shadow:0 4px 0 #1c9c90;}
+.btn.soft{background:#efeaf7;color:var(--ink);box-shadow:0 4px 0 #d6cde6;}
+.btn:active{transform:translateY(3px);}
+#confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:30;display:none;}
+</style>
+</head>
+<body>
+
+<!-- ================= HOME ================= -->
+<div id="home" class="screen on">
+  <div class="awning">
+    <button id="bMuteHome" aria-label="Sound"></button>
+    <h1>Doodle Pals</h1>
+    <p>Trace it, colour it, collect the stars!</p>
+    <div class="pill">&#9733; <b id="totStars">0</b> <span id="totOf"></span></div>
+  </div>
+  <div id="gallery"></div>
+</div>
+
+<!-- ================= DRAW ================= -->
+<div id="draw" class="screen">
+  <div class="top">
+    <button class="rnd" id="bBack" aria-label="Home">&#127968;</button>
+    <div class="ttl"><div id="tName"></div><div id="tStep"></div></div>
+    <button class="rnd" id="bMute" aria-label="Sound"></button>
+  </div>
+  <div id="dots"></div>
+  <div class="stageWrap">
+    <div id="stage">
+      <canvas id="cColor" width="640" height="640"></canvas>
+      <canvas id="cInk" width="640" height="640"></canvas>
+      <canvas id="cGuide" width="640" height="640"></canvas>
+    </div>
+  </div>
+
+  <!-- tracing tools -->
+  <div id="traceBar" class="bar">
+    <div class="row">
+      <button class="tool" id="tUndo">&#8617;&#65039;<small>Undo</small></button>
+      <button class="tool" id="tHint">&#128161;<small>Show me</small></button>
+      <button class="tool" id="tSkip">&#9193;&#65039;<small>Skip</small></button>
+    </div>
+  </div>
+
+  <!-- colouring tools -->
+  <div id="paintBar" class="bar">
+    <div class="row">
+      <button class="tool sel" id="pBrush" data-tool="brush">&#128396;&#65039;<small>Brush</small></button>
+      <button class="tool" id="pFill" data-tool="fill">&#129699;<small>Fill</small></button>
+      <button class="tool" id="pErase" data-tool="eraser">&#129533;<small>Eraser</small></button>
+      <button class="tool" id="pUndo">&#8617;&#65039;<small>Undo</small></button>
+      <button class="tool" id="pClear">&#128465;&#65039;<small>Clear</small></button>
+      <button class="tool go" id="pDone">&#9989;<small>Done</small></button>
+    </div>
+    <div class="sizes" id="sizes"></div>
+    <div id="palette"></div>
+  </div>
+</div>
+
+<!-- ================= CELEBRATION ================= -->
+<div id="party">
+  <div class="sheet">
+    <h2 id="pTitle">You did it!</h2>
+    <img id="pImg" alt="Your drawing">
+    <div id="pStars"><span>&#9733;</span><span>&#9733;</span><span>&#9733;</span></div>
+    <div id="pMsg"></div>
+    <div class="btns">
+      <button class="btn alt" id="pSave">&#128247; Save</button>
+      <button class="btn" id="pNext">Next &#10145;&#65039;</button>
+      <button class="btn soft" id="pHome">&#127968; Home</button>
+    </div>
+  </div>
+</div>
+<canvas id="confetti"></canvas>
+<svg width="0" height="0" style="position:absolute;left:-9px;top:-9px"><path id="meas" d=""/></svg>
+
+<script>
+/*ART-START*/
+/* ------------------------------------------------------------------
+   CHARACTER ART (all original designs)
+   Each character is a list of steps. Each step has shapes (SVG paths
+   in a 320 x 320 box). Shape flags:
+     behind : drawn behind everything traced so far
+     line   : plain line (not a closed body part)
+     fill   : solid dark fill (eyes, nose)
+------------------------------------------------------------------- */
+const r1 = n => Math.round(n * 10) / 10;
+const E = (x, y, rx, ry) => `M${x - rx},${y} a${rx},${ry} 0 1,0 ${2 * rx},0 a${rx},${ry} 0 1,0 ${-2 * rx},0 Z`;
+const C = (x, y, r) => E(x, y, r, r);
+// fluffy circle made of n round bumps
+function scallop(cx, cy, R, n) {
+  const rb = r1(R * Math.sin(Math.PI / n) * 1.05);
+  let d = '';
+  for (let i = 0; i <= n; i++) {
+    const a = i / n * Math.PI * 2 - Math.PI / 2;
+    const x = r1(cx + R * Math.cos(a)), y = r1(cy + R * Math.sin(a));
+    d += i === 0 ? `M${x},${y}` : ` A${rb},${rb} 0 0,1 ${x},${y}`;
+  }
+  return d + ' Z';
+}
+// mirror a path left-right (absolute "x,y" pairs only)
+const mir = d => d.replace(/(-?[\d.]+),(-?[\d.]+)/g, (m, x, y) => (320 - parseFloat(x)) + ',' + y);
+const S = (d, o) => Object.assign({ d }, o || {});
+const BEH = { behind: true }, LINE = { line: true }, DOT = { fill: true };
+
+const PACKS = [
+  { id: 'circus', name: 'Circus Stars', icon: '\uD83C\uDFAA' },
+  { id: 'monster', name: 'Toy Monsters', icon: '\uD83E\uDDF8' }
+];
+
+const CHARS = [
+  { id: 'bobo', name: 'Bobo the Clown', pack: 'circus', tint: '#ffe3ec', steps: [
+    { n: 'head', sh: [S(C(160, 170, 70))] },
+    { n: 'curly hair', sh: [S(scallop(82, 160, 30, 7), BEH), S(scallop(238, 160, 30, 7), BEH)] },
+    { n: 'party hat', sh: [S('M126,114 L160,34 L194,114 Z'), S(C(160, 30, 12))] },
+    { n: 'eyes', sh: [S(C(134, 160, 7), DOT), S(C(186, 160, 7), DOT)] },
+    { n: 'round nose', sh: [S(C(160, 186, 14))] },
+    { n: 'big smile', sh: [S('M122,202 Q160,248 198,202', LINE)] },
+    { n: 'bow tie', sh: [S('M160,264 L116,242 L116,286 Z'), S('M160,264 L204,242 L204,286 Z'), S(C(160, 264, 10))] }
+  ]},
+  { id: 'leo', name: 'Leo the Lion', pack: 'circus', tint: '#fff0c9', steps: [
+    { n: 'face', sh: [S(C(160, 186, 56))] },
+    { n: 'ears', sh: [S(C(114, 138, 18), BEH), S(C(206, 138, 18), BEH)] },
+    { n: 'fluffy mane', sh: [S(scallop(160, 186, 84, 12), BEH)] },
+    { n: 'top hat', sh: [S('M118,128 L202,128 L202,116 L118,116 Z'), S('M132,116 L132,66 L188,66 L188,116 Z')] },
+    { n: 'eyes', sh: [S(C(140, 176, 6), DOT), S(C(180, 176, 6), DOT)] },
+    { n: 'nose and mouth', sh: [S('M150,194 L170,194 L160,206 Z', DOT), S('M160,206 L160,214 M144,212 Q152,224 160,214 Q168,224 176,212', LINE)] },
+    { n: 'whiskers', sh: [S('M126,200 L100,194 M126,208 L100,214 M194,200 L220,194 M194,208 L220,214', LINE)] }
+  ]},
+  { id: 'ellie', name: 'Ellie the Elephant', pack: 'circus', tint: '#dff3ff', steps: [
+    { n: 'head', sh: [S(C(160, 150, 60))] },
+    { n: 'big ears', sh: [S(E(82, 140, 46, 58), BEH), S(E(238, 140, 46, 58), BEH)] },
+    { n: 'party hat', sh: [S('M136,97 L160,42 L184,97 Z'), S(C(160, 38, 9))] },
+    { n: 'eyes', sh: [S(C(130, 140, 6), DOT), S(C(190, 140, 6), DOT)] },
+    { n: 'long trunk', sh: [S('M142,162 C136,210 138,256 162,266 C186,276 204,258 194,240 L179,246 C181,256 168,258 166,244 C164,222 178,200 178,162 Z')] },
+    { n: 'trunk lines', sh: [S('M141,198 Q158,205 174,198 M142,224 Q154,230 167,224', LINE)] }
+  ]},
+  { id: 'pippa', name: 'Pippa the Penguin', pack: 'circus', tint: '#e5e9ff', steps: [
+    { n: 'body', sh: [S(E(160, 178, 68, 92))] },
+    { n: 'tummy', sh: [S(E(160, 204, 44, 60))] },
+    { n: 'eyes', sh: [S(C(138, 124, 11)), S(C(182, 124, 11)), S(C(140, 126, 4), DOT), S(C(180, 126, 4), DOT)] },
+    { n: 'beak', sh: [S('M146,142 L174,142 L160,160 Z')] },
+    { n: 'wings', sh: [S(E(84, 190, 20, 46), BEH), S(E(236, 190, 20, 46), BEH)] },
+    { n: 'feet', sh: [S(E(132, 272, 24, 11), BEH), S(E(188, 272, 24, 11), BEH)] },
+    { n: 'juggling balls', sh: [S(C(62, 72, 15)), S(C(160, 40, 15)), S(C(258, 72, 15))] }
+  ]},
+  { id: 'momo', name: 'Momo the Monkey', pack: 'circus', tint: '#ffe9d2', steps: [
+    { n: 'head', sh: [S(C(160, 165, 66))] },
+    { n: 'ears', sh: [S(C(90, 165, 26), BEH), S(C(230, 165, 26), BEH)] },
+    { n: 'face', sh: [S('M160,132 C138,106 104,130 116,164 C98,206 134,226 160,226 C186,226 222,206 204,164 C216,130 182,106 160,132 Z')] },
+    { n: 'eyes', sh: [S(C(140, 156, 6), DOT), S(C(180, 156, 6), DOT)] },
+    { n: 'nose and smile', sh: [S('M154,180 L154,186 M166,180 L166,186 M134,196 Q160,220 186,196', LINE)] },
+    { n: 'little hat', sh: [S('M138,106 L146,66 L174,66 L182,106 Z'), S('M160,66 Q192,60 192,86', LINE), S(C(192, 92, 6), DOT)] }
+  ]},
+  { id: 'zub', name: 'Zub', pack: 'monster', tint: '#d9f7f1', steps: [
+    { n: 'round body', sh: [S(E(160, 178, 84, 80))] },
+    { n: 'horns', sh: [S('M106,122 Q82,90 94,58 Q124,78 138,106 Z', BEH), S(mir('M106,122 Q82,90 94,58 Q124,78 138,106 Z'), BEH)] },
+    { n: 'one big eye', sh: [S(C(160, 152, 34)), S(C(160, 156, 14), DOT)] },
+    { n: 'happy mouth', sh: [S('M110,204 Q160,256 210,204 Z')] },
+    { n: 'teeth', sh: [S('M126,205 L136,218 L146,205 M174,205 L184,218 L194,205', LINE)] },
+    { n: 'arms', sh: [S(E(74, 200, 20, 13), BEH), S(E(246, 200, 20, 13), BEH)] },
+    { n: 'feet', sh: [S(E(128, 258, 24, 12), BEH), S(E(192, 258, 24, 12), BEH)] }
+  ]},
+  { id: 'fluffo', name: 'Fluffo', pack: 'monster', tint: '#f1e4ff', steps: [
+    { n: 'fluffy body', sh: [S(scallop(160, 178, 74, 14))] },
+    { n: 'feelers', sh: [S('M138,110 Q124,78 114,62', { behind: true, line: true }), S(mir('M138,110 Q124,78 114,62'), { behind: true, line: true }), S(C(112, 54, 10)), S(C(208, 54, 10))] },
+    { n: 'three eyes', sh: [S(C(126, 162, 15)), S(C(160, 144, 15)), S(C(194, 162, 15)), S(C(128, 164, 5), DOT), S(C(160, 147, 5), DOT), S(C(192, 164, 5), DOT)] },
+    { n: 'smile', sh: [S('M128,206 Q160,234 192,206', LINE)] },
+    { n: 'tooth', sh: [S('M152,218 L168,218 L168,232 L152,232 Z')] },
+    { n: 'arms', sh: [S(E(66, 198, 18, 12), BEH), S(E(254, 198, 18, 12), BEH)] },
+    { n: 'feet', sh: [S(E(132, 268, 22, 12), BEH), S(E(188, 268, 22, 12), BEH)] }
+  ]},
+  { id: 'nibbles', name: 'Nibbles', pack: 'monster', tint: '#ffe6f4', steps: [
+    { n: 'body', sh: [S(C(160, 186, 62))] },
+    { n: 'pointy ears', sh: [S('M114,156 L104,96 L150,128 Z', BEH), S(mir('M114,156 L104,96 L150,128 Z'), BEH)] },
+    { n: 'wings', sh: [S('M106,186 L38,146 Q52,178 42,204 Q64,196 78,222 Q90,206 110,212 Z', BEH), S(mir('M106,186 L38,146 Q52,178 42,204 Q64,196 78,222 Q90,206 110,212 Z'), BEH)] },
+    { n: 'eyes', sh: [S(C(138, 176, 14)), S(C(182, 176, 14)), S(C(140, 178, 5), DOT), S(C(180, 178, 5), DOT)] },
+    { n: 'smile', sh: [S('M138,208 Q160,228 182,208', LINE)] },
+    { n: 'little fang', sh: [S('M153,216 L160,231 L167,216 Z')] },
+    { n: 'feet', sh: [S(E(140, 250, 16, 10), BEH), S(E(180, 250, 16, 10), BEH)] }
+  ]},
+  { id: 'gogo', name: 'Gogo', pack: 'monster', tint: '#e6f8d6', steps: [
+    { n: 'tall body', sh: [S('M108,96 Q108,52 160,52 Q212,52 212,96 L212,236 Q212,268 180,268 L140,268 Q108,268 108,236 Z')] },
+    { n: 'spiky hair', sh: [S('M148,54 L142,30 M160,52 L160,26 M172,54 L178,30', LINE)] },
+    { n: 'waving arms', sh: [S('M112,176 Q66,166 58,112 Q56,96 70,98 Q82,100 82,114 Q88,142 112,148 Z', BEH), S(mir('M112,176 Q66,166 58,112 Q56,96 70,98 Q82,100 82,114 Q88,142 112,148 Z'), BEH)] },
+    { n: 'eyes', sh: [S(C(140, 108, 15)), S(C(180, 108, 15)), S(C(142, 110, 5), DOT), S(C(178, 110, 5), DOT)] },
+    { n: 'mouth', sh: [S('M128,146 L192,146 Q192,180 160,180 Q128,180 128,146 Z')] },
+    { n: 'teeth', sh: [S('M144,146 L144,156 L156,156 L156,146 M164,146 L164,156 L176,156 L176,146', LINE)] },
+    { n: 'spots', sh: [S(C(134, 216, 10)), S(C(184, 210, 13)), S(C(162, 246, 8))] },
+    { n: 'feet', sh: [S(E(136, 272, 20, 12), BEH), S(E(184, 272, 20, 12), BEH)] }
+  ]}
+];
+/*ART-END*/
+
+(function () {
+'use strict';
+
+/* ------------------------------------------------------------------
+   Settings
+------------------------------------------------------------------- */
+const INK = '#2b2440';
+const LW = 5.5;            // outline thickness (in 320-box units)
+const RES = 640;           // canvas pixel size
+const K = RES / 320;       // box units -> pixels
+const TOL = 15;            // how close the finger must be to the guide
+const NEED = 0.9;          // share of the guide that must be traced
+const KEY = 'doodlepals_v1';
+const COLORS = ['#ff4d4d', '#ff9f1c', '#ffd23f', '#9be564', '#2fbf71', '#2ec4b6', '#5ac8fa', '#3a86ff',
+                '#8e5cff', '#ff7ac8', '#e0409a', '#a5683a', '#ffd1a8', '#ffffff', '#b8b8c4', '#2b2440'];
+const SIZES = [6, 14, 26];
+
+const $ = id => document.getElementById(id);
+const stage = $('stage'), cColor = $('cColor'), cInk = $('cInk'), cGuide = $('cGuide');
+const cctx = cColor.getContext('2d', { willReadFrequently: true });
+const ictx = cInk.getContext('2d', { willReadFrequently: true });
+const gctx = cGuide.getContext('2d');
+const meas = $('meas');
+
+/* ------------------------------------------------------------------
+   Saved progress (stars, finished pictures, sound on/off)
+------------------------------------------------------------------- */
+let save = { stars: {}, thumbs: {}, mute: false };
+try { Object.assign(save, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) {}
+function persist() {
+  try { localStorage.setItem(KEY, JSON.stringify(save)); }
+  catch (e) { try { save.thumbs = {}; localStorage.setItem(KEY, JSON.stringify(save)); } catch (e2) {} }
+}
+
+/* ------------------------------------------------------------------
+   Sound (short chimes only - step done, stars, celebration)
+------------------------------------------------------------------- */
+let ac = null;
+function tone(f, t0, dur, vol) {
+  if (save.mute) return;
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+    const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + t0;
+    o.type = 'triangle'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol || 0.16, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(ac.destination);
+    o.start(t); o.stop(t + dur + 0.05);
+  } catch (e) {}
+}
+const sfx = {
+  step() { tone(660, 0, 0.16); tone(880, 0.1, 0.22); },
+  star(i) { tone([784, 988, 1175][i], 0, 0.4, 0.2); },
+  win() { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, i * 0.11, 0.32, 0.18)); }
+};
+function showMute() {
+  const ic = save.mute ? '\uD83D\uDD07' : '\uD83D\uDD0A';
+  $('bMute').textContent = ic; $('bMuteHome').textContent = ic;
+}
+function toggleMute() { save.mute = !save.mute; persist(); showMute(); if (!save.mute) tone(700, 0, 0.12); }
+$('bMute').onclick = toggleMute; $('bMuteHome').onclick = toggleMute;
+
+/* ------------------------------------------------------------------
+   Drawing the character line art
+------------------------------------------------------------------- */
+const scratch = {};
+function mk(s) { const c = document.createElement('canvas'); c.width = c.height = s; return c; }
+function getScratch(size) {
+  if (!scratch[size]) {
+    const mask = mk(size), tmp = mk(size);
+    scratch[size] = { mask, tmp, mctx: mask.getContext('2d', { willReadFrequently: true }), tctx: tmp.getContext('2d') };
+  }
+  return scratch[size];
+}
+function inkStyle(c) { c.lineWidth = LW; c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = INK; c.fillStyle = INK; c.setLineDash([]); }
+
+// Draw steps 0..upto-1 of a character on ctx (a size x size canvas).
+// Later body parts sit on top of earlier ones; "behind" parts tuck underneath.
+function drawArt(ctx, size, ch, upto) {
+  const k = size / 320, sc = getScratch(size);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(0, 0, size, size);
+  sc.mctx.setTransform(1, 0, 0, 1, 0, 0); sc.mctx.clearRect(0, 0, size, size);
+  for (let s = 0; s < upto; s++) {
+    for (const sh of ch.steps[s].sh) {
+      const p = new Path2D(sh.d), solid = !sh.line;
+      if (sh.behind) {
+        const t = sc.tctx;
+        t.setTransform(1, 0, 0, 1, 0, 0); t.globalCompositeOperation = 'source-over'; t.clearRect(0, 0, size, size);
+        t.setTransform(k, 0, 0, k, 0, 0); inkStyle(t);
+        if (sh.fill) t.fill(p);
+        t.stroke(p);
+        t.setTransform(1, 0, 0, 1, 0, 0); t.globalCompositeOperation = 'destination-out'; t.drawImage(sc.mask, 0, 0);
+        ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(sc.tmp, 0, 0);
+      } else {
+        ctx.setTransform(k, 0, 0, k, 0, 0); inkStyle(ctx);
+        if (solid) { ctx.globalCompositeOperation = 'destination-out'; ctx.fill(p); ctx.globalCompositeOperation = 'source-over'; }
+        if (sh.fill) ctx.fill(p);
+        ctx.stroke(p);
+      }
+      if (solid) { sc.mctx.setTransform(k, 0, 0, k, 0, 0); sc.mctx.fillStyle = '#000'; sc.mctx.fill(p); }
+    }
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  return sc;
+}
+
+/* ------------------------------------------------------------------
+   Home screen
+------------------------------------------------------------------- */
+function starsHtml(n) {
+  let h = '';
+  for (let i = 0; i < 3; i++) h += '<span class="' + (i < n ? 'y' : '') + '">\u2605</span>';
+  return h;
+}
+function showHome() {
+  $('party').classList.remove('on');
+  $('draw').classList.remove('on'); $('home').classList.add('on');
+  cur = null;
+  const g = $('gallery'); g.innerHTML = '';
+  const free = document.createElement('button');
+  free.className = 'free';
+  free.innerHTML = '<span class="big">\uD83C\uDFA8</span><span><div class="t1">Free Draw</div><div class="t2">Draw anything you like!</div></span>';
+  free.onclick = () => startFree();
+  g.appendChild(free);
+  let tot = 0;
+  for (const pk of PACKS) {
+    const h = document.createElement('div'); h.className = 'pack'; h.textContent = pk.icon + ' ' + pk.name; g.appendChild(h);
+    const grid = document.createElement('div'); grid.className = 'grid'; g.appendChild(grid);
+    CHARS.filter(c => c.pack === pk.id).forEach(ch => {
+      const st = save.stars[ch.id] || 0; tot += st;
+      const b = document.createElement('button'); b.className = 'card';
+      const pic = document.createElement('span'); pic.className = 'pic'; pic.style.background = ch.tint;
+      if (save.thumbs[ch.id]) {
+        const im = new Image(); im.src = save.thumbs[ch.id]; im.alt = ch.name; pic.appendChild(im);
+      } else {
+        const cv = mk(240); drawArt(cv.getContext('2d'), 240, ch, ch.steps.length); pic.appendChild(cv);
+      }
+      b.appendChild(pic);
+      const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = ch.name; b.appendChild(nm);
+      const ss = document.createElement('div'); ss.className = 'stars'; ss.innerHTML = starsHtml(st); b.appendChild(ss);
+      b.onclick = () => startChar(ch);
+      grid.appendChild(b);
+    });
+  }
+  $('totStars').textContent = tot; $('totOf').textContent = 'of ' + (CHARS.length * 3) + ' stars';
+}
+
+/* ------------------------------------------------------------------
+   Game state
+------------------------------------------------------------------- */
+let cur = null;          // the drawing in progress
+let tool = 'brush', color = COLORS[0], size = SIZES[1];
+let undo = [];           // colour-layer snapshots
+let parts = [];          // sparkle particles
+let ptr = null;          // active finger
+
+function clearAll() {
+  [cctx, ictx, gctx].forEach(c => { c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'source-over'; c.clearRect(0, 0, RES, RES); });
+  undo = []; parts = [];
+}
+function openDraw() { $('home').classList.remove('on'); $('party').classList.remove('on'); $('draw').classList.add('on'); }
+
+function startChar(ch) {
+  clearAll(); openDraw();
+  const ghost = mk(RES); drawArt(ghost.getContext('2d'), RES, ch, ch.steps.length);
+  cur = { ch, mode: 'trace', step: 0, ghost, guide: mk(RES), samples: [], cov: null, nCov: 0, strokes: [],
+          good: 0, total: 0, accSum: 0, accN: 0, skips: 0, lock: false, hintUntil: 0, colors: new Set(), inkData: null };
+  $('tName').textContent = ch.name;
+  $('traceBar').classList.add('on'); $('paintBar').classList.remove('on');
+  beginStep(0);
+}
+function startFree() {
+  clearAll(); openDraw();
+  cur = { ch: null, mode: 'free', colors: new Set(), inkData: null };
+  $('tName').textContent = 'Free Draw'; $('tStep').textContent = 'Draw anything you like!';
+  $('dots').innerHTML = '';
+  $('traceBar').classList.remove('on'); $('paintBar').classList.add('on');
+  $('pClear').style.display = '';
+}
+
+function showDots() {
+  const n = cur.ch.steps.length; let h = '';
+  for (let i = 0; i <= n; i++) {
+    const cls = cur.mode === 'paint' ? (i < n ? 'done' : 'now') : (i < cur.step ? 'done' : i === cur.step ? 'now' : '');
+    h += '<i class="' + cls + '"></i>';
+  }
+  $('dots').innerHTML = h;
+}
+
+/* ------------------------------------------------------------------
+   Tracing, step by step
+------------------------------------------------------------------- */
+function beginStep(i) {
+  const ch = cur.ch, st = ch.steps[i];
+  cur.step = i; cur.lock = false; cur.strokes = []; cur.good = 0; cur.total = 0; cur.nCov = 0;
+  const sc = drawArt(ictx, RES, ch, i);                       // outlines finished so far
+  const md = sc.mctx.getImageData(0, 0, RES, RES).data;       // where earlier body parts are
+
+  // dotted guide for this step
+  const g = cur.guide.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, RES, RES);
+  cur.samples = [];
+  for (const sh of st.sh) {
+    const p = new Path2D(sh.d), t = sc.tctx;
+    t.setTransform(1, 0, 0, 1, 0, 0); t.globalCompositeOperation = 'source-over'; t.clearRect(0, 0, RES, RES);
+    t.setTransform(K, 0, 0, K, 0, 0);
+    t.lineWidth = 4; t.lineCap = 'round'; t.lineJoin = 'round'; t.strokeStyle = '#8f86b5'; t.setLineDash([7, 8]);
+    t.stroke(p); t.setLineDash([]);
+    if (sh.behind) { t.setTransform(1, 0, 0, 1, 0, 0); t.globalCompositeOperation = 'destination-out'; t.drawImage(sc.mask, 0, 0); t.globalCompositeOperation = 'source-over'; }
+    g.drawImage(sc.tmp, 0, 0);
+
+    // points along the guide that the finger has to pass over
+    meas.setAttribute('d', sh.d);
+    const L = meas.getTotalLength(), n = Math.max(3, Math.ceil(L / 4));
+    for (let j = 0; j <= n; j++) {
+      const q = meas.getPointAtLength(L * j / n);
+      if (sh.behind) {
+        const px = Math.round(q.x * K), py = Math.round(q.y * K);
+        if (px >= 0 && py >= 0 && px < RES && py < RES && md[(py * RES + px) * 4 + 3] > 128) continue; // hidden part
+      }
+      cur.samples.push({ x: q.x, y: q.y });
+    }
+  }
+  cur.cov = new Uint8Array(cur.samples.length);
+  $('tStep').textContent = 'Step ' + (i + 1) + ' of ' + ch.steps.length + ': trace the ' + st.n;
+  showDots();
+  if (!cur.samples.length) completeStep(true, true);
+}
+
+function tracePoint(p) {
+  const s = cur.samples, c = cur.cov, T2 = TOL * TOL; let near = false;
+  for (let i = 0; i < s.length; i++) {
+    const dx = s[i].x - p.x, dy = s[i].y - p.y;
+    if (dx * dx + dy * dy <= T2) { near = true; if (!c[i]) { c[i] = 1; cur.nCov++; } }
+  }
+  cur.total++; if (near) cur.good++;
+}
+function traceMove(p) {
+  const st = cur.strokes[cur.strokes.length - 1]; if (!st) return;
+  const a = st[st.length - 1], dx = p.x - a.x, dy = p.y - a.y, d = Math.hypot(dx, dy);
+  const n = Math.max(1, Math.ceil(d / 5));
+  for (let i = 1; i <= n; i++) tracePoint({ x: a.x + dx * i / n, y: a.y + dy * i / n });
+  st.push(p);
+  if (!cur.lock && cur.nCov >= NEED * cur.samples.length) completeStep(false);
+}
+
+function completeStep(skipped, silent) {
+  if (cur.lock) return;
+  cur.lock = true;
+  if (skipped) { if (!silent) cur.skips++; }
+  else if (cur.total > 0) { cur.accSum += cur.good / cur.total; cur.accN++; }
+  const done = cur.step + 1, ch = cur.ch;
+  drawArt(ictx, RES, ch, done);          // snap to a neat clean line
+  cur.strokes = []; cur.guide.getContext('2d').clearRect(0, 0, RES, RES);
+  if (!silent) {
+    sfx.step();
+    for (let i = 0; i < cur.samples.length; i += 6) burst(cur.samples[i], 2);
+    stage.classList.remove('pop'); void stage.offsetWidth; stage.classList.add('pop');
+  }
+  cur.samples = []; cur.cov = new Uint8Array(0); cur.nCov = 0;
+  const me = cur;
+  setTimeout(() => {
+    if (cur !== me) return;
+    if (done < ch.steps.length) beginStep(done); else enterPaint();
+  }, silent ? 0 : 420);
+}
+
+function enterPaint() {
+  cur.mode = 'paint'; cur.lock = false;
+  cur.inkData = ictx.getImageData(0, 0, RES, RES).data;
+  $('tStep').textContent = 'Colour time! Pick a colour and paint';
+  $('traceBar').classList.remove('on'); $('paintBar').classList.add('on');
+  $('pClear').style.display = 'none';
+  showDots();
+}
+
+$('tUndo').onclick = () => {
+  if (!cur || cur.mode !== 'trace' || cur.lock) return;
+  if (cur.nCov > 0 || cur.strokes.length) beginStep(cur.step);
+  else if (cur.step > 0) beginStep(cur.step - 1);
+};
+$('tHint').onclick = () => { if (cur && cur.mode === 'trace') cur.hintUntil = performance.now() + 1400; };
+$('tSkip').onclick = () => { if (cur && cur.mode === 'trace' && !cur.lock) completeStep(true); };
+
+/* ------------------------------------------------------------------
+   Colouring: brush, fill, eraser, undo
+------------------------------------------------------------------- */
+function pushUndo() { undo.push(cctx.getImageData(0, 0, RES, RES)); if (undo.length > 12) undo.shift(); }
+function dab(a, b) {
+  cctx.setTransform(1, 0, 0, 1, 0, 0);
+  cctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+  cctx.strokeStyle = color; cctx.fillStyle = color;
+  cctx.lineWidth = size * K; cctx.lineCap = 'round'; cctx.lineJoin = 'round';
+  cctx.beginPath(); cctx.arc(b.x * K, b.y * K, size * K / 2, 0, 6.2832); cctx.fill();
+  cctx.beginPath(); cctx.moveTo(a.x * K, a.y * K); cctx.lineTo(b.x * K, b.y * K); cctx.stroke();
+  cctx.globalCompositeOperation = 'source-over';
+}
+function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+
+// Paint-bucket fill that stops at the outlines
+function flood(px, py, hex) {
+  px = Math.max(0, Math.min(RES - 1, px)); py = Math.max(0, Math.min(RES - 1, py));
+  const w = RES, h = RES, img = cctx.getImageData(0, 0, w, h), d = img.data, ink = cur.inkData;
+  const s = py * w + px;
+  if (ink && ink[s * 4 + 3] >= 110) return false;                 // tapped on a line
+  const tr = d[s * 4], tg = d[s * 4 + 1], tb = d[s * 4 + 2], ta = d[s * 4 + 3];
+  const f = hexRgb(hex), fr = f[0], fg = f[1], fb = f[2];
+  if (ta > 250 && Math.abs(tr - fr) + Math.abs(tg - fg) + Math.abs(tb - fb) < 12) return false;   // same colour already
+  const blank = ta < 128;
+  const match = i => {
+    const o = i * 4, a = d[o + 3];
+    if (blank) return a < 128;
+    return a >= 128 && Math.abs(d[o] - tr) + Math.abs(d[o + 1] - tg) + Math.abs(d[o + 2] - tb) <= 96;
+  };
+  const paint = i => { const o = i * 4; d[o] = fr; d[o + 1] = fg; d[o + 2] = fb; d[o + 3] = 255; };
+  const seen = new Uint8Array(w * h), stack = [s]; seen[s] = 1;
+  const visit = n => {
+    if (seen[n]) return; seen[n] = 1;
+    if (ink && ink[n * 4 + 3] >= 110) { paint(n); return; }       // slide colour just under the line
+    if (match(n)) stack.push(n); else paint(n);                   // soften the edge of other colours
+  };
+  while (stack.length) {
+    const i = stack.pop(); paint(i);
+    const x = i % w;
+    if (x > 0) visit(i - 1);
+    if (x < w - 1) visit(i + 1);
+    if (i >= w) visit(i - w);
+    if (i < w * (h - 1)) visit(i + w);
+  }
+  cctx.putImageData(img, 0, 0);
+  return true;
+}
+
+function setTool(t) {
+  tool = t;
+  document.querySelectorAll('#paintBar [data-tool]').forEach(b => b.classList.toggle('sel', b.dataset.tool === t));
+}
+document.querySelectorAll('#paintBar [data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
+$('pUndo').onclick = () => { const u = undo.pop(); if (u) cctx.putImageData(u, 0, 0); };
+$('pClear').onclick = () => { if (!cur) return; pushUndo(); cctx.clearRect(0, 0, RES, RES); };
+$('pDone').onclick = () => finish();
+
+// palette + brush sizes
+COLORS.forEach((c, i) => {
+  const b = document.createElement('button'); b.className = 'sw' + (i === 0 ? ' sel' : ''); b.style.background = c;
+  if (c === '#ffffff') b.style.borderColor = '#d9d3e6';
+  b.onclick = () => {
+    color = c; document.querySelectorAll('.sw').forEach(x => x.classList.toggle('sel', x === b));
+    if (tool === 'eraser') setTool('brush');
+  };
+  $('palette').appendChild(b);
+});
+SIZES.forEach((s, i) => {
+  const b = document.createElement('button'); b.className = 'sz' + (i === 1 ? ' sel' : '');
+  const d = [8, 15, 24][i]; b.innerHTML = '<i style="width:' + d + 'px;height:' + d + 'px"></i>';
+  b.onclick = () => { size = s; document.querySelectorAll('.sz').forEach(x => x.classList.toggle('sel', x === b)); };
+  $('sizes').appendChild(b);
+});
+
+/* ------------------------------------------------------------------
+   Finger input
+------------------------------------------------------------------- */
+function pos(e) {
+  const r = stage.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width * 320, y: (e.clientY - r.top) / r.height * 320 };
+}
+cGuide.addEventListener('pointerdown', e => {
+  if (!cur || ptr !== null) return;
+  e.preventDefault(); ptr = e.pointerId;
+  try { cGuide.setPointerCapture(ptr); } catch (_) {}
+  const p = pos(e);
+  if (cur.mode === 'trace') {
+    if (cur.lock) return;
+    cur.strokes.push([p]); tracePoint(p);
+    if (cur.nCov >= NEED * cur.samples.length) completeStep(false);
+  } else if (tool === 'fill') {
+    pushUndo();
+    if (flood(Math.round(p.x * K), Math.round(p.y * K), color)) { cur.colors.add(color); burst(p, 8, color); }
+    else undo.pop();
+    cur.painting = false;
+  } else {
+    pushUndo(); cur.last = p; cur.painting = true; dab(p, p);
+    if (tool === 'brush') cur.colors.add(color);
+  }
+});
+cGuide.addEventListener('pointermove', e => {
+  if (!cur || e.pointerId !== ptr) return;
+  e.preventDefault();
+  let evs = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+  if (!evs || !evs.length) evs = [e];
+  for (const ev of evs) {
+    const p = pos(ev);
+    if (cur.mode === 'trace') { if (!cur.lock) traceMove(p); }
+    else if (cur.painting) { dab(cur.last, p); cur.last = p; }
+  }
+});
+function endPtr(e) { if (e.pointerId !== ptr) return; ptr = null; if (cur) cur.painting = false; }
+cGuide.addEventListener('pointerup', endPtr);
+cGuide.addEventListener('pointercancel', endPtr);
+document.addEventListener('gesturestart', e => e.preventDefault());
+document.addEventListener('contextmenu', e => { if (e.target.id !== 'pImg') e.preventDefault(); });
+
+/* ------------------------------------------------------------------
+   Guide layer animation (dotted guide, moving hint dot, sparkles)
+------------------------------------------------------------------- */
+function burst(p, n, col) {
+  const cols = ['#ffd23f', '#ff5d8f', '#2ec4b6', '#7b5cff'];
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * 6.283, v = 0.6 + Math.random() * 1.8;
+    parts.push({ x: p.x, y: p.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 0.6, life: 1, c: col || cols[i % 4], r: 2 + Math.random() * 3 });
+  }
+}
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!cur || !$('draw').classList.contains('on')) return;
+  const g = gctx;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, RES, RES);
+  if (cur.mode === 'trace') {
+    g.globalAlpha = 0.11; g.drawImage(cur.ghost, 0, 0); g.globalAlpha = 1;    // faint preview of the whole pal
+    g.drawImage(cur.guide, 0, 0);                                             // dotted line for this step
+    g.setTransform(K, 0, 0, K, 0, 0);
+    const s = cur.samples, c = cur.cov;
+    if (now < cur.hintUntil) {                                                // "Show me" - flash the whole shape
+      g.fillStyle = 'rgba(255,93,143,.8)';
+      for (let i = 0; i < s.length; i++) { g.beginPath(); g.arc(s[i].x, s[i].y, 3.2, 0, 6.2832); g.fill(); }
+    }
+    g.fillStyle = '#22c58b';                                                  // the part already traced
+    for (let i = 0; i < s.length; i++) if (c[i]) { g.beginPath(); g.arc(s[i].x, s[i].y, 3.3, 0, 6.2832); g.fill(); }
+    g.strokeStyle = 'rgba(43,36,64,.3)'; g.lineWidth = 3; g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const st of cur.strokes) { g.beginPath(); g.moveTo(st[0].x, st[0].y); for (let i = 1; i < st.length; i++) g.lineTo(st[i].x, st[i].y); g.stroke(); }
+    if (!cur.lock && ptr === null) {                                          // moving dot shows where to draw
+      const unc = []; for (let i = 0; i < s.length; i++) if (!c[i]) unc.push(s[i]);
+      if (unc.length) {
+        const idx = Math.floor(now / 40) % (unc.length + 14);
+        if (idx < unc.length) {
+          const q = unc[idx];
+          g.beginPath(); g.arc(q.x, q.y, 9, 0, 6.2832); g.fillStyle = 'rgba(255,93,143,.92)'; g.fill();
+          g.lineWidth = 3; g.strokeStyle = '#fff'; g.stroke();
+          g.font = '22px sans-serif'; g.fillText('\uD83D\uDC46', q.x - 2, q.y + 30);
+        }
+      }
+    }
+  } else g.setTransform(K, 0, 0, K, 0, 0);
+  for (let i = parts.length - 1; i >= 0; i--) {                               // sparkles
+    const p = parts[i]; p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.life -= 0.028;
+    if (p.life <= 0) { parts.splice(i, 1); continue; }
+    g.globalAlpha = p.life; g.fillStyle = p.c; g.beginPath(); g.arc(p.x, p.y, p.r, 0, 6.2832); g.fill();
+  }
+  g.globalAlpha = 1;
+}
+requestAnimationFrame(frame);
+
+/* ------------------------------------------------------------------
+   Finish: stars + celebration
+------------------------------------------------------------------- */
+let picBlob = null;
+function compose() {
+  const c = mk(RES), x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, RES, RES);
+  x.drawImage(cColor, 0, 0); x.drawImage(cInk, 0, 0);
+  return c;
+}
+function finish() {
+  if (!cur || cur.mode === 'trace') return;
+  const comp = compose();
+  picBlob = null;
+  try { comp.toBlob(b => { picBlob = b; }, 'image/png'); } catch (e) {}
+  $('pImg').src = comp.toDataURL('image/png');
+  const stars = $('pStars').children;
+  for (const s of stars) s.className = '';
+  let n = 0; const msgs = [];
+  if (cur.mode === 'paint') {
+    const d = cctx.getImageData(0, 0, RES, RES).data; let filled = 0;
+    for (let i = 3; i < d.length; i += 16) if (d[i] > 40) filled++;
+    const coverage = filled / (d.length / 16);
+    const acc = cur.accN ? cur.accSum / cur.accN : 0;
+    n = 1; msgs.push('You traced it all');
+    if (acc >= 0.5 && cur.skips <= 1) { n++; msgs.push('neat lines'); }
+    if (coverage >= 0.15 && cur.colors.size >= 2) { n++; msgs.push('lovely colours'); }
+    const id = cur.ch.id;
+    save.stars[id] = Math.max(save.stars[id] || 0, n);
+    try { const t = mk(240), tx = t.getContext('2d'); tx.drawImage(comp, 0, 0, 240, 240); save.thumbs[id] = t.toDataURL('image/jpeg', 0.8); } catch (e) {}
+    persist();
+    $('pTitle').textContent = n === 3 ? 'Amazing!' : 'You did it!';
+    $('pStars').style.display = '';
+    $('pMsg').textContent = msgs.join(', ') + '!' + (n < 3 ? (cur.colors.size < 2 ? ' Use more colours for 3 stars.' : ' Try again for 3 stars.') : '');
+    $('pNext').textContent = 'Next \u27A1\uFE0F';
+  } else {
+    $('pTitle').textContent = 'Lovely drawing!';
+    $('pStars').style.display = 'none';
+    $('pMsg').textContent = 'Save it to show your family.';
+    $('pNext').textContent = 'Keep drawing';
+  }
+  $('party').classList.add('on');
+  sfx.win(); confetti();
+  for (let i = 0; i < n; i++) setTimeout(() => { stars[i].className = 'y'; sfx.star(i); }, 700 + i * 380);
+}
+$('pSave').onclick = () => {
+  const b = picBlob; if (!b) return;
+  try {
+    const f = new File([b], 'my-doodle-pal.png', { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [f] })) { navigator.share({ files: [f], title: 'My drawing' }).catch(() => {}); return; }
+  } catch (e) {}
+  const a = document.createElement('a'), u = URL.createObjectURL(b);
+  a.href = u; a.download = 'my-doodle-pal.png'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 5000);
+};
+$('pNext').onclick = () => {
+  if (!cur || cur.mode === 'free') { $('party').classList.remove('on'); return; }
+  const i = CHARS.indexOf(cur.ch); startChar(CHARS[(i + 1) % CHARS.length]);
+};
+$('pHome').onclick = showHome;
+$('bBack').onclick = () => {
+  const busy = cur && (cur.mode === 'trace' ? cur.step > 0 : undo.length > 0);
+  if (!busy || window.confirm('Leave this drawing?')) showHome();
+};
+
+function confetti() {
+  const c = $('confetti'), x = c.getContext('2d');
+  const W = c.width = window.innerWidth, H = c.height = window.innerHeight;
+  c.style.display = 'block';
+  const cols = ['#ff5d8f', '#ffd23f', '#2ec4b6', '#7b5cff', '#5ac8fa', '#ff9f1c'];
+  const ps = [];
+  for (let i = 0; i < 130; i++) ps.push({ x: Math.random() * W, y: -20 - Math.random() * H * 0.6, vx: (Math.random() - 0.5) * 3,
+    vy: 2 + Math.random() * 4, w: 6 + Math.random() * 7, r: Math.random() * 6.28, vr: (Math.random() - 0.5) * 0.3, c: cols[i % cols.length] });
+  const t0 = performance.now();
+  (function tick(now) {
+    x.clearRect(0, 0, W, H);
+    for (const p of ps) {
+      p.x += p.vx; p.y += p.vy; p.r += p.vr;
+      x.save(); x.translate(p.x, p.y); x.rotate(p.r); x.fillStyle = p.c; x.fillRect(-p.w / 2, -p.w / 4, p.w, p.w / 2); x.restore();
+    }
+    if (now - t0 < 3800) requestAnimationFrame(tick); else { x.clearRect(0, 0, W, H); c.style.display = 'none'; }
+  })(t0);
+}
+
+/* ------------------------------------------------------------------
+   Start
+------------------------------------------------------------------- */
+showMute();
+showHome();
+})();
+</script>
+</body>
+</html>
