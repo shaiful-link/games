@@ -1058,7 +1058,7 @@ const REAL = [
     { n: 'hole', sh: [S(C(160, 165, 30))] },
     { n: 'sprinkles', sh: [S('M108,122 L120,114 M150,102 L158,113 M196,110 L208,120 M216,152 L228,158 M208,198 L198,208 M158,224 L171,228 M118,208 L108,198 M94,162 L102,151', LINE)] },
     P('donut', '#e2a55a', [S(C(160, 165, 100) + ' ' + HOLE)]),
-    P('icing', '#ff7eb6', [S(scallop(160, 165, 78, 9) + ' ' + HOLE)]),
+    P('icing', '#ff7eb6', [S(scallop(160, 165, 78, 9) + ' ' + C(160, 165, 30))]),   // the icing path runs the other way round, so its hole must too
     P('shadow on the icing', '#e85c9c', [S('M226,196 C206,236 158,250 118,230 C160,238 200,224 216,188 Z')]),
     P('shine', '#ffffff', [S('M98,132 C106,114 122,100 142,93 C128,105 116,119 110,138 Z')])
   ]},
@@ -1792,6 +1792,134 @@ Object.assign(PART_MS, {
   'suckers': 'penyedut', 'big middle eye': 'mata besar di tengah', 'red ring': 'gelang merah', 'slit pupil': 'anak mata tirus',
   'side eyes': 'mata tepi', 'side eye rings': 'gelang mata tepi', 'side pupils': 'anak mata tepi', 'wide mouth': 'mulut lebar',
   'sharp teeth': 'gigi tajam', 'bottom fangs': 'taring bawah', 'warts': 'ketuat', 'slime shine': 'kilau lendir', 'claws': 'kuku tajam', 'paws': 'tapak tangan'
+});
+
+/* ---------- Scary Monsters: two female characters (4 stars) ---------- */
+const VX_FACE = 'M96,150 C96,96 124,70 160,70 C196,70 224,96 224,150 C224,196 196,236 160,244 C124,236 96,196 96,150 Z';
+const VX_BACK = 'M92,140 C80,70 120,44 160,44 C200,44 240,70 228,140 C240,190 250,240 262,290 L208,300 C214,262 210,236 200,214 L120,214 C110,236 106,262 112,300 L58,290 C70,240 80,190 92,140 Z';
+const VX_TOP = 'M96,150 C92,92 124,62 160,62 C196,62 228,92 224,150 C216,116 196,98 172,96 L160,116 L148,96 C124,98 104,116 96,150 Z';
+const VX_EAR = 'M100,146 L70,126 L98,182 Z';
+const VX_TIARA = 'M124,76 L130,50 L142,68 L160,38 L178,68 L190,50 L196,76 Q160,64 124,76 Z';
+const VX_EYE = 'M110,154 Q128,140 148,156 Q128,168 110,154 Z';
+const VX_LID = 'M108,152 Q128,130 150,154 Q128,140 108,152 Z';
+const VX_LIPS = 'M138,202 Q150,196 160,200 Q170,196 182,202 Q160,218 138,202 Z';
+const VX_FANGS = ['M148,205 L151,216 L154,206 Z', 'M166,206 L169,216 L172,205 Z'];
+const VX_NECK = 'M142,234 L142,272 L178,272 L178,234 Z';
+const VX_COLLAR = 'M160,272 L96,226 Q106,246 86,254 Q106,264 94,286 Q114,284 120,310 L200,310 Q206,284 226,286 Q214,264 234,254 Q214,246 224,226 Z';
+const VX_GEM = 'M160,276 L168,287 L160,300 L152,287 Z';
+const VX_BAT = 'M34,62 Q42,50 50,62 Q55,54 60,62 Q68,50 78,62 Q64,64 56,76 Q48,64 34,62 Z';
+const VX_STREAK = 'M84,170 C80,210 76,250 72,282 L86,284 C90,250 94,210 98,172 Z';
+const SZ_FACE = 'M98,160 C98,108 126,84 160,84 C194,84 222,108 222,160 C222,204 196,240 160,248 C124,240 98,204 98,160 Z';
+const SZ_S1 = 'M104,150 C70,150 44,170 40,200 C38,214 52,220 58,208 C62,190 80,176 104,174 Z';
+const SZ_S2 = 'M108,122 C80,104 50,96 34,112 C24,124 36,138 48,130 C62,120 84,130 104,144 Z';
+const SZ_S3 = 'M132,92 C120,60 96,36 76,40 C60,44 62,62 76,62 C92,60 104,78 114,104 Z';
+const SZ_S4 = 'M150,88 C148,60 152,36 164,24 C176,14 190,26 180,38 C170,50 170,66 172,88 Z';
+const SZ_BAND = 'M106,116 Q160,88 214,116 L212,129 Q160,102 108,129 Z';
+const SZ_HAIR = scallop(160, 140, 100, 16);
+const SZ_FRINGE = 'M100,152 C96,106 128,84 160,84 C192,84 224,106 220,152 C214,136 204,130 196,142 C192,124 178,120 172,136 C168,120 152,120 148,136 C142,120 128,124 124,142 C116,130 106,136 100,152 Z';
+const SZ_CURLS = 'M76,132 Q82,120 92,128 Q94,138 84,138 M228,128 Q238,120 244,132 Q240,140 234,136 M126,62 Q136,52 146,62 Q144,72 136,68 M176,60 Q186,52 194,64 Q190,72 184,68 M70,160 Q78,152 84,162 M236,162 Q242,152 250,160';
+const SZ_EYE = 'M112,168 Q130,154 150,170 Q130,182 112,168 Z';
+const SZ_MOUTH = 'M134,208 Q160,228 186,208 Q160,216 134,208 Z';
+const SZ_FANGS = ['M144,212 L147,224 L151,214 Z', 'M169,214 L173,224 L176,212 Z'];
+const SZ_TONGUE = 'M156,219 L156,236 L150,247 L158,241 L160,247 L162,241 L170,247 L164,236 L164,219 Z';
+const SZ_NECK = 'M144,240 L144,274 L176,274 L176,240 Z';
+const SZ_DRESS = 'M176,262 C220,266 250,284 258,318 L62,318 C70,284 100,266 144,262 Z';
+const SZ_NECKLACE = 'M128,270 Q160,298 192,270 Q160,286 128,270 Z';
+const szSnakes = () => pair(SZ_S1).concat(pair(SZ_S2), pair(SZ_S3), [S(SZ_S4)]);
+const SZ_EYES = [[48, 204], [40, 120], [74, 50], [272, 204], [280, 120], [246, 50], [172, 30]];
+const SZ_TG = 'M48,217 L46,228 L42,233 M46,228 L50,233 M40,134 L30,140 L24,138 M30,140 L28,146 M66,54 L56,56 L52,52 M56,56 L52,60';
+
+SCARY.push(
+  RA('vexa', 'Vexa the Vampire Queen', 'Vexa si Ratu Vampira', 'scary', '#eadcf7', [
+    { n: 'face', sh: [S(VX_FACE)] },
+    { n: 'long hair', sh: [S(VX_BACK, BEH)] },
+    { n: 'pointy ears', sh: pair(VX_EAR) },
+    { n: 'hair', sh: [S(VX_TOP)] },
+    { n: 'spiky tiara', sh: [S(VX_TIARA)] },
+    { n: 'tiara gem', sh: [S(C(160, 60, 5.5))] },
+    { n: 'eyebrows', sh: [S('M112,136 Q128,124 146,134 M174,134 Q192,124 208,136', LINE)] },
+    { n: 'eyes', sh: pair(VX_EYE) },
+    { n: 'red ring', sh: [S(C(129, 154, 6.5)), S(C(191, 154, 6.5))] },
+    { n: 'slit pupils', sh: [S(E(129, 154, 2, 5.5), DOT), S(E(191, 154, 2, 5.5), DOT)] },
+    { n: 'eyelashes', sh: pair('M110,154 L100,148 M116,148 L108,140', LINE) },
+    { n: 'nose', sh: [S('M156,180 Q160,186 164,180', LINE)] },
+    { n: 'lips', sh: [S(VX_LIPS)] },
+    { n: 'fangs', sh: VX_FANGS.map(d => S(d)) },
+    { n: 'beauty spot', sh: [S(C(192, 194, 2.2), DOT)] },
+    { n: 'earrings', sh: [S(C(86, 192, 6)), S(C(234, 192, 6))] },
+    { n: 'neck', sh: [S(VX_NECK, BEH)] },
+    { n: 'bat collar', sh: [S(VX_COLLAR)] },
+    { n: 'necklace gem', sh: [S(VX_GEM)] },
+    { n: 'flying bats', sh: [S(VX_BAT, DOT), S(tf(mir(VX_BAT), 0.8, 60, -18), DOT)] },
+    P('long hair', '#2b1648', [S(VX_BACK)]),
+    P('hair streaks', '#6b3fd4', pair(VX_STREAK)),
+    P('neck', '#cdb8e6', [S(VX_NECK)]),
+    P('pointy ears', '#e6d8f5', pair(VX_EAR)),
+    P('face', '#e6d8f5', [S(VX_FACE)]),
+    P('face shadow', '#cdb8e6', [S('M222,160 C220,200 194,234 160,242 C190,228 210,198 212,150 Z')]),
+    P('hair', '#2b1648', [S(VX_TOP)]),
+    P('hair shine', '#6b3fd4', [S('M108,112 C120,90 138,78 154,74 C138,84 124,98 116,118 Z')]),
+    P('spiky tiara', '#ffd23f', [S(VX_TIARA)]),
+    P('tiara gem', '#e8343f', [S(C(160, 60, 5.5))]),
+    P('eyelids', '#b05cff', pair(VX_LID)),
+    P('eyes', '#ffffff', pair(VX_EYE)),
+    P('red ring', '#e8343f', [S(C(129, 154, 6.5)), S(C(191, 154, 6.5))]),
+    P('lips', '#a8123a', [S(VX_LIPS)]),
+    P('fangs', '#ffffff', VX_FANGS.map(d => S(d))),
+    P('earrings', '#e8343f', [S(C(86, 192, 6)), S(C(234, 192, 6))]),
+    P('bat collar', '#7a0f2e', [S(VX_COLLAR)]),
+    P('collar shadow', '#560a20', [S('M160,272 L224,226 Q214,246 234,254 Q214,264 226,286 Q206,284 200,310 L180,310 Z')]),
+    P('necklace gem', '#2ec4b6', [S(VX_GEM)])
+  ]),
+
+  RA('sizzle', 'Sizzle the Playtime', 'Sizzle si Playtime', 'scary', '#e1f5dc', [
+    { n: 'face', sh: [S(SZ_FACE)] },
+    { n: 'curly hair', sh: [S(SZ_HAIR, BEH)] },
+    { n: 'side curls', sh: [S(scallop(74, 216, 34, 8), BEH), S(scallop(246, 216, 34, 8), BEH)] },
+    { n: 'curly fringe', sh: [S(SZ_FRINGE)] },
+    { n: 'hair curls', sh: [S(SZ_CURLS, LINE)] },
+    { n: 'gold headband', sh: [S(SZ_BAND)] },
+    { n: 'headband gem', sh: [S(C(160, 105, 6))] },
+    { n: 'eyebrows', sh: [S('M112,152 L148,160 M208,152 L172,160', LINE)] },
+    { n: 'eyes', sh: pair(SZ_EYE) },
+    { n: 'slit pupils', sh: [S(E(131, 168, 2.4, 6.5), DOT), S(E(189, 168, 2.4, 6.5), DOT)] },
+    { n: 'cheek scales', sh: [S('M106,190 Q111,197 116,190 M114,201 Q119,208 124,201 M204,190 Q209,197 214,190 M196,201 Q201,208 206,201', LINE)] },
+    { n: 'nose slits', sh: [S('M154,188 Q156,193 154,197 M166,188 Q164,193 166,197', LINE)] },
+    { n: 'mouth', sh: [S(SZ_MOUTH)] },
+    { n: 'forked tongue', sh: [S(SZ_TONGUE)] },
+    { n: 'fangs', sh: SZ_FANGS.map(d => S(d)) },
+    { n: 'hoop earrings', sh: [S(C(94, 216, 8)), S(C(226, 216, 8))] },
+    { n: 'neck', sh: [S(SZ_NECK, BEH)] },
+    { n: 'dress', sh: [S(SZ_DRESS, BEH)] },
+    { n: 'necklace', sh: [S(SZ_NECKLACE)] },
+    { n: 'necklace gem', sh: [S(C(160, 292, 6.5))] },
+    P('side curls', '#c0392b', [S(scallop(74, 216, 34, 8)), S(scallop(246, 216, 34, 8))]),
+    P('curly hair', '#7a4a2b', [S(SZ_HAIR)]),
+    P('red curls', '#c0392b', [S(scallop(94, 98, 22, 6)), S(scallop(226, 98, 22, 6)), S(scallop(160, 60, 20, 6))]),
+    P('dress', '#5b2d8e', [S(SZ_DRESS)]),
+    P('neck', '#8fd6a0', [S(SZ_NECK)]),
+    P('face', '#a8e6b0', [S(SZ_FACE)]),
+    P('face shadow', '#8fd6a0', [S('M220,168 C218,206 194,238 160,246 C190,232 208,204 210,158 Z')]),
+    P('curly fringe', '#7a4a2b', [S(SZ_FRINGE)]),
+    P('hair shine', '#a8683c', [S('M112,118 C122,102 138,94 152,92 C138,98 126,108 120,124 Z')]),
+    P('hoop earrings', '#ffd23f', [S(C(94, 216, 8)), S(C(226, 216, 8))]),
+    P('gold headband', '#ffd23f', [S(SZ_BAND)]),
+    P('headband gem', '#e8343f', [S(C(160, 105, 6))]),
+    P('eyes', '#ffe94a', pair(SZ_EYE)),
+    P('mouth', '#7a0f2e', [S(SZ_MOUTH)]),
+    P('forked tongue', '#ff4d6d', [S(SZ_TONGUE)]),
+    P('fangs', '#ffffff', SZ_FANGS.map(d => S(d))),
+    P('necklace', '#ffd23f', [S(SZ_NECKLACE)]),
+    P('necklace gem', '#2ec4b6', [S(C(160, 292, 6.5))])
+  ])
+);
+CHARS.splice(RA_ALL.length + 2, 0, SCARY[2], SCARY[3]);
+Object.assign(PART_MS, {
+  'spiky tiara': 'tiara berduri', 'tiara gem': 'permata tiara', 'lips': 'bibir', 'fangs': 'taring', 'beauty spot': 'tahi lalat', 'bat collar': 'kolar kelawar',
+  'necklace gem': 'permata rantai', 'flying bats': 'kelawar terbang', 'hair streaks': 'jalur rambut', 'collar shadow': 'bayang kolar',
+  'upper snakes': 'ular atas', 'side snakes': 'ular tepi', 'top snakes': 'ular puncak', 'middle snake': 'ular tengah', 'snake eyes': 'mata ular',
+  'snake smiles': 'senyuman ular', 'gold headband': 'cekak emas', 'headband gem': 'permata cekak', 'cheek scales': 'sisik pipi', 'side curls': 'ikal tepi', 'curly fringe': 'rambut depan kerinting', 'hair curls': 'ikal rambut', 'red curls': 'ikal merah',
+  'forked tongue': 'lidah bercabang', 'hoop earrings': 'anting-anting gelang', 'necklace': 'rantai leher'
 });
 
 (function () {
