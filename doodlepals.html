@@ -257,6 +257,53 @@ const CHARS = [
     { n: 'nose and smile', sh: [S('M154,180 L154,186 M166,180 L166,186 M134,196 Q160,220 186,196', LINE)] },
     { n: 'little hat', sh: [S('M138,106 L146,66 L174,66 L182,106 Z'), S('M160,66 Q192,60 192,86', LINE), S(C(192, 92, 6), DOT)] }
   ]},
+  { id: 'jingles', name: 'Jingles the Jester', pack: 'circus', tint: '#e9e2ff', steps: [
+    { n: 'head', sh: [S(C(160, 184, 60))] },
+    { n: 'jester hat', sh: [S('M100,162 Q72,112 44,88 Q104,72 160,118 Q216,72 276,88 Q248,112 220,162 Q160,132 100,162 Z')] },
+    { n: 'bells', sh: [S(C(40, 82, 11)), S(C(280, 82, 11)), S(C(160, 112, 10))] },
+    { n: 'eyes', sh: [S(C(138, 186, 6), DOT), S(C(182, 186, 6), DOT)] },
+    { n: 'rosy cheeks', sh: [S(C(120, 206, 9)), S(C(200, 206, 9))] },
+    { n: 'smile', sh: [S('M138,210 Q160,230 182,210', LINE)] },
+    { n: 'pointy collar', sh: [S('M94,238 L110,278 L130,254 L146,286 L160,258 L174,286 L190,254 L210,278 L226,238 Z', BEH)] }
+  ]},
+  { id: 'hopper', name: 'Hopper the Bunny', pack: 'circus', tint: '#ffe8e0', steps: [
+    { n: 'head', sh: [S(E(160, 192, 60, 52))] },
+    { n: 'long ears', sh: [S(E(130, 100, 19, 52), BEH), S(E(190, 100, 19, 52), BEH)] },
+    { n: 'inside of the ears', sh: [S(E(130, 100, 8, 32)), S(E(190, 100, 8, 32))] },
+    { n: 'eyes', sh: [S(C(138, 184, 6), DOT), S(C(182, 184, 6), DOT)] },
+    { n: 'nose and mouth', sh: [S('M152,200 L168,200 L160,210 Z', DOT), S('M160,210 L160,216 M146,216 Q153,227 160,216 Q167,227 174,216', LINE)] },
+    { n: 'whiskers', sh: [S('M122,204 L94,198 M122,212 L94,218 M198,204 L226,198 M198,212 L226,218', LINE)] },
+    { n: 'star badge', sh: [S('M160,250 L166,264 L181,265 L169,275 L173,290 L160,282 L147,290 L151,275 L139,265 L154,264 Z')] }
+  ]},
+  { id: 'patches', name: 'Patches the Rag Doll', pack: 'circus', tint: '#ffeccf', steps: [
+    { n: 'head', sh: [S(C(160, 172, 64))] },
+    { n: 'braids', sh: [S(E(82, 204, 18, 42), BEH), S(E(238, 204, 18, 42), BEH)] },
+    { n: 'hair', sh: [S('M100,152 Q100,106 160,106 Q220,106 220,152 Q200,130 180,148 Q160,126 140,148 Q120,130 100,152 Z')] },
+    { n: 'button eyes', sh: [S(C(136, 178, 12)), S(C(184, 178, 12))] },
+    { n: 'button stitches', sh: [S('M131,173 L141,183 M141,173 L131,183 M179,173 L189,183 M189,173 L179,183', LINE)] },
+    { n: 'stitched smile', sh: [S('M138,208 Q160,226 182,208 M138,202 L138,214 M182,202 L182,214 M160,211 L160,223', LINE)] },
+    { n: 'patch', sh: [S('M192,196 L208,193 L211,209 L195,212 Z')] },
+    { n: 'bow', sh: [S('M206,112 L182,98 L182,126 Z'), S('M206,112 L230,98 L230,126 Z'), S(C(206, 112, 7))] }
+  ]},
+  { id: 'twirl', name: 'Twirl the Dancer', pack: 'circus', tint: '#ffe1f0', steps: [
+    { n: 'head', sh: [S(C(150, 150, 54))] },
+    { n: 'hair bun', sh: [S(C(150, 84, 24), BEH)] },
+    { n: 'hair', sh: [S('M98,144 Q100,96 150,96 Q200,96 202,144 Q186,114 142,114 Q114,116 98,144 Z')] },
+    { n: 'eyes', sh: [S(C(132, 156, 6), DOT), S(C(168, 156, 6), DOT)] },
+    { n: 'smile', sh: [S('M134,174 Q150,190 166,174', LINE)] },
+    { n: 'dress', sh: [S('M124,200 L176,200 L204,290 L96,290 Z', BEH)] },
+    { n: 'arm and ribbon', sh: [S('M184,226 L222,214 M222,214 Q270,220 262,176 Q254,136 286,122 Q304,96 276,60', LINE)] }
+  ]},
+  { id: 'topper', name: 'Mr Topper', pack: 'circus', tint: '#ffdcdc', steps: [
+    { n: 'head', sh: [S(C(160, 192, 56))] },
+    { n: 'ears', sh: [S(C(102, 192, 13), BEH), S(C(218, 192, 13), BEH)] },
+    { n: 'tall hat', sh: [S('M98,146 L222,146 L222,132 L98,132 Z'), S('M120,132 L114,52 L206,52 L200,132 Z')] },
+    { n: 'hat band', sh: [S('M118,110 L202,110', LINE)] },
+    { n: 'eyes', sh: [S(C(140, 180, 6), DOT), S(C(180, 180, 6), DOT)] },
+    { n: 'curly moustache', sh: [S('M160,206 Q140,194 124,206 Q108,216 104,200 Q104,224 128,220 Q148,218 160,206 Z'), S(mir('M160,206 Q140,194 124,206 Q108,216 104,200 Q104,224 128,220 Q148,218 160,206 Z'))] },
+    { n: 'smile', sh: [S('M146,228 Q160,238 174,228', LINE)] },
+    { n: 'bow tie', sh: [S('M160,266 L122,248 L122,284 Z'), S('M160,266 L198,248 L198,284 Z'), S(C(160, 266, 9))] }
+  ]},
   { id: 'zub', name: 'Zub', pack: 'monster', tint: '#d9f7f1', steps: [
     { n: 'round body', sh: [S(E(160, 178, 84, 80))] },
     { n: 'horns', sh: [S('M106,122 Q82,90 94,58 Q124,78 138,106 Z', BEH), S(mir('M106,122 Q82,90 94,58 Q124,78 138,106 Z'), BEH)] },
@@ -293,6 +340,42 @@ const CHARS = [
     { n: 'teeth', sh: [S('M144,146 L144,156 L156,156 L156,146 M164,146 L164,156 L176,156 L176,146', LINE)] },
     { n: 'spots', sh: [S(C(134, 216, 10)), S(C(184, 210, 13)), S(C(162, 246, 8))] },
     { n: 'feet', sh: [S(E(136, 272, 20, 12), BEH), S(E(184, 272, 20, 12), BEH)] }
+  ]},
+  { id: 'snuggs', name: 'Snuggs', pack: 'monster', tint: '#dcebff', steps: [
+    { n: 'fluffy body', sh: [S(scallop(160, 150, 62, 12))] },
+    { n: 'round ears', sh: [S(C(110, 92, 17), BEH), S(C(210, 92, 17), BEH)] },
+    { n: 'eyes', sh: [S(C(140, 136, 13)), S(C(180, 136, 13)), S(C(141, 138, 5), DOT), S(C(179, 138, 5), DOT)] },
+    { n: 'nose and smile', sh: [S(C(160, 156, 5), DOT), S('M142,170 Q160,186 178,170', LINE)] },
+    { n: 'long hugging arms', sh: [S('M112,150 Q48,160 42,244 Q40,266 59,266 Q78,266 76,244 Q80,198 124,186 Z', BEH), S(mir('M112,150 Q48,160 42,244 Q40,266 59,266 Q78,266 76,244 Q80,198 124,186 Z'), BEH)] },
+    { n: 'feet', sh: [S(E(134, 226, 22, 13), BEH), S(E(186, 226, 22, 13), BEH)] }
+  ]},
+  { id: 'bibi', name: 'Bibi', pack: 'monster', tint: '#ffe0ec', steps: [
+    { n: 'egg body', sh: [S(E(160, 192, 70, 78))] },
+    { n: 'bow', sh: [S('M160,110 L134,95 L134,125 Z'), S('M160,110 L186,95 L186,125 Z'), S(C(160, 110, 8))] },
+    { n: 'eyes', sh: [S(C(134, 164, 13)), S(C(186, 164, 13)), S(C(135, 166, 5), DOT), S(C(185, 166, 5), DOT)] },
+    { n: 'eyelashes', sh: [S('M123,154 L114,146 M131,150 L127,139 M197,154 L206,146 M189,150 L193,139', LINE)] },
+    { n: 'smile', sh: [S('M142,192 Q160,208 178,192', LINE)] },
+    { n: 'heart', sh: [S('M160,256 C138,240 130,226 144,220 C153,217 160,226 160,230 C160,226 167,217 176,220 C190,226 182,240 160,256 Z')] },
+    { n: 'arms', sh: [S(E(84, 204, 18, 12), BEH), S(E(236, 204, 18, 12), BEH)] },
+    { n: 'feet', sh: [S(E(134, 272, 22, 12), BEH), S(E(186, 272, 22, 12), BEH)] }
+  ]},
+  { id: 'mimi', name: 'Mimi the Sleepy Cat', pack: 'monster', tint: '#e3e0ff', steps: [
+    { n: 'head', sh: [S(E(160, 196, 68, 58))] },
+    { n: 'ears', sh: [S('M102,172 L98,112 L146,144 Z', BEH), S(mir('M102,172 L98,112 L146,144 Z'), BEH)] },
+    { n: 'sleepy eyes', sh: [S('M126,194 Q139,206 152,194 M168,194 Q181,206 194,194', LINE)] },
+    { n: 'nose and mouth', sh: [S('M153,212 L167,212 L160,220 Z', DOT), S('M160,220 Q152,231 144,224 M160,220 Q168,231 176,224', LINE)] },
+    { n: 'whiskers', sh: [S('M118,214 L90,208 M118,222 L90,228 M202,214 L230,208 M202,222 L230,228', LINE)] },
+    { n: 'moon', sh: [S('M252,30 A36,36 0 1,0 290,76 A30,30 0 0,1 252,30 Z')] },
+    { n: 'sleepy Zs', sh: [S('M36,84 L60,84 L36,112 L60,112 M74,44 L92,44 L74,64 L92,64', LINE)] }
+  ]},
+  { id: 'dotty', name: 'Dotty the Doll', pack: 'monster', tint: '#fff3c4', steps: [
+    { n: 'head', sh: [S(C(160, 150, 58))] },
+    { n: 'curly pigtails', sh: [S(scallop(82, 130, 26, 7), BEH), S(scallop(238, 130, 26, 7), BEH)] },
+    { n: 'hair', sh: [S('M104,140 Q106,92 160,92 Q214,92 216,140 Q200,116 186,134 Q174,112 160,132 Q146,112 134,134 Q120,116 104,140 Z')] },
+    { n: 'eyes', sh: [S(C(138, 160, 10)), S(C(182, 160, 10)), S(C(138, 162, 4), DOT), S(C(182, 162, 4), DOT)] },
+    { n: 'cheeks and smile', sh: [S(C(118, 180, 7)), S(C(202, 180, 7)), S('M146,184 Q160,196 174,184', LINE)] },
+    { n: 'dress', sh: [S('M124,206 Q160,192 196,206 L226,292 L94,292 Z', BEH)] },
+    { n: 'buttons', sh: [S(C(160, 236, 5), DOT), S(C(160, 262, 5), DOT)] }
   ]}
 ];
 /*ART-END*/
