@@ -63,6 +63,8 @@ button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touc
 .stars{font-size:20px;letter-spacing:2px;color:#d9d3e6;}
 .stars .y{color:#ffb800;}
 .empty{text-align:center;color:#6d6488;font-size:16px;padding:40px 20px;}
+.resets{display:flex;gap:10px;margin-top:26px;}
+.resets .btn{font-size:14px;min-height:46px;}
 
 /* ---------- Draw ---------- */
 #draw{background:linear-gradient(180deg,#fff1d6,#ffe1ec);overflow:hidden;}
@@ -1815,9 +1817,23 @@ const SZ_S2 = 'M108,122 C80,104 50,96 34,112 C24,124 36,138 48,130 C62,120 84,13
 const SZ_S3 = 'M132,92 C120,60 96,36 76,40 C60,44 62,62 76,62 C92,60 104,78 114,104 Z';
 const SZ_S4 = 'M150,88 C148,60 152,36 164,24 C176,14 190,26 180,38 C170,50 170,66 172,88 Z';
 const SZ_BAND = 'M106,116 Q160,88 214,116 L212,129 Q160,102 108,129 Z';
-const SZ_HAIR = scallop(160, 140, 100, 16);
-const SZ_FRINGE = 'M100,152 C96,106 128,84 160,84 C192,84 224,106 220,152 C214,136 204,130 196,142 C192,124 178,120 172,136 C168,120 152,120 148,136 C142,120 128,124 124,142 C116,130 106,136 100,152 Z';
-const SZ_CURLS = 'M76,132 Q82,120 92,128 Q94,138 84,138 M228,128 Q238,120 244,132 Q240,140 234,136 M126,62 Q136,52 146,62 Q144,72 136,68 M176,60 Q186,52 194,64 Q190,72 184,68 M70,160 Q78,152 84,162 M236,162 Q242,152 250,160';
+// porcupine quills: long sharp spikes fanning out behind the head (not below the chin)
+const SZ_Q = (() => {
+  const cx = 160, cy = 152, n = 19, a0 = 152, a1 = 388, rin = 76;
+  const pt = (a, r) => [r1(cx + r * Math.cos(a * Math.PI / 180)), r1(cy + r * Math.sin(a * Math.PI / 180))];
+  let d = '', lines = ''; const tips = [], step = (a1 - a0) / n;
+  for (let i = 0; i < n; i++) {
+    const A = a0 + i * step, M = A + step / 2, B = A + step, ro = i % 2 ? 132 : 114;
+    const p0 = pt(A, rin), tip = pt(M, ro), p1 = pt(B, rin);
+    d += (i ? ' L' : 'M') + p0 + ' L' + tip + (i === n - 1 ? ' L' + p1 : '');
+    // red tip: the outer part of each quill
+    const q0 = pt(M - step * 0.25, rin + (ro - rin) * 0.5), q1 = pt(M + step * 0.25, rin + (ro - rin) * 0.5);
+    tips.push('M' + q0 + ' L' + tip + ' L' + q1 + ' Z');
+    lines += (i ? ' ' : '') + 'M' + pt(M, rin + 12) + ' L' + pt(M, rin + (ro - rin) * 0.42);
+  }
+  return { d: d + ' Z', tips, lines };
+})();
+const SZ_FRINGE = 'M100,152 C96,106 128,84 160,84 C192,84 224,106 220,152 L208,128 L197,147 L185,123 L172,143 L160,121 L148,143 L135,123 L123,147 L112,128 Z';
 const SZ_EYE = 'M112,168 Q130,154 150,170 Q130,182 112,168 Z';
 const SZ_MOUTH = 'M134,208 Q160,228 186,208 Q160,216 134,208 Z';
 const SZ_FANGS = ['M144,212 L147,224 L151,214 Z', 'M169,214 L173,224 L176,212 Z'];
@@ -1874,10 +1890,9 @@ SCARY.push(
 
   RA('sizzle', 'Sizzle the Playtime', 'Sizzle si Playtime', 'scary', '#e1f5dc', [
     { n: 'face', sh: [S(SZ_FACE)] },
-    { n: 'curly hair', sh: [S(SZ_HAIR, BEH)] },
-    { n: 'side curls', sh: [S(scallop(74, 216, 34, 8), BEH), S(scallop(246, 216, 34, 8), BEH)] },
-    { n: 'curly fringe', sh: [S(SZ_FRINGE)] },
-    { n: 'hair curls', sh: [S(SZ_CURLS, LINE)] },
+    { n: 'porcupine quills', sh: [S(SZ_Q.d, BEH)] },
+    { n: 'quill lines', sh: [S(SZ_Q.lines, LINE)] },
+    { n: 'spiky fringe', sh: [S(SZ_FRINGE)] },
     { n: 'gold headband', sh: [S(SZ_BAND)] },
     { n: 'headband gem', sh: [S(C(160, 105, 6))] },
     { n: 'eyebrows', sh: [S('M112,152 L148,160 M208,152 L172,160', LINE)] },
@@ -1893,15 +1908,13 @@ SCARY.push(
     { n: 'dress', sh: [S(SZ_DRESS, BEH)] },
     { n: 'necklace', sh: [S(SZ_NECKLACE)] },
     { n: 'necklace gem', sh: [S(C(160, 292, 6.5))] },
-    P('side curls', '#c0392b', [S(scallop(74, 216, 34, 8)), S(scallop(246, 216, 34, 8))]),
-    P('curly hair', '#7a4a2b', [S(SZ_HAIR)]),
-    P('red curls', '#c0392b', [S(scallop(94, 98, 22, 6)), S(scallop(226, 98, 22, 6)), S(scallop(160, 60, 20, 6))]),
+    P('porcupine quills', '#7a4a2b', [S(SZ_Q.d)]),
+    P('red quill tips', '#c0392b', SZ_Q.tips.map(d => S(d))),
     P('dress', '#5b2d8e', [S(SZ_DRESS)]),
     P('neck', '#8fd6a0', [S(SZ_NECK)]),
     P('face', '#a8e6b0', [S(SZ_FACE)]),
     P('face shadow', '#8fd6a0', [S('M220,168 C218,206 194,238 160,246 C190,232 208,204 210,158 Z')]),
-    P('curly fringe', '#7a4a2b', [S(SZ_FRINGE)]),
-    P('hair shine', '#a8683c', [S('M112,118 C122,102 138,94 152,92 C138,98 126,108 120,124 Z')]),
+    P('spiky fringe', '#7a4a2b', [S(SZ_FRINGE)]),
     P('hoop earrings', '#ffd23f', [S(C(94, 216, 8)), S(C(226, 216, 8))]),
     P('gold headband', '#ffd23f', [S(SZ_BAND)]),
     P('headband gem', '#e8343f', [S(C(160, 105, 6))]),
@@ -1918,7 +1931,7 @@ Object.assign(PART_MS, {
   'spiky tiara': 'tiara berduri', 'tiara gem': 'permata tiara', 'lips': 'bibir', 'fangs': 'taring', 'beauty spot': 'tahi lalat', 'bat collar': 'kolar kelawar',
   'necklace gem': 'permata rantai', 'flying bats': 'kelawar terbang', 'hair streaks': 'jalur rambut', 'collar shadow': 'bayang kolar',
   'upper snakes': 'ular atas', 'side snakes': 'ular tepi', 'top snakes': 'ular puncak', 'middle snake': 'ular tengah', 'snake eyes': 'mata ular',
-  'snake smiles': 'senyuman ular', 'gold headband': 'cekak emas', 'headband gem': 'permata cekak', 'cheek scales': 'sisik pipi', 'side curls': 'ikal tepi', 'curly fringe': 'rambut depan kerinting', 'hair curls': 'ikal rambut', 'red curls': 'ikal merah',
+  'snake smiles': 'senyuman ular', 'gold headband': 'cekak emas', 'headband gem': 'permata cekak', 'cheek scales': 'sisik pipi', 'porcupine quills': 'duri landak', 'quill lines': 'garisan duri', 'spiky fringe': 'rambut depan tajam', 'red quill tips': 'hujung duri merah',
   'forked tongue': 'lidah bercabang', 'hoop earrings': 'anting-anting gelang', 'necklace': 'rantai leher'
 });
 
@@ -1979,6 +1992,7 @@ const STR = {
     didIt: 'You did it!', amazing: 'Amazing!', lovely: 'Lovely drawing!', saveMsg: 'Save it to show your family.',
     m_traced: 'You traced it all', m_neat: 'neat lines', m_colours: 'lovely colours', m_trophy: 'Quick Draw trophy',
     moreColours: 'Use more colours for 3 stars.', tryAgain: 'Try again for 3 stars.',
+    clearPics: 'Clear all pictures', resetAll: 'Reset everything', clearAsk: 'Remove ALL saved pictures? The stars stay.', resetAsk: 'Reset EVERYTHING? All pictures, stars, trophies and gifts will be removed.',
     leave: 'Leave this drawing?', delAsk: 'Delete this picture?', locked: 'Collect {0} stars to open this',
     unlocked: 'New gift', nextGift: 'Next gift at {0} stars: {1}', allGifts: 'You opened every gift!',
     pickSticker: 'Tap the picture to add a sticker', pickScene: 'Pick a scene',
@@ -1996,6 +2010,7 @@ const STR = {
     didIt: 'Kamu berjaya!', amazing: 'Hebat!', lovely: 'Cantiknya lukisan!', saveMsg: 'Simpan dan tunjuk kepada keluarga.',
     m_traced: 'Semua sudah dilukis', m_neat: 'garisan kemas', m_colours: 'warna cantik', m_trophy: 'Piala Lukis Pantas',
     moreColours: 'Guna lebih banyak warna untuk 3 bintang.', tryAgain: 'Cuba lagi untuk 3 bintang.',
+    clearPics: 'Kosongkan semua lukisan', resetAll: 'Set semula semua', clearAsk: 'Buang SEMUA lukisan yang disimpan? Bintang kekal.', resetAsk: 'Set semula SEMUA? Semua lukisan, bintang, piala dan hadiah akan dibuang.',
     leave: 'Keluar dari lukisan ini?', delAsk: 'Buang lukisan ini?', locked: 'Kumpul {0} bintang untuk buka',
     unlocked: 'Hadiah baru', nextGift: 'Hadiah seterusnya pada {0} bintang: {1}', allGifts: 'Semua hadiah sudah dibuka!',
     pickSticker: 'Sentuh lukisan untuk letak pelekat', pickScene: 'Pilih latar',
@@ -2300,7 +2315,23 @@ function showAlbum() {
   const items = [];
   CHARS.forEach(ch => { if (save.thumbs[ch.id]) items.push({ src: save.thumbs[ch.id], name: chName(ch), ch }); });
   save.album.forEach(a => items.push({ src: a.src, name: t('freeDraw'), free: a }));
-  if (!items.length) { const e = document.createElement('div'); e.className = 'empty'; e.textContent = t('albumEmpty'); g.appendChild(e); return; }
+  // reset buttons at the bottom of the gallery (added after the pictures)
+  const addResets = () => {
+    const row = document.createElement('div'); row.className = 'resets';
+    const b1 = document.createElement('button'); b1.className = 'btn soft'; b1.textContent = '\uD83D\uDDD1\uFE0F ' + t('clearPics');
+    b1.onclick = () => {                           // pictures only: the cards go back to blank outlines, stars stay
+      if (!window.confirm(t('clearAsk'))) return;
+      save.thumbs = {}; save.album = []; persist(); showAlbum();
+    };
+    const b2 = document.createElement('button'); b2.className = 'btn soft'; b2.textContent = '\u21BA ' + t('resetAll');
+    b2.onclick = () => {                           // everything: like a brand new game (sound and language are kept)
+      if (!window.confirm(t('resetAsk'))) return;
+      save.thumbs = {}; save.album = []; save.stars = {}; save.crowns = {}; persist(); showHome();
+    };
+    if (items.length) row.appendChild(b1);
+    row.appendChild(b2); g.appendChild(row);
+  };
+  if (!items.length) { const e = document.createElement('div'); e.className = 'empty'; e.textContent = t('albumEmpty'); g.appendChild(e); addResets(); return; }
   const grid = document.createElement('div'); grid.className = 'grid'; g.appendChild(grid);
   items.forEach(it => {
     const b = document.createElement('button'); b.className = 'card';
@@ -2310,6 +2341,7 @@ function showAlbum() {
     b.onclick = () => { viewing = it; $('vImg').src = it.src; $('vName').textContent = it.name; $('viewer').classList.add('on'); };
     grid.appendChild(b);
   });
+  addResets();
 }
 $('bAlbumBack').onclick = showHome;
 $('vClose').onclick = () => $('viewer').classList.remove('on');
