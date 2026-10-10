@@ -1244,6 +1244,435 @@ Object.assign(PART_MS, {
   'body shadow': 'bayang badan', 'tongue': 'lidah', 'pupils': 'anak mata'
 });
 
+/* ------------------------------------------------------------------
+   Circus Stars and Toy Monsters, redrawn the Real Art way (heads only):
+   outline first, then colour layers with shadow and shine.
+------------------------------------------------------------------- */
+// soft shadow down the right side and bottom of a round head
+function shade(cx, cy, rx, ry) {
+  const X = f => r1(cx + rx * f), Y = f => r1(cy + ry * f);
+  return `M${X(0.95)},${Y(0.2)} C${X(0.92)},${Y(0.62)} ${X(0.55)},${Y(0.93)} ${X(0)},${Y(0.95)} C${X(0.42)},${Y(0.84)} ${X(0.74)},${Y(0.56)} ${X(0.85)},${Y(0.12)} Z`;
+}
+const circs = (xs, y, r, o) => xs.map(x => S(C(x, y, r), o));
+// eyes: outline, coloured ring, pupil (to trace) ...
+const eyeInk = (xs, y, r) => [
+  { n: 'eyes', sh: circs(xs, y, r) },
+  { n: 'coloured ring', sh: circs(xs, y + 2, r1(r * 0.5)) },
+  { n: 'pupils', sh: circs(xs, y + 3, r1(r * 0.22), DOT) }
+];
+// ... and their colours: white, ring colour, tiny shine
+const eyePaint = (xs, y, r, col) => [
+  P('eyes', '#ffffff', circs(xs, y, r)),
+  P('coloured ring', col, circs(xs, y + 2, r1(r * 0.5))),
+  P('eye shine', '#ffffff', xs.map(x => S(C(r1(x - r * 0.28), r1(y + 2 - r * 0.22), r1(r * 0.13)))))
+];
+const HEARTD = (x, y, s) => tf('M0,18 C-10,9 -12,0 -5,0 C-2,0 0,3 0,5 C0,3 2,0 5,0 C12,0 10,9 0,18 Z', s, x, y);
+
+const LEO_HAT = ['M126,122 L194,122 L194,110 L126,110 Z', 'M138,110 L134,62 L186,62 L182,110 Z'];
+const LEO_NOSE = 'M150,190 L170,190 L160,201 Z';
+const EL_TRUNK = 'M142,176 C136,220 138,266 162,276 C186,286 206,268 196,250 L181,256 C183,266 170,268 168,254 C166,232 178,212 178,176 Z';
+const EL_HAT = 'M132,98 L160,34 L188,98 Z';
+const PP_FACE = 'M160,120 C136,96 92,112 96,160 C98,210 136,236 160,236 C184,236 222,210 224,160 C228,112 184,96 160,120 Z';
+const PP_BEAK = 'M142,184 L178,184 L160,206 Z';
+const MO_MASK = 'M160,132 C134,100 92,128 106,170 C86,220 128,244 160,244 C192,244 234,220 214,170 C228,128 186,100 160,132 Z';
+const MO_TUFT = 'M144,100 L150,74 L160,92 L170,70 L176,100 Z';
+const MO_MOUTH = 'M130,206 Q160,238 190,206 Q160,218 130,206 Z';
+const JG_HAT_L = 'M96,170 Q62,110 28,84 Q100,62 160,116 L160,152 Q128,152 96,170 Z';
+const JG_HAT = 'M96,170 Q62,110 28,84 Q100,62 160,116 Q220,62 292,84 Q258,110 224,170 Q160,134 96,170 Z';
+const JG_COLLAR = 'M96,246 L108,290 L130,264 L146,298 L160,268 L174,298 L190,264 L212,290 L224,246 Z';
+const JG_SMILE = 'M136,230 Q160,254 184,230 Q160,240 136,230 Z';
+const JG_DIA = 'M134,214 L139,222 L134,230 L129,222 Z';
+const HP_NOSE = 'M151,210 L169,210 L160,220 Z';
+const TW_FRINGE = 'M86,170 C84,108 130,100 160,102 C196,100 238,112 234,172 C222,140 196,126 150,124 C116,126 96,142 86,170 Z';
+const TW_SMILE = 'M142,220 Q160,238 178,220 Q160,226 142,220 Z';
+const TP_BRIM = 'M88,146 L232,146 L232,130 L88,130 Z';
+const TP_CROWN = 'M112,130 L104,36 L216,36 L208,130 Z';
+const TP_BAND = 'M110,106 L210,106 L208,130 L112,130 Z';
+const TP_MOUS = 'M160,220 Q138,206 120,220 Q102,232 96,212 Q96,240 124,236 Q146,234 160,220 Z';
+const TP_NOSE = 'M152,206 Q160,197 168,206 Q160,214 152,206 Z';
+const ZB_HORN = 'M96,128 Q66,92 80,50 Q116,76 132,112 Z';
+const ZB_MOUTH = 'M104,216 Q160,272 216,216 Z';
+const ZB_TEETH = ['M122,217 L134,234 L146,217 Z', 'M174,217 L186,234 L198,217 Z'];
+const ZB_TONGUE = 'M146,241 Q160,228 174,241 Q160,247 146,241 Z';
+const FL_SMILE = 'M124,212 Q160,246 196,212 Q160,224 124,212 Z';
+const FL_TOOTH = 'M152,221 L168,221 L168,237 L152,237 Z';
+const NB_EAR = 'M104,150 L84,60 L150,122 Z';
+const NB_INEAR = 'M108,132 L96,84 L134,118 Z';
+const NB_WING = 'M94,190 L30,150 Q46,180 34,206 Q58,198 72,226 Q84,210 100,216 Z';
+const NB_TUFT = 'M148,122 L154,98 L160,116 L168,94 L172,122 Z';
+const NB_FANGS = ['M146,226 L152,240 L158,226 Z', 'M162,226 L168,240 L174,226 Z'];
+const BI_LID = x => `M${x - 17},172 A17,17 0 0,1 ${x + 17},172 Z`;
+const BI_SMILE = 'M138,218 Q160,240 182,218 Q160,226 138,218 Z';
+const MI_EAR = 'M84,160 L76,84 L140,126 Z';
+const MI_INEAR = 'M90,136 L87,100 L112,120 Z';
+const MI_MOON = 'M252,30 A36,36 0 1,0 290,76 A30,30 0 0,1 252,30 Z';
+const DT_FRINGE = 'M84,176 C82,116 124,104 160,106 C196,104 238,116 236,176 C224,150 210,144 198,160 C190,138 172,136 160,156 C148,136 130,138 122,160 C110,144 96,150 84,176 Z';
+const DT_SMILE = 'M140,226 Q160,244 180,226 Q160,232 140,226 Z';
+const SN_SMILE = 'M128,204 Q160,238 192,204 Q160,216 128,204 Z';
+const SN_TOOTH = 'M153,213 L167,213 L167,227 L153,227 Z';
+const RA = (id, name, ms, pack, tint, steps) => ({ id, name, ms, pack, tint, lw: 3.6, steps });
+
+const HEADS = [
+  /* ================= Circus Stars ================= */
+  RA('leo_r', 'Leo the Lion', 'Leo si Singa', 'realc', '#fff0c9', [
+    { n: 'face', sh: [S(C(160, 178, 62))] },
+    { n: 'ears', sh: [S(C(108, 124, 20), BEH), S(C(212, 124, 20), BEH)] },
+    { n: 'fluffy mane', sh: [S(scallop(160, 178, 96, 12), BEH)] },
+    { n: 'inside of the ears', sh: [S(C(106, 122, 9)), S(C(214, 122, 9))] },
+    { n: 'top hat', sh: LEO_HAT.map(d => S(d)) },
+    { n: 'hat band', sh: [S('M136,97 L184,97', LINE)] },
+    { n: 'eyes', sh: [S(E(138, 168, 9, 11)), S(E(182, 168, 9, 11))] },
+    { n: 'pupils', sh: [S(C(139, 170, 4.6), DOT), S(C(181, 170, 4.6), DOT)] },
+    { n: 'muzzle', sh: [S(E(160, 204, 27, 19))] },
+    { n: 'nose', sh: [S(LEO_NOSE)] },
+    { n: 'mouth', sh: [S('M160,201 L160,208 M148,208 Q154,217 160,208 Q166,217 172,208', LINE)] },
+    { n: 'whiskers', sh: [S('M133,200 L104,194 M133,207 L104,213 M187,200 L216,194 M187,207 L216,213', LINE)] },
+    P('fluffy mane', '#e58a1f', [S(scallop(160, 178, 96, 12))]),
+    P('mane shadow', '#c96f12', [S(shade(160, 178, 92, 92))]),
+    P('ears', '#f5b84a', [S(C(108, 124, 20)), S(C(212, 124, 20))]),
+    P('inside of the ears', '#ffb3a0', [S(C(106, 122, 9)), S(C(214, 122, 9))]),
+    P('face', '#f9c95c', [S(C(160, 178, 62))]),
+    P('face shadow', '#eab04a', [S(shade(160, 178, 62, 62))]),
+    P('muzzle', '#fff1cf', [S(E(160, 204, 27, 19))]),
+    P('eyes', '#ffffff', [S(E(138, 168, 9, 11)), S(E(182, 168, 9, 11))]),
+    P('nose', '#8b4a2b', [S(LEO_NOSE)]),
+    P('top hat', '#e8343f', LEO_HAT.map(d => S(d)))
+  ]),
+
+  RA('ellie_r', 'Ellie the Elephant', 'Ellie si Gajah', 'realc', '#dff3ff', [
+    { n: 'head', sh: [S(C(160, 160, 70))] },
+    { n: 'big ears', sh: [S(E(70, 150, 52, 66), BEH), S(E(250, 150, 52, 66), BEH)] },
+    { n: 'inside of the ears', sh: [S(E(58, 152, 25, 42)), S(E(262, 152, 25, 42))] },
+    { n: 'party hat', sh: [S(EL_HAT)] },
+    { n: 'hat stripe', sh: [S('M145,76 L175,76', LINE)] },
+    { n: 'pom pom', sh: [S(C(160, 28, 9))] },
+    { n: 'eyebrows', sh: [S('M120,134 Q132,126 144,134 M176,134 Q188,126 200,134', LINE)] },
+    { n: 'eyes', sh: [S(C(132, 152, 6.5), DOT), S(C(188, 152, 6.5), DOT)] },
+    { n: 'cheeks', sh: [S(C(112, 180, 10)), S(C(208, 180, 10))] },
+    { n: 'long trunk', sh: [S(EL_TRUNK)] },
+    { n: 'trunk lines', sh: [S('M141,210 Q158,217 175,210 M142,236 Q155,242 168,236', LINE)] },
+    P('big ears', '#9db7d9', [S(E(70, 150, 52, 66)), S(E(250, 150, 52, 66))]),
+    P('inside of the ears', '#ffb8c8', [S(E(58, 152, 25, 42)), S(E(262, 152, 25, 42))]),
+    P('head', '#b9cde8', [S(C(160, 160, 70))]),
+    P('head shadow', '#9db7d9', [S(shade(160, 160, 70, 70))]),
+    P('long trunk', '#b9cde8', [S(EL_TRUNK)]),
+    P('cheeks', '#ff9aa8', [S(C(112, 180, 10)), S(C(208, 180, 10))]),
+    P('party hat', '#ff7ac8', [S(EL_HAT)]),
+    P('hat shadow', '#e0409a', [S('M160,34 L188,98 L170,98 Z')]),
+    P('pom pom', '#ffd23f', [S(C(160, 28, 9))])
+  ]),
+
+  RA('pippa_r', 'Pippa the Penguin', 'Pippa si Penguin', 'realc', '#e5e9ff', [
+    { n: 'head', sh: [S(E(160, 170, 92, 86))] },
+    { n: 'white face', sh: [S(PP_FACE)] },
+    { n: 'bow', sh: bow(160, 88, 26, 15, 8) },
+    { n: 'eyes', sh: [S(C(132, 160, 13)), S(C(188, 160, 13))] },
+    { n: 'pupils', sh: [S(C(134, 163, 6), DOT), S(C(186, 163, 6), DOT)] },
+    { n: 'eyelashes', sh: [S('M121,150 L114,144 M199,150 L206,144', LINE)] },
+    { n: 'beak', sh: [S(PP_BEAK)] },
+    { n: 'cheeks', sh: [S(C(112, 194, 10)), S(C(208, 194, 10))] },
+    P('head', '#3b4a6b', [S(E(160, 170, 92, 86))]),
+    P('head shine', '#5a6c94', [S('M82,152 C86,118 110,96 138,92 C114,104 98,126 94,156 Z')]),
+    P('white face', '#ffffff', [S(PP_FACE)]),
+    P('face shadow', '#e3e8f5', [S('M222,170 C218,208 188,234 160,234 C186,226 208,204 212,166 Z')]),
+    P('eyes', '#cfeeff', [S(C(132, 160, 13)), S(C(188, 160, 13))]),
+    P('beak', '#ff9f1c', [S(PP_BEAK)]),
+    P('cheeks', '#ff9aa8', [S(C(112, 194, 10)), S(C(208, 194, 10))]),
+    P('bow', '#e8343f', bow(160, 88, 26, 15, 8))
+  ]),
+
+  RA('momo_r', 'Momo the Monkey', 'Momo si Monyet', 'realc', '#ffe9d2', [
+    { n: 'head', sh: [S(C(160, 172, 78))] },
+    { n: 'ears', sh: [S(C(74, 172, 30), BEH), S(C(246, 172, 30), BEH)] },
+    { n: 'inside of the ears', sh: [S(C(64, 172, 13)), S(C(256, 172, 13))] },
+    { n: 'hair tuft', sh: [S(MO_TUFT, BEH)] },
+    { n: 'face', sh: [S(MO_MASK)] },
+    { n: 'eyes', sh: [S(E(136, 160, 9, 11)), S(E(184, 160, 9, 11))] },
+    { n: 'pupils', sh: [S(C(137, 162, 4.6), DOT), S(C(183, 162, 4.6), DOT)] },
+    { n: 'nose', sh: [S('M153,186 L153,193 M167,186 L167,193', LINE)] },
+    { n: 'big smile', sh: [S(MO_MOUTH)] },
+    { n: 'cheeks', sh: [S(C(118, 198, 10)), S(C(202, 198, 10))] },
+    P('ears', '#8b5a3c', [S(C(74, 172, 30)), S(C(246, 172, 30))]),
+    P('inside of the ears', '#f3c9a8', [S(C(64, 172, 13)), S(C(256, 172, 13))]),
+    P('hair tuft', '#6d4228', [S(MO_TUFT)]),
+    P('head', '#8b5a3c', [S(C(160, 172, 78))]),
+    P('head shadow', '#6d4228', [S(shade(160, 172, 78, 78))]),
+    P('face', '#f6d2b0', [S(MO_MASK)]),
+    P('eyes', '#ffffff', [S(E(136, 160, 9, 11)), S(E(184, 160, 9, 11))]),
+    P('cheeks', '#ff9aa8', [S(C(118, 198, 10)), S(C(202, 198, 10))]),
+    P('big smile', '#c21f33', [S(MO_MOUTH)])
+  ]),
+
+  RA('jingles_r', 'Jingles the Jester', 'Jingles si Pelawak', 'realc', '#e9e2ff', [
+    { n: 'head', sh: [S(C(160, 190, 70))] },
+    { n: 'jester hat', sh: [S(JG_HAT)] },
+    { n: 'hat seam', sh: [S('M160,116 L160,152', LINE)] },
+    { n: 'bells', sh: [S(C(24, 80, 11)), S(C(296, 80, 11)), S(C(160, 108, 9))] },
+    { n: 'eyebrows', sh: [S('M120,178 Q134,170 148,178 M172,178 Q186,170 200,178', LINE)] },
+    { n: 'eyes', sh: [S(E(134, 196, 9, 12)), S(E(186, 196, 9, 12))] },
+    { n: 'pupils', sh: [S(C(135, 199, 4.6), DOT), S(C(185, 199, 4.6), DOT)] },
+    { n: 'round nose', sh: [S(C(160, 214, 7))] },
+    { n: 'smile', sh: [S(JG_SMILE)] },
+    { n: 'cheek star and diamond', sh: [S(tf(JG_DIA, 1, -18, 6)), S(starPath(206, 228, 8, 3.6, 5))] },
+    { n: 'pointy collar', sh: [S(JG_COLLAR, BEH)] },
+    P('pointy collar', '#ffd23f', [S(JG_COLLAR)]),
+    P('head', '#ffe9d6', [S(C(160, 190, 70))]),
+    P('face shadow', '#f3ccb0', [S(shade(160, 190, 70, 70))]),
+    P('left side of the hat', '#8e5cff', [S(JG_HAT_L)]),
+    P('right side of the hat', '#ff7ac8', [S(mir(JG_HAT_L))]),
+    P('bells', '#ffd23f', [S(C(24, 80, 11)), S(C(296, 80, 11)), S(C(160, 108, 9))]),
+    P('eyes', '#ffffff', [S(E(134, 196, 9, 12)), S(E(186, 196, 9, 12))]),
+    P('round nose', '#e8343f', [S(C(160, 214, 7))]),
+    P('smile', '#c21f33', [S(JG_SMILE)]),
+    P('cheek star and diamond', '#2ec4b6', [S(tf(JG_DIA, 1, -18, 6)), S(starPath(206, 228, 8, 3.6, 5))])
+  ]),
+
+  RA('hopper_r', 'Hopper the Bunny', 'Hopper si Arnab', 'realc', '#ffe8e0', [
+    { n: 'head', sh: [S(E(160, 200, 74, 62))] },
+    { n: 'long ears', sh: [S(E(124, 84, 24, 66), BEH), S(E(196, 84, 24, 66), BEH)] },
+    { n: 'inside of the ears', sh: [S(E(124, 82, 11, 44)), S(E(196, 82, 11, 44))] },
+    { n: 'flower', sh: [S(scallop(214, 150, 12, 5))] },
+    { n: 'flower middle', sh: [S(C(214, 150, 4.5))] },
+    { n: 'eyes', sh: [S(E(134, 190, 9, 12)), S(E(186, 190, 9, 12))] },
+    { n: 'pupils', sh: [S(C(135, 193, 4.6), DOT), S(C(185, 193, 4.6), DOT)] },
+    { n: 'muzzle', sh: [S(E(160, 224, 26, 18))] },
+    { n: 'nose', sh: [S(HP_NOSE)] },
+    { n: 'mouth', sh: [S('M160,220 L160,226 M150,226 Q155,234 160,226 Q165,234 170,226', LINE)] },
+    { n: 'whiskers', sh: [S('M134,220 L102,214 M134,227 L102,233 M186,220 L218,214 M186,227 L218,233', LINE)] },
+    { n: 'cheeks', sh: [S(C(106, 206, 9)), S(C(214, 206, 9))] },
+    P('long ears', '#d9cbe8', [S(E(124, 84, 24, 66)), S(E(196, 84, 24, 66))]),
+    P('inside of the ears', '#ffb8c8', [S(E(124, 82, 11, 44)), S(E(196, 82, 11, 44))]),
+    P('head', '#e6daf2', [S(E(160, 200, 74, 62))]),
+    P('head shadow', '#d0c0e4', [S(shade(160, 200, 74, 62))]),
+    P('muzzle', '#ffffff', [S(E(160, 224, 26, 18))]),
+    P('eyes', '#ffffff', [S(E(134, 190, 9, 12)), S(E(186, 190, 9, 12))]),
+    P('nose', '#ff7a9a', [S(HP_NOSE)]),
+    P('cheeks', '#ff9aa8', [S(C(106, 206, 9)), S(C(214, 206, 9))]),
+    P('flower', '#ffd23f', [S(scallop(214, 150, 12, 5))]),
+    P('flower middle', '#ff9f1c', [S(C(214, 150, 4.5))])
+  ]),
+
+  RA('twirl_r', 'Twirl the Dancer', 'Twirl si Penari', 'realc', '#ffe1f0', [
+    { n: 'head', sh: [S(C(160, 180, 76))] },
+    { n: 'hair bun', sh: [S(C(160, 84, 32), BEH)] },
+    { n: 'bun line', sh: [S('M142,80 Q160,66 178,82', BLINE)] },
+    { n: 'hair', sh: [S(TW_FRINGE)] },
+    { n: 'flower', sh: [S(scallop(214, 126, 11, 5))] },
+    { n: 'flower middle', sh: [S(C(214, 126, 4))] },
+    { n: 'eyebrows', sh: [S('M120,164 Q134,156 148,164 M172,164 Q186,156 200,164', LINE)] },
+    { n: 'eyes', sh: [S(E(134, 186, 10, 13)), S(E(186, 186, 10, 13))] },
+    { n: 'pupils', sh: [S(C(135, 189, 5), DOT), S(C(185, 189, 5), DOT)] },
+    { n: 'eyelashes', sh: [S('M124,178 L116,172 M196,178 L204,172', LINE)] },
+    { n: 'nose', sh: [S('M156,204 Q160,209 164,204', LINE)] },
+    { n: 'smile', sh: [S(TW_SMILE)] },
+    { n: 'cheeks', sh: [S(C(112, 212, 10)), S(C(208, 212, 10))] },
+    { n: 'earrings', sh: [S(C(82, 208, 6), BEH), S(C(238, 208, 6), BEH)] },
+    P('hair bun', '#5a3b2a', [S(C(160, 84, 32))]),
+    P('earrings', '#ffd23f', [S(C(82, 208, 6)), S(C(238, 208, 6))]),
+    P('head', '#ffd9b8', [S(C(160, 180, 76))]),
+    P('face shadow', '#f2bd97', [S(shade(160, 180, 76, 76))]),
+    P('hair', '#5a3b2a', [S(TW_FRINGE)]),
+    P('hair shine', '#8a5a3c', [S('M108,130 C122,114 142,108 158,108 C140,114 124,124 116,138 Z')]),
+    P('eyes', '#ffffff', [S(E(134, 186, 10, 13)), S(E(186, 186, 10, 13))]),
+    P('cheeks', '#ff9aa8', [S(C(112, 212, 10)), S(C(208, 212, 10))]),
+    P('smile', '#e0409a', [S(TW_SMILE)]),
+    P('flower', '#ff7ac8', [S(scallop(214, 126, 11, 5))]),
+    P('flower middle', '#ffd23f', [S(C(214, 126, 4))])
+  ]),
+
+  RA('topper_r', 'Mr Topper', 'Encik Topper', 'realc', '#ffdcdc', [
+    { n: 'head', sh: [S(C(160, 196, 66))] },
+    { n: 'ears', sh: [S(C(92, 198, 14), BEH), S(C(228, 198, 14), BEH)] },
+    { n: 'tall hat', sh: [S(TP_BRIM), S(TP_CROWN)] },
+    { n: 'hat band', sh: [S(TP_BAND)] },
+    { n: 'hat star', sh: [S(starPath(160, 72, 15, 6.5, 5))] },
+    { n: 'eyebrows', sh: [S('M122,168 Q136,160 150,168 M170,168 Q184,160 198,168', LINE)] },
+    { n: 'eyes', sh: [S(E(138, 184, 8, 10)), S(E(182, 184, 8, 10))] },
+    { n: 'pupils', sh: [S(C(139, 186, 4.2), DOT), S(C(181, 186, 4.2), DOT)] },
+    { n: 'nose', sh: [S(TP_NOSE)] },
+    { n: 'curly moustache', sh: pair(TP_MOUS) },
+    { n: 'smile', sh: [S('M146,243 Q160,253 174,243', LINE)] },
+    { n: 'bow tie', sh: bow(160, 272, 34, 15, 8) },
+    P('ears', '#ffd9b8', [S(C(92, 198, 14)), S(C(228, 198, 14))]),
+    P('head', '#ffd9b8', [S(C(160, 196, 66))]),
+    P('face shadow', '#f2bd97', [S(shade(160, 196, 66, 66))]),
+    P('tall hat', '#e8343f', [S(TP_BRIM), S(TP_CROWN)]),
+    P('hat shadow', '#c21f33', [S('M186,36 L216,36 L208,130 L232,130 L232,146 L190,146 Z')]),
+    P('hat band', '#2b2440', [S(TP_BAND)]),
+    P('hat star', '#ffd23f', [S(starPath(160, 72, 15, 6.5, 5))]),
+    P('eyes', '#ffffff', [S(E(138, 184, 8, 10)), S(E(182, 184, 8, 10))]),
+    P('nose', '#ff9f8a', [S(TP_NOSE)]),
+    P('curly moustache', '#5a3b2a', pair(TP_MOUS)),
+    P('bow tie', '#3a86ff', bow(160, 272, 34, 15, 8))
+  ]),
+
+  /* ================= Toy Monsters ================= */
+  RA('zub_r', 'Zub', '', 'realm', '#d9f7f1', [
+    { n: 'round body', sh: [S(E(160, 186, 96, 86))] },
+    { n: 'horns', sh: pair(ZB_HORN, BEH) },
+    { n: 'horn stripes', sh: pair('M84,84 Q96,80 104,88 M90,106 Q104,100 116,108', BLINE) },
+    { n: 'eyebrows', sh: [S('M118,118 Q160,98 202,118', LINE)] },
+    { n: 'one big eye', sh: [S(C(160, 162, 38))] },
+    { n: 'coloured ring', sh: [S(C(160, 166, 21))] },
+    { n: 'pupil', sh: [S(C(160, 168, 9), DOT)] },
+    { n: 'happy mouth', sh: [S(ZB_MOUTH)] },
+    { n: 'teeth', sh: ZB_TEETH.map(d => S(d)) },
+    { n: 'tongue', sh: [S(ZB_TONGUE)] },
+    { n: 'spots', sh: [S(C(88, 172, 8)), S(C(232, 178, 9)), S(C(100, 214, 6)), S(C(226, 142, 6))] },
+    P('horns', '#ffd23f', pair(ZB_HORN)),
+    P('round body', '#2ec4b6', [S(E(160, 186, 96, 86))]),
+    P('body shadow', '#22a79b', [S(shade(160, 186, 96, 86))]),
+    P('spots', '#1c9c90', [S(C(88, 172, 8)), S(C(232, 178, 9)), S(C(100, 214, 6)), S(C(226, 142, 6))]),
+    P('one big eye', '#ffffff', [S(C(160, 162, 38))]),
+    P('coloured ring', '#8e5cff', [S(C(160, 166, 21))]),
+    P('eye shine', '#ffffff', [S(C(148, 154, 4.5))]),
+    P('happy mouth', '#8b1e3f', [S(ZB_MOUTH)]),
+    P('tongue', '#ff7a9a', [S(ZB_TONGUE)]),
+    P('teeth', '#ffffff', ZB_TEETH.map(d => S(d)))
+  ]),
+
+  RA('fluffo_r', 'Fluffo', '', 'realm', '#f1e4ff', [
+    { n: 'fluffy body', sh: [S(scallop(160, 182, 84, 14))] },
+    { n: 'feelers', sh: pair('M136,104 Q120,70 108,54', BLINE).concat([S(C(104, 44, 11)), S(C(216, 44, 11))]) }
+  ].concat(eyeInk([120, 200], 166, 17), [
+    { n: 'middle eye', sh: [S(C(160, 144, 17)), S(C(160, 146, 8.5)), S(C(160, 147, 3.7), DOT)] },
+    { n: 'big smile', sh: [S(FL_SMILE)] },
+    { n: 'tooth', sh: [S(FL_TOOTH)] },
+    { n: 'cheeks', sh: [S(C(102, 202, 9)), S(C(218, 202, 9))] },
+    P('feelers', '#ff7ac8', [S(C(104, 44, 11)), S(C(216, 44, 11))]),
+    P('fluffy body', '#b28dff', [S(scallop(160, 182, 84, 14))]),
+    P('body shadow', '#9a72ee', [S(shade(160, 182, 80, 80))])
+  ], eyePaint([120, 200], 166, 17, '#2ec4b6'), [
+    P('middle eye', '#ffffff', [S(C(160, 144, 17))]),
+    P('middle eye ring', '#ff9f1c', [S(C(160, 146, 8.5))]),
+    P('cheeks', '#ff9aa8', [S(C(102, 202, 9)), S(C(218, 202, 9))]),
+    P('big smile', '#8b1e3f', [S(FL_SMILE)]),
+    P('tooth', '#ffffff', [S(FL_TOOTH)])
+  ])),
+
+  RA('nibbles_r', 'Nibbles', '', 'realm', '#ffe6f4', [
+    { n: 'head', sh: [S(C(160, 190, 72))] },
+    { n: 'pointy ears', sh: pair(NB_EAR, BEH) },
+    { n: 'inside of the ears', sh: pair(NB_INEAR) },
+    { n: 'hair tuft', sh: [S(NB_TUFT, BEH)] },
+    { n: 'wings', sh: pair(NB_WING, BEH) }
+  ].concat(eyeInk([134, 186], 182, 16), [
+    { n: 'nose', sh: [S('M155,206 L165,206 L160,212 Z', DOT)] },
+    { n: 'smile', sh: [S('M132,218 Q160,236 188,218', LINE)] },
+    { n: 'little fangs', sh: NB_FANGS.map(d => S(d)) },
+    { n: 'cheeks', sh: [S(C(108, 210, 9)), S(C(212, 210, 9))] },
+    P('wings', '#c44a8a', pair(NB_WING)),
+    P('pointy ears', '#ff7ac8', pair(NB_EAR)),
+    P('inside of the ears', '#ffd1e6', pair(NB_INEAR)),
+    P('hair tuft', '#c44a8a', [S(NB_TUFT)]),
+    P('head', '#ff9ecb', [S(C(160, 190, 72))]),
+    P('head shadow', '#f07ab4', [S(shade(160, 190, 72, 72))])
+  ], eyePaint([134, 186], 182, 16, '#8e5cff'), [
+    P('cheeks', '#ff6f91', [S(C(108, 210, 9)), S(C(212, 210, 9))]),
+    P('little fangs', '#ffffff', NB_FANGS.map(d => S(d)))
+  ])),
+
+  RA('snuggs_r', 'Snuggs', '', 'realm', '#dcebff', [
+    { n: 'fluffy head', sh: [S(scallop(160, 180, 82, 12))] },
+    { n: 'round ears', sh: [S(C(92, 102, 24), BEH), S(C(228, 102, 24), BEH)] },
+    { n: 'inside of the ears', sh: [S(C(88, 98, 10)), S(C(232, 98, 10))] },
+    { n: 'heart', sh: [S(HEARTD(160, 112, 1))] },
+    { n: 'eyebrows', sh: [S('M118,148 Q134,140 150,148 M170,148 Q186,140 202,148', LINE)] }
+  ].concat(eyeInk([134, 186], 170, 15), [
+    { n: 'big smile', sh: [S(SN_SMILE)] },
+    { n: 'tooth', sh: [S(SN_TOOTH)] },
+    { n: 'cheeks', sh: [S(C(106, 200, 9)), S(C(214, 200, 9))] },
+    P('round ears', '#5a8fd6', [S(C(92, 102, 24)), S(C(228, 102, 24))]),
+    P('inside of the ears', '#ffb8c8', [S(C(88, 98, 10)), S(C(232, 98, 10))]),
+    P('fluffy head', '#7fb0ee', [S(scallop(160, 180, 82, 12))]),
+    P('head shadow', '#5a8fd6', [S(shade(160, 180, 78, 78))]),
+    P('big smile', '#8b1e3f', [S(SN_SMILE)]),
+    P('tooth', '#ffffff', [S(SN_TOOTH)])
+  ], eyePaint([134, 186], 170, 15, '#8b5a3c'), [
+    P('cheeks', '#ff9aa8', [S(C(106, 200, 9)), S(C(214, 200, 9))]),
+    P('heart', '#ff4d6d', [S(HEARTD(160, 112, 1))])
+  ])),
+
+  RA('bibi_r', 'Bibi', '', 'realm', '#ffe0ec', [
+    { n: 'egg body', sh: [S(E(160, 190, 84, 88))] },
+    { n: 'bow', sh: bow(160, 98, 34, 20, 10) }
+  ].concat(eyeInk([128, 192], 172, 17), [
+    { n: 'eyelashes', sh: [S('M113,160 L104,152 M121,154 L116,143 M207,160 L216,152 M199,154 L204,143', LINE)] },
+    { n: 'smile', sh: [S(BI_SMILE)] },
+    { n: 'cheeks', sh: [S(C(104, 208, 10)), S(C(216, 208, 10))] },
+    { n: 'heart', sh: [S(HEARTD(160, 246, 1.1))] },
+    P('egg body', '#ff9ecb', [S(E(160, 190, 84, 88))]),
+    P('body shadow', '#f07ab4', [S(shade(160, 190, 84, 88))])
+  ], eyePaint([128, 192], 172, 17, '#3a86ff'), [
+    P('eyelids', '#c9a0ff', [S(BI_LID(128)), S(BI_LID(192))]),
+    P('cheeks', '#ff6f91', [S(C(104, 208, 10)), S(C(216, 208, 10))]),
+    P('smile', '#c21f33', [S(BI_SMILE)]),
+    P('heart', '#ffffff', [S(HEARTD(160, 246, 1.1))]),
+    P('bow', '#e8343f', bow(160, 98, 34, 20, 10))
+  ])),
+
+  RA('mimi_r', 'Mimi the Sleepy Cat', 'Mimi si Kucing Mengantuk', 'realm', '#e3e0ff', [
+    { n: 'head', sh: [S(E(160, 190, 90, 76))] },
+    { n: 'ears', sh: pair(MI_EAR, BEH) },
+    { n: 'inside of the ears', sh: pair(MI_INEAR) },
+    { n: 'head stripes', sh: [S('M146,122 L149,140 M160,118 L160,138 M174,122 L171,140', LINE)] },
+    { n: 'sleepy eyes', sh: [S('M114,186 Q131,201 148,186 M172,186 Q189,201 206,186', LINE)] },
+    { n: 'eyelashes', sh: [S('M116,191 L109,197 M204,191 L211,197', LINE)] },
+    { n: 'nose', sh: [S('M152,206 L168,206 L160,216 Z')] },
+    { n: 'mouth', sh: [S('M160,216 Q152,227 144,220 M160,216 Q168,227 176,220', LINE)] },
+    { n: 'whiskers', sh: [S('M114,212 L78,206 M114,220 L78,226 M206,212 L242,206 M206,220 L242,226', LINE)] },
+    { n: 'cheeks', sh: [S(C(110, 232, 9)), S(C(210, 232, 9))] },
+    { n: 'moon', sh: [S(MI_MOON)] },
+    { n: 'sleepy Zs', sh: [S('M30,70 L54,70 L30,98 L54,98 M66,34 L84,34 L66,54 L84,54', LINE)] },
+    P('ears', '#8f8fd0', pair(MI_EAR)),
+    P('inside of the ears', '#ffb8c8', pair(MI_INEAR)),
+    P('head', '#a9a9e6', [S(E(160, 190, 90, 76))]),
+    P('head shadow', '#8f8fd0', [S(shade(160, 190, 90, 76))]),
+    P('cheeks', '#ff9aa8', [S(C(110, 232, 9)), S(C(210, 232, 9))]),
+    P('nose', '#ff7a9a', [S('M152,206 L168,206 L160,216 Z')]),
+    P('moon', '#ffe066', [S(MI_MOON)])
+  ]),
+
+  RA('dotty_r', 'Dotty the Doll', 'Dotty si Anak Patung', 'realm', '#fff3c4', [
+    { n: 'head', sh: [S(C(160, 186, 78))] },
+    { n: 'curly pigtails', sh: [S(scallop(62, 150, 38, 8), BEH), S(scallop(258, 150, 38, 8), BEH)] },
+    { n: 'hair', sh: [S(DT_FRINGE)] },
+    { n: 'hair ties', sh: [S(C(96, 138, 9)), S(C(224, 138, 9))] }
+  ].concat(eyeInk([132, 188], 194, 14), [
+    { n: 'eyelashes', sh: [S('M120,184 L112,178 M200,184 L208,178', LINE)] },
+    { n: 'nose', sh: [S('M156,212 Q160,217 164,212', LINE)] },
+    { n: 'smile', sh: [S(DT_SMILE)] },
+    { n: 'cheeks', sh: [S(C(108, 220, 10)), S(C(212, 220, 10))] },
+    P('curly pigtails', '#ffd23f', [S(scallop(62, 150, 38, 8)), S(scallop(258, 150, 38, 8))]),
+    P('head', '#ffd9b8', [S(C(160, 186, 78))]),
+    P('face shadow', '#f2bd97', [S(shade(160, 186, 78, 78))]),
+    P('hair', '#ffd23f', [S(DT_FRINGE)]),
+    P('hair shine', '#fff3a8', [S('M106,134 C120,120 140,112 156,112 C138,118 124,128 114,142 Z')]),
+    P('hair ties', '#e8343f', [S(C(96, 138, 9)), S(C(224, 138, 9))])
+  ], eyePaint([132, 188], 194, 14, '#2fbf71'), [
+    P('cheeks', '#ff9aa8', [S(C(108, 220, 10)), S(C(212, 220, 10))]),
+    P('smile', '#e0409a', [S(DT_SMILE)])
+  ]))
+];
+
+// put Bobo, Patches and Gogo in the two new groups, in the same order as the simple packs
+FAVS.forEach(c => { c.pack = c.id === 'gogo_r' ? 'realm' : 'realc'; });
+const RA_ORDER = ['bobo_r', 'leo_r', 'ellie_r', 'pippa_r', 'momo_r', 'jingles_r', 'hopper_r', 'patches_r', 'twirl_r', 'topper_r',
+                  'zub_r', 'fluffo_r', 'nibbles_r', 'gogo_r', 'snuggs_r', 'bibi_r', 'mimi_r', 'dotty_r'];
+HEADS.forEach(c => { if (!c.ms) delete c.ms; });
+FAVS.forEach(c => CHARS.splice(CHARS.indexOf(c), 1));
+const RA_ALL = FAVS.concat(HEADS).sort((a, b) => RA_ORDER.indexOf(a.id) - RA_ORDER.indexOf(b.id));
+CHARS.unshift.apply(CHARS, RA_ALL);
+PACKS.unshift({ id: 'realm', name: 'Toy Monsters: Real Art', ms: 'Raksasa Mainan: Seni Sebenar', icon: '🧸', hard: true });
+PACKS.unshift({ id: 'realc', name: 'Circus Stars: Real Art', ms: 'Bintang Sarkas: Seni Sebenar', icon: '🎪', hard: true });
+Object.assign(PART_MS, {
+  'muzzle': 'muncung', 'mane shadow': 'bayang surai', 'hat stripe': 'jalur topi', 'head shadow': 'bayang kepala', 'white face': 'muka putih',
+  'head shine': 'kilau kepala', 'left side of the hat': 'bahagian kiri topi', 'right side of the hat': 'bahagian kanan topi', 'hat seam': 'jahitan topi',
+  'flower': 'bunga', 'flower middle': 'tengah bunga', 'bun line': 'garisan sanggul', 'earrings': 'anting-anting', 'hat star': 'bintang topi',
+  'middle eye': 'mata tengah', 'middle eye ring': 'gelang mata tengah', 'fluffy head': 'kepala gebu', 'eyelids': 'kelopak mata',
+  'head stripes': 'jalur kepala', 'cheek star and diamond': 'bintang dan berlian di pipi', 'hair ties': 'pengikat rambut', 'happy mouth': 'mulut gembira', 'hair tuft': 'jambul', 'little fangs': 'taring kecil'
+});
+
 (function () {
 'use strict';
 
