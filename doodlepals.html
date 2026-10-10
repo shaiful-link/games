@@ -51,6 +51,8 @@ button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touc
 .big3.album{background:linear-gradient(120deg,#17b3a4,#4fd8c7);box-shadow:0 5px 0 #0f8c80;}
 #nextGift{margin:14px 4px 0;font-size:14px;color:#6d6488;text-align:center;}
 .pack{margin:22px 4px 10px;font-size:21px;display:flex;align-items:center;gap:8px;}
+.lvl{margin-left:auto;font-size:12px;padding:3px 9px;border-radius:999px;background:#e6f6ee;color:#0f8c80;}
+.lvl.hard{background:#ffe3ec;color:#c2185b;}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .card{background:var(--card);border-radius:22px;padding:10px 10px 12px;box-shadow:0 5px 0 rgba(43,36,64,.14);text-align:center;}
 .card:active,.big3:active{transform:translateY(3px);}
@@ -68,9 +70,9 @@ button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touc
 .rnd:active{transform:translateY(2px);}
 .ttl{flex:1;min-width:0;text-align:center;}
 #tName{font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-#tStep{font-size:14px;line-height:1.15;color:#6d6488;margin-top:1px;}
-#dots{flex:none;display:flex;justify-content:center;gap:5px;height:18px;align-items:center;}
-#dots i{width:9px;height:9px;border-radius:50%;background:#e4d9ee;display:block;}
+#tStep{font-size:14px;line-height:1.15;color:#6d6488;margin-top:1px;min-height:33px;}
+#dots{flex:none;display:flex;justify-content:center;gap:3px;height:18px;align-items:center;}
+#dots i{width:7px;height:7px;border-radius:50%;background:#e4d9ee;display:block;}
 #dots i.done{background:var(--teal);}
 #dots i.now{background:var(--pink);transform:scale(1.35);}
 #timer{flex:none;display:none;height:10px;margin:6px 44px 0;border-radius:10px;background:#f1e3f3;overflow:hidden;}
@@ -83,6 +85,10 @@ button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touc
   width:min(calc(100vw - 24px), calc(100dvh - 300px), 560px);
   box-shadow:0 6px 0 rgba(43,36,64,.14), 0 0 0 4px #fff;touch-action:none;}
 #stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
+#view{position:absolute;inset:0;transform-origin:0 0;will-change:transform;}
+#bZoom{position:absolute;right:8px;top:8px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.94);box-shadow:0 2px 0 rgba(43,36,64,.22);font-size:18px;display:none;z-index:2;}
+#bZoom.on{display:block;}
+#bZoom.sel{background:var(--yellow);}
 #stage.pop{animation:pop .35s ease;}
 @keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.035)}100%{transform:scale(1)}}
 .bar{flex:none;display:none;padding:6px 8px 10px;max-width:560px;width:100%;margin:0 auto;}
@@ -175,11 +181,14 @@ button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touc
   <div id="timer"><i id="timerFill"></i></div>
   <div class="stageWrap">
     <div id="stage">
-      <canvas id="cBg" width="640" height="640"></canvas>
-      <canvas id="cColor" width="640" height="640"></canvas>
-      <canvas id="cInk" width="640" height="640"></canvas>
-      <canvas id="cStick" width="640" height="640"></canvas>
-      <canvas id="cGuide" width="640" height="640"></canvas>
+      <div id="view">
+      <canvas id="cBg" width="960" height="960"></canvas>
+      <canvas id="cColor" width="960" height="960"></canvas>
+      <canvas id="cInk" width="960" height="960"></canvas>
+      <canvas id="cStick" width="960" height="960"></canvas>
+      <canvas id="cGuide" width="960" height="960"></canvas>
+      </div>
+      <button id="bZoom" aria-label="Zoom">&#128269;</button>
     </div>
   </div>
 
@@ -694,6 +703,435 @@ const PART_MS = {
   'fire': 'api', 'little stars': 'bintang kecil', 'cabin': 'kabin', 'roof': 'bumbung', 'engine': 'enjin', 'chimney': 'serombong', 'smoke': 'asap'
 };
 
+/* ------------------------------------------------------------------
+   SUPER ARTIST pack: detailed drawings with many steps
+   (thinner lines; the camera zooms in on each small part)
+------------------------------------------------------------------- */
+const HEAD = 'M104,100 C104,50 216,50 216,100 C216,130 198,160 160,160 C122,160 104,130 104,100 Z';
+// detailed face used by the girl characters (brows can be left out)
+function face(noBrows) {
+  const f = [
+    { n: 'eye shapes', sh: [S(E(135, 114, 13, 17)), S(E(185, 114, 13, 17))] },
+    { n: 'eye colour rings', sh: [S(E(135, 117, 8, 11)), S(E(185, 117, 8, 11))] },
+    { n: 'pupils', sh: [S(E(135, 119, 3.4, 5), DOT), S(E(185, 119, 3.4, 5), DOT)] },
+    { n: 'eye sparkles', sh: [S(C(130.5, 110, 3.2)), S(C(180.5, 110, 3.2))] },
+    { n: 'eyelashes', sh: [S('M121,112 Q135,80 149,112 M121,112 L114,106', LINE), S('M171,112 Q185,80 199,112 M199,112 L206,106', LINE)] }
+  ];
+  if (!noBrows) f.push({ n: 'eyebrows', sh: [S('M123,84 Q135,78 147,84 M173,84 Q185,78 197,84', LINE)] });
+  f.push({ n: 'blush', sh: [S(E(115, 138, 8, 4.5)), S(E(205, 138, 8, 4.5))] });
+  f.push({ n: 'mouth', sh: [S('M151,141 Q160,155 169,141 Z')] });
+  return f;
+}
+
+const SUPER = [
+  /* ---------- Bella the Jester ---------- */
+  { id: 'bella', name: 'Bella the Jester', ms: 'Bella si Pelawak', pack: 'super', tint: '#efe4ff', lw: 2.8, steps: [
+    { n: 'head', sh: [S(HEAD)] },
+    { n: 'neck', sh: [S('M151,150 L151,176 L169,176 L169,150 Z', BEH)] },
+    { n: 'fringe', sh: [S('M106,104 C104,70 132,58 160,60 C188,58 216,70 214,104 C206,90 196,84 186,82 C182,90 172,96 160,94 C150,96 138,90 134,82 C124,84 114,90 106,104 Z')] },
+    { n: 'curly side hair', sh: [S(scallop(96, 130, 20, 7), BEH), S(scallop(224, 130, 20, 7), BEH)] },
+    { n: 'hat top', sh: [S('M108,90 Q160,38 212,90 Q160,68 108,90 Z')] },
+    { n: 'hat flaps', sh: pair('M108,90 C96,62 70,42 40,46 C58,58 66,78 72,104 C84,92 96,90 108,90 Z') },
+    { n: 'bells', sh: [S(C(34, 46, 8)), S(C(286, 46, 8)), S(C(160, 58, 6))] }
+  ].concat(face(), [
+    { n: 'ruffle collar', sh: [S('M130,164 Q124,176 134,180 Q140,188 150,182 Q160,190 170,182 Q180,188 186,180 Q196,176 190,164 Q160,176 130,164 Z')] },
+    { n: 'tunic', sh: [S('M136,176 L184,176 L190,222 L130,222 Z', BEH)] },
+    { n: 'diamonds', sh: [S('M160,186 L168,199 L160,212 L152,199 Z'), S('M142,196 L147,205 L142,214 L137,205 Z'), S('M178,196 L183,205 L178,214 L173,205 Z')] },
+    { n: 'puffy sleeves', sh: [S(E(124, 186, 16, 13), BEH), S(E(196, 186, 16, 13), BEH)] },
+    { n: 'arms', sh: pair('M112,194 Q104,212 108,226 L120,226 Q118,212 124,198 Z', BEH) },
+    { n: 'hands', sh: [S(C(113, 232, 8), BEH), S(C(207, 232, 8), BEH)] },
+    { n: 'puffy shorts', sh: [S('M130,220 Q116,236 132,250 L158,250 L160,238 L162,250 L188,250 Q204,236 190,220 Z', BEH)] },
+    { n: 'legs', sh: [S('M138,248 L140,280 L154,280 L154,248 Z', BEH), S('M166,248 L166,280 L180,280 L182,248 Z', BEH)] },
+    { n: 'sock stripes', sh: [S('M139,259 L154,259 M140,269 L154,269 M166,259 L181,259 M166,269 L180,269', LINE)] },
+    { n: 'curly shoes', sh: pair('M154,280 L154,294 L128,294 Q112,294 112,282 Q112,274 120,276 Q124,278 122,283 Q126,287 138,280 Z') }
+  ])},
+
+  /* ---------- Luna the Fairy ---------- */
+  { id: 'luna', name: 'Luna the Fairy', ms: 'Luna si Pari-pari', pack: 'super', tint: '#e2f6ea', lw: 2.8, steps: [
+    { n: 'head', sh: [S(HEAD)] },
+    { n: 'neck', sh: [S('M151,150 L151,176 L169,176 L169,150 Z', BEH)] },
+    { n: 'fringe', sh: [S('M106,106 C102,66 136,54 164,58 C196,56 220,76 214,106 C208,92 200,84 190,80 C170,96 140,98 118,90 C112,94 108,100 106,106 Z')] },
+    { n: 'flower crown', sh: [S(scallop(132, 68, 8, 5)), S(scallop(160, 60, 9, 5)), S(scallop(188, 68, 8, 5))] },
+    { n: 'flower middles', sh: [S(C(132, 68, 2.6)), S(C(160, 60, 3)), S(C(188, 68, 2.6))] }
+  ].concat(face(), [
+    { n: 'dress top', sh: [S('M140,168 Q160,178 180,168 L186,206 L134,206 Z', BEH)] },
+    { n: 'petal skirt', sh: [S('M134,204 L186,204 L206,240 L192,236 L184,252 L172,240 L160,256 L148,240 L136,252 L128,236 L114,240 Z', BEH)] },
+    { n: 'arms', sh: [S('M140,174 Q118,186 106,208 L116,216 Q126,198 142,190 Z', BEH), S('M180,174 Q204,180 216,160 L226,168 Q210,196 178,190 Z', BEH)] },
+    { n: 'hands', sh: [S(C(108, 217, 7), BEH), S(C(225, 160, 7), BEH)] },
+    { n: 'magic wand', sh: [S('M229,155 L245,125', LINE), S(starPath(250, 112, 14, 6, 5))] },
+    { n: 'legs', sh: [S('M146,244 L146,280 L156,280 L156,246 Z', BEH), S('M164,246 L164,280 L174,280 L174,244 Z', BEH)] },
+    { n: 'fairy shoes', sh: pair('M157,280 L157,292 L140,292 Q130,290 136,283 L144,280 Z') },
+    { n: 'long hair', sh: [S('M104,100 C82,130 84,184 98,214 C120,228 200,228 222,214 C236,184 238,130 216,100 Z', BEH)] },
+    { n: 'top wings', sh: pair('M130,180 C104,120 44,104 30,140 C22,170 70,196 130,192 Z', BEH) },
+    { n: 'bottom wings', sh: pair('M128,194 C92,196 58,214 62,238 C68,258 108,244 130,208 Z', BEH) },
+    { n: 'wing patterns', sh: pair('M82,158 Q62,144 42,146 M82,176 Q62,170 46,164 M82,212 Q72,224 72,238', LINE) },
+    { n: 'magic stars', sh: [S(starPath(56, 70, 8, 3.5, 5)), S(starPath(272, 216, 7, 3, 5)), S(starPath(282, 66, 6, 2.6, 5))] }
+  ])},
+
+  /* ---------- Mira the Mermaid ---------- */
+  { id: 'mira', name: 'Mira the Mermaid', ms: 'Mira si Duyung', pack: 'super', tint: '#dff3ff', lw: 2.8, steps: [
+    { n: 'head', sh: [S(HEAD)] },
+    { n: 'neck', sh: [S('M151,150 L151,176 L169,176 L169,150 Z', BEH)] },
+    { n: 'hair parting', sh: pair('M160,62 C130,58 108,76 106,110 C122,100 142,84 160,62 Z') },
+    { n: 'shell clip', sh: [S('M196,74 Q188,58 202,53 Q216,50 219,63 Q222,76 208,79 Z')] },
+    { n: 'shell lines', sh: [S('M206,76 L200,60 M207,76 L209,56 M208,76 L216,63', LINE)] }
+  ].concat(face(), [
+    { n: 'top', sh: [S('M138,170 Q160,180 182,170 L184,196 Q160,204 136,196 Z', BEH)] },
+    { n: 'tummy', sh: [S('M138,172 L136,214 L184,214 L182,172 Z', BEH)] },
+    { n: 'arms', sh: [S('M140,176 Q112,170 98,146 L108,138 Q122,158 142,160 Z', BEH), S('M180,176 Q200,190 204,214 L194,218 Q190,200 178,192 Z', BEH)] },
+    { n: 'hands', sh: [S(C(101, 137, 7), BEH), S(C(200, 222, 7), BEH)] },
+    { n: 'tail', sh: [S('M134,210 L186,210 C196,236 214,250 240,256 L236,274 C196,276 150,262 134,210 Z', BEH)] },
+    { n: 'waist frill', sh: [S('M132,206 Q142,222 150,208 Q160,224 170,208 Q178,222 188,206 Z')] },
+    { n: 'tail fin', sh: [S('M236,264 C256,236 282,236 290,244 C276,252 268,262 262,268 C272,274 284,286 284,298 C266,300 244,290 236,264 Z')] },
+    { n: 'scales', sh: [S('M150,228 Q156,236 162,228 M166,230 Q172,238 178,230 M160,242 Q166,250 172,242 M178,246 Q184,254 190,246 M190,256 Q196,264 202,256 M206,260 Q212,268 218,260', LINE)] },
+    { n: 'fin lines', sh: [S('M252,258 Q266,248 280,246 M252,276 Q266,284 276,292', LINE)] },
+    { n: 'long hair', sh: [S('M104,100 C78,130 78,196 96,232 C112,246 130,236 134,214 L186,214 C192,232 208,240 222,226 C238,184 238,130 216,100 Z', BEH)] },
+    { n: 'bubbles', sh: [S(C(58, 92, 9)), S(C(42, 62, 6)), S(C(74, 54, 4)), S(C(270, 150, 7)), S(C(286, 122, 5))] },
+    { n: 'starfish', sh: [S(starPath(50, 262, 22, 10, 5)), S(C(50, 262, 3))] },
+    { n: 'seaweed', sh: [S('M276,300 C262,280 288,264 274,244 C268,232 278,222 282,214 C290,232 284,246 292,262 C300,280 286,290 292,300 Z', BEH)] }
+  ])},
+
+  /* ---------- Nova the Space Girl ---------- */
+  { id: 'nova', name: 'Nova the Space Girl', ms: 'Nova si Angkasawan', pack: 'super', tint: '#e0e4ff', lw: 2.8, steps: [
+    { n: 'head', sh: [S(HEAD)] },
+    { n: 'neck', sh: [S('M151,150 L151,176 L169,176 L169,150 Z', BEH)] },
+    { n: 'zigzag fringe', sh: [S('M106,104 C102,62 132,54 160,54 C188,54 218,62 214,104 L206,86 L196,96 L184,84 L172,96 L160,84 L148,96 L136,84 L124,96 L114,86 Z')] },
+    { n: 'short hair', sh: [S('M104,100 C92,120 96,150 108,164 L126,160 L194,160 L212,164 C224,150 228,120 216,100 Z', BEH)] }
+  ].concat(face(true), [
+    { n: 'helmet', sh: [S(C(160, 104, 78), BEH)] },
+    { n: 'helmet shine', sh: [S('M98,72 Q108,50 128,40', LINE)] },
+    { n: 'helmet ring', sh: [S('M124,170 Q160,186 196,170 L198,182 Q160,198 122,182 Z')] },
+    { n: 'space suit', sh: [S('M130,180 L190,180 L196,236 L124,236 Z', BEH)] },
+    { n: 'control panel', sh: [S('M146,198 L174,198 L174,216 L146,216 Z'), S(C(153, 207, 3.5)), S(C(167, 207, 3.5))] },
+    { n: 'belt', sh: [S('M125,226 L195,226 L196,236 L124,236 Z')] },
+    { n: 'arms', sh: [S('M132,184 Q108,190 98,220 L112,226 Q118,206 134,202 Z', BEH), S('M188,184 Q214,180 226,154 L238,162 Q224,196 186,202 Z', BEH)] },
+    { n: 'gloves', sh: [S(C(103, 230, 9), BEH), S(C(237, 153, 9), BEH)] },
+    { n: 'backpack', sh: [S('M116,180 L204,180 L208,222 L112,222 Z', BEH)] },
+    { n: 'legs', sh: pair('M132,236 L130,274 L154,274 L156,236 Z', BEH) },
+    { n: 'knee lines', sh: [S('M131,256 L155,256 M165,256 L189,256', LINE)] },
+    { n: 'boots', sh: pair('M128,272 L156,272 L156,294 L122,294 Q120,282 128,280 Z') },
+    { n: 'planet', sh: [S(C(54, 232, 18))] },
+    { n: 'planet ring', sh: [S('M24,244 C20,230 80,208 88,220 C92,232 30,256 24,244 Z', BEH)] },
+    { n: 'stars', sh: [S(starPath(272, 62, 9, 4, 5)), S(starPath(40, 150, 7, 3, 5)), S(starPath(282, 236, 8, 3.5, 5))] }
+  ])},
+
+  /* ---------- Ruby the Ringmaster ---------- */
+  { id: 'ruby', name: 'Ruby the Ringmaster', ms: 'Ruby si Ketua Sarkas', pack: 'super', tint: '#ffe0e0', lw: 2.8, steps: [
+    { n: 'head', sh: [S(HEAD)] },
+    { n: 'neck', sh: [S('M151,150 L151,176 L169,176 L169,150 Z', BEH)] },
+    { n: 'fringe', sh: [S('M106,108 C100,66 134,54 162,58 C194,54 222,74 214,108 C210,96 204,88 196,84 C176,98 146,96 126,84 C116,90 110,98 106,108 Z')] },
+    { n: 'hat brim', sh: [S('M112,72 Q160,52 208,72 L210,62 Q160,40 110,62 Z')] },
+    { n: 'tall hat', sh: [S('M124,58 L120,14 Q160,4 200,14 L196,58 Q160,46 124,58 Z', BEH)] },
+    { n: 'hat band', sh: [S('M122,38 Q160,28 198,38 L197,50 Q160,40 123,50 Z')] }
+  ].concat(face(), [
+    { n: 'bow tie', sh: bow(160, 172, 16, 9, 5) },
+    { n: 'coat', sh: [S('M134,176 L186,176 L194,226 L126,226 Z', BEH)] },
+    { n: 'coat collar', sh: pair('M158,180 L140,180 L150,206 Z') },
+    { n: 'gold buttons', sh: [S(C(152, 216, 3)), S(C(168, 216, 3))] },
+    { n: 'shoulder pads', sh: [S(E(132, 180, 12, 6)), S(E(188, 180, 12, 6))] },
+    { n: 'arms', sh: [S('M130,184 Q110,196 106,222 L118,226 Q122,208 134,198 Z', BEH), S('M190,184 Q214,178 224,156 L234,164 Q222,192 188,198 Z', BEH)] },
+    { n: 'gloves', sh: [S(C(110, 231, 8), BEH), S(C(233, 155, 8), BEH)] },
+    { n: 'curly pigtails', sh: pair('M106,104 C76,112 70,150 86,170 C74,176 76,196 92,196 C108,196 110,178 100,170 C112,150 112,126 110,112 Z', BEH) },
+    { n: 'baton', sh: [S('M237,150 L260,108', LINE), S(C(263, 102, 6))] },
+    { n: 'ribbon', sh: [S('M268,106 Q290,112 280,130 Q272,146 292,152', LINE)] },
+    { n: 'coat tails', sh: pair('M126,224 L112,268 L132,258 L140,226 Z', BEH) },
+    { n: 'skirt', sh: [S('M132,224 L188,224 L198,250 L122,250 Z', BEH)] },
+    { n: 'skirt folds', sh: [S('M146,228 L143,250 M160,228 L160,250 M174,228 L177,250', LINE)] },
+    { n: 'legs', sh: pair('M142,250 L142,270 L154,270 L154,250 Z', BEH) },
+    { n: 'tall boots', sh: pair('M138,268 L156,268 L156,294 L132,294 Q130,286 138,282 Z') }
+  ])},
+
+  /* ---------- Grumbo the Plush Monster ---------- */
+  { id: 'grumbo', name: 'Grumbo the Plush Monster', ms: 'Grumbo si Raksasa Gebu', pack: 'super', tint: '#dff7ee', lw: 3.4, steps: [
+    { n: 'body', sh: [S('M160,60 C210,60 236,100 236,150 C246,200 232,262 160,262 C88,262 74,200 84,150 C84,100 110,60 160,60 Z')] },
+    { n: 'horns', sh: pair('M112,86 C96,60 92,36 104,22 C116,40 130,56 138,72 Z', BEH) },
+    { n: 'horn rings', sh: pair('M100,50 L116,45 M99,37 L108,33', LINE) },
+    { n: 'hair tuft', sh: [S('M144,64 L150,42 L158,58 L164,38 L170,58 L178,44 L178,66 Z')] },
+    { n: 'eye shapes', sh: [S(E(132, 118, 20, 22)), S(E(188, 118, 20, 22))] },
+    { n: 'eye colour rings', sh: [S(C(134, 122, 11)), S(C(186, 122, 11))] },
+    { n: 'pupils', sh: [S(C(134, 123, 5), DOT), S(C(186, 123, 5), DOT)] },
+    { n: 'eye sparkles', sh: [S(C(129, 116, 3.5)), S(C(181, 116, 3.5))] },
+    { n: 'eyebrows', sh: [S('M110,92 Q130,80 150,94 M170,94 Q190,80 210,92', LINE)] },
+    { n: 'nose', sh: [S('M152,148 Q160,140 168,148 Q160,156 152,148 Z')] },
+    { n: 'big smile', sh: [S('M112,168 Q160,222 208,168 Q160,182 112,168 Z')] },
+    { n: 'teeth', sh: [S('M126,174 L131,184 L138,178 L145,188 L152,180 L160,190 L168,180 L175,188 L182,178 L189,184 L194,174', LINE)] },
+    { n: 'tummy patch', sh: [S(E(160, 230, 34, 22))] },
+    { n: 'tummy stripes', sh: [S('M134,224 Q160,232 186,224 M133,236 Q160,244 187,236', LINE)] },
+    { n: 'arms', sh: pair('M88,150 C60,150 44,176 50,204 C52,214 66,214 68,204 C68,188 76,178 90,176 Z', BEH) },
+    { n: 'claws', sh: pair('M49,204 L43,220 L55,210 Z', BEH).concat(pair('M55,208 L57,225 L63,209 Z', BEH), pair('M62,208 L71,221 L68,204 Z', BEH)) },
+    { n: 'feet', sh: [S(E(126, 266, 26, 12), BEH), S(E(194, 266, 26, 12), BEH)] },
+    { n: 'toes', sh: [S('M114,267 L114,274 M126,268 L126,275 M138,267 L138,274 M182,267 L182,274 M194,268 L194,275 M206,267 L206,274', LINE)] },
+    { n: 'tail', sh: [S('M222,228 C250,236 276,234 292,250 C298,262 286,270 278,260 C268,248 246,254 224,252 Z', BEH)] },
+    { n: 'spots', sh: [S(C(100, 150, 6)), S(C(98, 200, 7)), S(C(222, 152, 6)), S(C(216, 204, 8))] }
+  ]},
+
+  /* ---------- Starlight the Winged Unicorn ---------- */
+  { id: 'starlight', name: 'Starlight the Winged Unicorn', ms: 'Starlight si Unikorn Bersayap', pack: 'super', tint: '#f0e6ff', lw: 3.2, steps: [
+    { n: 'body', sh: [S('M118,170 C120,140 160,132 200,136 C240,138 262,160 258,192 C254,216 226,224 190,222 C150,222 120,212 118,170 Z')] },
+    { n: 'neck', sh: [S('M112,128 C116,146 118,158 120,170 L168,150 C152,138 146,122 144,104 Z', BEH)] },
+    { n: 'head', sh: [S('M70,112 C66,96 84,74 112,72 C134,72 148,90 146,112 C144,130 128,138 108,138 C96,148 76,150 68,138 C62,130 64,118 70,112 Z')] },
+    { n: 'ear', sh: [S('M124,78 L132,46 L148,86 Z')] },
+    { n: 'horn', sh: [S('M102,76 L90,22 L120,72 Z')] },
+    { n: 'horn stripes', sh: [S('M97,45 L102,42 M100,57 L109,52 M102,68 L114,63', LINE)] },
+    { n: 'eye', sh: [S(E(112, 104, 7, 9)), S(E(111, 106, 4, 5.5), DOT)] },
+    { n: 'eyelashes', sh: [S('M106,97 L100,92 M110,95 L107,88', LINE)] },
+    { n: 'nose and smile', sh: [S(C(74, 128, 2.2), DOT), S('M76,141 Q86,146 95,139', LINE)] },
+    { n: 'mane', sh: [S('M140,78 C170,84 180,114 170,142 C166,130 158,122 152,118 C162,136 158,152 148,162 C148,148 144,136 138,128 Z')] },
+    { n: 'mane lines', sh: [S('M150,94 Q162,110 160,126', LINE)] },
+    { n: 'front legs', sh: [S('M136,206 L132,262 L150,262 L154,212 Z'), S('M158,214 L160,256 L176,256 L176,216 Z', BEH)] },
+    { n: 'back legs', sh: [S('M214,208 L218,262 L236,262 L234,204 Z'), S('M192,216 L194,256 L210,256 L208,214 Z', BEH)] },
+    { n: 'hooves', sh: [S('M130,262 L152,262 L154,276 L128,276 Z'), S('M216,262 L238,262 L240,276 L214,276 Z'), S('M158,256 L178,256 L179,268 L157,268 Z', BEH), S('M192,256 L212,256 L213,268 L191,268 Z', BEH)] },
+    { n: 'tail', sh: [S('M254,176 C290,160 304,196 290,230 C286,250 270,262 262,250 C276,236 276,214 262,206 C270,224 262,240 250,238 C258,222 256,200 248,192 Z', BEH)] },
+    { n: 'tail lines', sh: [S('M274,186 Q290,206 280,236', LINE)] },
+    { n: 'wing', sh: [S('M168,160 C176,120 214,100 246,104 C240,118 232,126 224,130 C236,130 244,134 250,140 C236,150 222,152 212,152 C220,158 224,164 226,170 C204,176 182,172 168,160 Z')] },
+    { n: 'feather lines', sh: [S('M186,148 Q204,130 226,122 M194,160 Q212,150 234,144', LINE)] },
+    { n: 'star mark', sh: [S(starPath(238, 190, 9, 4, 5))] },
+    { n: 'magic stars', sh: [S(starPath(40, 60, 9, 4, 5)), S(starPath(286, 66, 8, 3.5, 5)), S(starPath(44, 222, 7, 3, 5))] }
+  ]},
+
+  /* ---------- Ember the Baby Dragon ---------- */
+  { id: 'ember', name: 'Ember the Baby Dragon', ms: 'Ember si Anak Naga', pack: 'super', tint: '#ffe9d6', lw: 3.2, steps: [
+    { n: 'head', sh: [S('M100,104 C100,60 220,60 220,104 C224,136 200,152 160,152 C120,152 96,136 100,104 Z')] },
+    { n: 'horns', sh: pair('M124,76 L108,36 L140,68 Z', BEH) },
+    { n: 'ear frills', sh: pair('M102,100 L70,84 L80,106 L66,116 L100,122 Z', BEH) },
+    { n: 'head spikes', sh: [S('M146,70 L152,50 L160,64 L168,48 L174,70 Z')] },
+    { n: 'eye shapes', sh: [S(E(134, 100, 12, 14)), S(E(186, 100, 12, 14))] },
+    { n: 'eye colour rings', sh: [S(E(134, 102, 8.5, 10.5)), S(E(186, 102, 8.5, 10.5))] },
+    { n: 'pupils', sh: [S(E(134, 103, 3, 8), DOT), S(E(186, 103, 3, 8), DOT)] },
+    { n: 'eye sparkles', sh: [S(C(130, 96, 3)), S(C(182, 96, 3))] },
+    { n: 'smile', sh: [S('M134,128 Q160,150 186,128', LINE)] },
+    { n: 'little fangs', sh: pair('M144,135 L147,145 L152,138 Z') },
+    { n: 'blush', sh: [S(E(116, 124, 8, 4.5)), S(E(204, 124, 8, 4.5))] },
+    { n: 'body', sh: [S('M124,146 C100,176 104,250 132,262 L188,262 C216,250 220,176 196,146 Z', BEH)] },
+    { n: 'tummy', sh: [S('M140,158 C128,190 130,236 144,256 L176,256 C190,236 192,190 180,158 Z', BEH)] },
+    { n: 'tummy lines', sh: [S('M135,186 Q160,194 185,186 M133,208 Q160,216 187,208 M136,230 Q160,238 184,230', LINE)] },
+    { n: 'arms', sh: [S(E(122, 198, 10, 18)), S(E(198, 198, 10, 18))] },
+    { n: 'feet', sh: pair('M112,252 C100,252 96,270 110,276 L140,276 C146,266 142,252 132,250 Z') },
+    { n: 'toes', sh: [S('M114,264 L114,272 M124,264 L124,272 M196,264 L196,272 M206,264 L206,272', LINE)] },
+    { n: 'wings', sh: pair('M122,160 C96,130 60,128 36,148 C52,150 58,160 58,172 C68,166 78,168 84,178 C92,172 102,174 110,184 Z', BEH) },
+    { n: 'wing bones', sh: pair('M104,160 Q78,140 46,148 M102,168 Q84,160 64,168', LINE) },
+    { n: 'tail', sh: [S('M190,250 C236,262 268,246 270,214 C270,202 258,202 258,212 C256,232 232,238 204,232 Z', BEH)] },
+    { n: 'tail tip', sh: [S('M250,208 L266,180 L280,210 Z')] },
+    { n: 'little flame', sh: [S('M36,240 C24,220 42,208 46,190 C62,206 72,226 62,244 C56,256 42,254 36,240 Z'), S('M44,240 C40,230 48,224 50,216 C56,224 60,232 56,242 C52,248 46,246 44,240 Z')] }
+  ]},
+
+  /* ---------- The Carousel ---------- */
+  { id: 'carousel', name: 'Magic Carousel', ms: 'Karusel Ajaib', pack: 'super', tint: '#fff1cf', lw: 3.2, steps: [
+    { n: 'roof', sh: [S('M60,110 Q72,126 85,110 Q97,126 110,110 Q122,126 135,110 Q147,126 160,110 Q172,126 185,110 Q197,126 210,110 Q222,126 235,110 Q247,126 260,110 L160,40 Z')] },
+    { n: 'roof stripes', sh: [S('M156,46 L110,110 M158,46 L135,110 M162,46 L185,110 M164,46 L210,110', LINE)] },
+    { n: 'roof ball', sh: [S(C(160, 38, 6))] },
+    { n: 'flag', sh: [S('M160,32 L160,12', LINE), S('M160,10 L184,18 L160,26 Z')] },
+    { n: 'middle pillar', sh: [S('M146,118 L174,118 L174,236 L146,236 Z', BEH)] },
+    { n: 'pillar jewels', sh: [S('M160,140 L168,154 L160,168 L152,154 Z'), S(starPath(160, 204, 10, 4.5, 5))] },
+    { n: 'poles', sh: [S('M92,120 L92,236 M228,120 L228,236', LINE)] },
+    { n: 'horse bodies', sh: pair('M70,176 C72,164 108,164 114,176 C116,190 104,196 92,196 C78,196 68,190 70,176 Z') },
+    { n: 'horse heads', sh: pair('M104,170 C102,152 118,142 128,152 C134,160 130,170 120,172 Z') },
+    { n: 'horse ears and eyes', sh: [S('M112,150 L112,140 L119,148', LINE), S(mir('M112,150 L112,140 L119,148'), LINE), S(C(121, 158, 1.8), DOT), S(C(199, 158, 1.8), DOT)] },
+    { n: 'horse legs', sh: pair('M78,194 L74,210 M88,196 L90,212 M100,196 L104,210 M108,192 L116,204', LINE) },
+    { n: 'horse tails', sh: pair('M70,178 Q56,180 58,196', LINE) },
+    { n: 'saddles', sh: pair('M82,166 Q92,160 102,166 L100,178 Q92,182 84,178 Z') },
+    { n: 'floor', sh: [S('M50,236 L270,236 L280,256 L40,256 Z')] },
+    { n: 'bottom step', sh: [S('M34,256 L286,256 L292,276 L28,276 Z')] },
+    { n: 'lights', sh: [S(C(72, 246, 4)), S(C(116, 246, 4)), S(C(160, 246, 4)), S(C(204, 246, 4)), S(C(248, 246, 4))] },
+    { n: 'stars', sh: [S(starPath(40, 60, 9, 4, 5)), S(starPath(280, 56, 8, 3.5, 5)), S(starPath(288, 170, 6, 2.6, 5))] }
+  ]},
+
+  /* ---------- Hot air balloon ---------- */
+  { id: 'balloon', name: 'Sky Balloon', ms: 'Belon Udara', pack: 'super', tint: '#dff3ff', lw: 3.2, steps: [
+    { n: 'balloon', sh: [S('M160,24 C230,24 262,80 250,128 C242,160 204,186 188,204 L132,204 C116,186 78,160 70,128 C58,80 90,24 160,24 Z')] },
+    { n: 'middle lines', sh: [S('M158,28 C132,70 128,150 146,204 M162,28 C188,70 192,150 174,204', LINE)] },
+    { n: 'side lines', sh: [S('M128,36 C86,84 92,150 134,202 M192,36 C234,84 228,150 186,202', LINE)] },
+    { n: 'balloon star', sh: [S(starPath(160, 100, 12, 5.5, 5))] },
+    { n: 'balloon dots', sh: [S(C(112, 112, 8)), S(C(208, 112, 8)), S(C(88, 110, 5)), S(C(232, 110, 5))] },
+    { n: 'balloon neck', sh: [S('M130,204 L190,204 L186,216 L134,216 Z')] },
+    { n: 'ropes', sh: [S('M136,216 L142,242 M184,216 L178,242', LINE)] },
+    { n: 'basket', sh: [S('M138,248 L182,248 L178,286 L142,286 Z')] },
+    { n: 'basket rim', sh: [S('M134,242 L186,242 L186,251 L134,251 Z')] },
+    { n: 'basket weave', sh: [S('M146,258 L154,282 M156,256 L164,282 M166,256 L174,280', LINE)] },
+    { n: 'sandbags', sh: [S(E(130, 268, 6, 8)), S(E(190, 268, 6, 8))] },
+    { n: 'sun', sh: [S(C(46, 56, 17))] },
+    { n: 'sun rays', sh: [S('M46,30 L46,22 M65,38 L71,32 M72,56 L80,56 M65,74 L71,80 M46,82 L46,90 M27,74 L21,80 M20,56 L12,56 M27,38 L21,32', LINE)] },
+    { n: 'clouds', sh: [S('M30,222 Q30,208 44,210 Q50,196 64,204 Q78,202 76,216 Q84,226 70,230 L36,230 Q26,230 30,222 Z'), S('M240,176 Q240,164 252,166 Q258,154 270,160 Q284,158 282,170 Q290,180 276,184 L246,184 Q236,184 240,176 Z')] },
+    { n: 'birds', sh: [S('M246,58 Q254,50 262,58 Q270,50 278,58 M270,84 Q276,78 282,84 Q288,78 294,84', LINE)] },
+    { n: 'hills', sh: [S('M0,304 Q60,266 124,294 Q210,262 320,300 L320,320 L0,320 Z', BEH)] }
+  ]}
+];
+// the detailed drawings go first on the home screen
+for (let i = SUPER.length - 1; i >= 0; i--) CHARS.unshift(SUPER[i]);
+PACKS.unshift({ id: 'super', name: 'Super Artist', ms: 'Pelukis Hebat', icon: '🌟', hard: true });
+
+Object.assign(PART_MS, {
+  'fringe': 'rambut depan', 'curly side hair': 'rambut kerinting tepi', 'hat top': 'bahagian atas topi', 'hat flaps': 'sayap topi',
+  'eye shapes': 'bentuk mata', 'eye colour rings': 'bulatan warna mata', 'pupils': 'anak mata', 'eye sparkles': 'kilauan mata',
+  'eyebrows': 'kening', 'blush': 'pipi merah', 'ruffle collar': 'kolar beropol', 'diamonds': 'bentuk berlian',
+  'puffy sleeves': 'lengan kembung', 'hands': 'tapak tangan', 'puffy shorts': 'seluar kembung', 'sock stripes': 'jalur stoking',
+  'curly shoes': 'kasut melentik', 'flower crown': 'mahkota bunga', 'flower middles': 'tengah bunga', 'dress top': 'baju gaun',
+  'petal skirt': 'skirt kelopak', 'magic wand': 'tongkat sakti', 'fairy shoes': 'kasut pari-pari', 'top wings': 'sayap atas',
+  'bottom wings': 'sayap bawah', 'wing patterns': 'corak sayap', 'magic stars': 'bintang sakti', 'hair parting': 'belahan rambut',
+  'shell clip': 'klip cangkerang', 'top': 'baju', 'waist frill': 'ropol pinggang', 'tail fin': 'sirip ekor', 'scales': 'sisik',
+  'fin lines': 'garisan sirip', 'starfish': 'tapak sulaiman', 'seaweed': 'rumpai laut', 'zigzag fringe': 'rambut depan zigzag',
+  'short hair': 'rambut pendek', 'helmet': 'topi keledar', 'helmet shine': 'kilauan topi keledar', 'helmet ring': 'gelang topi keledar',
+  'space suit': 'baju angkasa', 'control panel': 'panel kawalan', 'belt': 'tali pinggang', 'gloves': 'sarung tangan', 'backpack': 'beg galas',
+  'knee lines': 'garisan lutut', 'boots': 'but', 'planet': 'planet', 'planet ring': 'gelang planet', 'stars': 'bintang',
+  'hat brim': 'tepi topi', 'coat collar': 'kolar kot', 'gold buttons': 'butang emas', 'shoulder pads': 'pelapik bahu', 'baton': 'tongkat',
+  'ribbon': 'reben', 'coat tails': 'ekor kot', 'skirt': 'skirt', 'skirt folds': 'lipatan skirt', 'tall boots': 'but tinggi',
+  'horn rings': 'gelang tanduk', 'hair tuft': 'jambul', 'tummy patch': 'tampalan perut', 'tummy stripes': 'jalur perut', 'claws': 'kuku',
+  'toes': 'jari kaki', 'neck': 'leher', 'ear': 'telinga', 'eye': 'mata', 'mane': 'surai', 'mane lines': 'garisan surai',
+  'front legs': 'kaki depan', 'back legs': 'kaki belakang', 'hooves': 'kuku kuda', 'tail lines': 'garisan ekor', 'wing': 'sayap',
+  'feather lines': 'garisan bulu', 'star mark': 'tanda bintang', 'ear frills': 'kelepak telinga', 'head spikes': 'duri kepala',
+  'little fangs': 'taring kecil', 'tummy lines': 'garisan perut', 'wing bones': 'tulang sayap',
+  'tail tip': 'hujung ekor', 'little flame': 'api kecil', 'roof stripes': 'jalur bumbung', 'roof ball': 'bola bumbung', 'flag': 'bendera',
+  'middle pillar': 'tiang tengah', 'pillar jewels': 'permata tiang', 'poles': 'tiang', 'horse bodies': 'badan kuda', 'horse heads': 'kepala kuda',
+  'horse ears and eyes': 'telinga dan mata kuda', 'horse legs': 'kaki kuda', 'horse tails': 'ekor kuda', 'saddles': 'pelana', 'floor': 'lantai',
+  'bottom step': 'tangga bawah', 'balloon': 'belon', 'middle lines': 'garisan tengah', 'side lines': 'garisan tepi',
+  'balloon star': 'bintang belon', 'balloon dots': 'bintik belon', 'balloon neck': 'leher belon', 'ropes': 'tali', 'basket': 'bakul',
+  'basket rim': 'tepi bakul', 'basket weave': 'anyaman bakul', 'sandbags': 'beg pasir', 'sun': 'matahari', 'sun rays': 'sinar matahari',
+  'clouds': 'awan', 'birds': 'burung', 'hills': 'bukit'
+});
+
+/* ------------------------------------------------------------------
+   REAL ART pack: one object drawn the "how to draw" way.
+   First the outline is traced, then it is coloured in layers:
+   base colour, shadow, shine. A step with "paint" is a colouring step:
+   she rubs the area with her finger and it fills with that colour.
+------------------------------------------------------------------- */
+const HOLE = 'M130,165 a30,30 0 1,1 60,0 a30,30 0 1,1 -60,0 Z';      // donut hole (cut out of the colour)
+const LIP_UP = 'M30,160 C66,136 108,96 138,104 C150,107 156,113 160,116 C164,113 170,107 182,104 C212,96 254,136 290,160 C240,166 200,176 160,172 C120,176 80,166 30,160 Z';
+const LIP_LOW = 'M30,160 C80,166 120,176 160,172 C200,176 240,166 290,160 C262,214 212,246 160,246 C108,246 58,214 30,160 Z';
+const BERRY = 'M160,268 C100,236 70,170 84,128 C96,96 130,92 160,104 C190,92 224,96 236,128 C250,170 220,236 160,268 Z';
+const BERRY_LEAF = 'M160,104 C150,84 124,78 104,88 C122,92 134,100 140,112 C128,108 114,112 106,124 C124,120 140,122 152,128 C150,138 154,148 160,152 C166,148 170,138 168,128 C180,122 196,120 214,124 C206,112 192,108 180,112 C186,100 198,92 216,88 C196,78 170,84 160,104 Z';
+const BERRY_STEM = 'M154,92 C152,74 158,62 170,56 L178,64 C168,70 166,80 166,94 Z';
+const GEM = 'M90,90 L230,90 L280,150 L160,280 L40,150 Z';
+const WING_UP = 'M152,150 C120,84 54,64 36,100 C24,134 70,176 152,172 Z';
+const WING_LOW = 'M152,176 C104,180 62,206 70,240 C80,270 132,250 154,200 Z';
+const SKIRT = 'M130,140 L190,140 C214,190 244,236 262,268 Q160,296 58,268 C76,236 106,190 130,140 Z';
+const BODICE = 'M128,60 L146,60 Q160,78 174,60 L192,60 L186,126 L134,126 Z';
+const BELT = 'M132,124 L188,124 L190,140 L130,140 Z';
+const EYE = 'M40,170 C90,100 220,96 280,160 C230,214 110,220 40,170 Z';
+const BROW = 'M40,84 C90,40 200,36 286,72 C210,56 110,58 46,96 Z';
+const LEAF = 'M196,60 C222,34 262,36 282,56 C258,76 222,78 196,60 Z';
+const P = (n, col, sh) => ({ n, paint: col, sh });
+
+const REAL = [
+  { id: 'lips', name: 'Glossy Lips', ms: 'Bibir Berkilat', pack: 'real', tint: '#fff0d9', lw: 3.6, steps: [
+    { n: 'top lip', sh: [S(LIP_UP)] },
+    { n: 'bottom lip', sh: [S(LIP_LOW)] },
+    { n: 'top lip lines', sh: [S('M96,132 Q104,146 108,161 M126,114 Q134,140 136,166 M160,120 L160,168 M194,114 Q186,140 184,166 M224,132 Q216,146 212,161', LINE)] },
+    { n: 'bottom lip lines', sh: [S('M120,180 Q122,192 118,204 M160,178 L160,196 M200,180 Q198,192 202,204', LINE)] },
+    P('top lip', '#c9452d', [S(LIP_UP)]),
+    P('bottom lip', '#e2603f', [S(LIP_LOW)]),
+    P('light part of the top lip', '#ea7355', [S('M52,146 C80,124 112,100 138,108 C150,111 156,117 160,120 C164,117 170,111 182,108 C208,100 240,124 268,146 C240,130 210,118 184,122 C172,124 166,130 160,132 C154,130 148,124 136,122 C110,118 80,130 52,146 Z')]),
+    P('shadow under the bottom lip', '#c44a30', [S('M48,186 C76,224 118,242 160,242 C202,242 244,224 272,186 C250,214 206,228 160,228 C114,228 70,214 48,186 Z')]),
+    P('shine on the top lip', '#ffffff', [S('M72,136 C86,122 104,110 120,110 C110,120 94,130 82,142 Z')]),
+    P('shine on the bottom lip', '#ffffff', [S(E(146, 204, 17, 8)), S(E(190, 208, 11, 6))])
+  ]},
+
+  { id: 'eye', name: 'Sparkling Eye', ms: 'Mata Bersinar', pack: 'real', tint: '#ffe9dc', lw: 3.6, steps: [
+    { n: 'eye shape', sh: [S(EYE)] },
+    { n: 'coloured ring', sh: [S(C(162, 160, 44))] },
+    { n: 'pupil', sh: [S(C(162, 160, 17), DOT)] },
+    { n: 'eyelashes', sh: [S('M70,140 Q58,124 50,112 M100,121 Q94,102 90,88 M136,109 Q134,90 134,76 M174,107 Q178,88 184,74 M210,115 Q220,98 230,86 M242,130 Q256,117 268,107', LINE)] },
+    { n: 'eyebrow', sh: [S(BROW)] },
+    P('eyelid', '#f6c9a8', [S('M50,142 C100,80 220,76 278,132 L280,160 C220,96 90,100 40,170 Z')]),
+    P('coloured ring', '#2b7fc4', [S(C(162, 160, 44))]),
+    P('light middle', '#6cc4ee', [S(C(162, 166, 29))]),
+    P('eye shine', '#ffffff', [S(C(140, 140, 9)), S(C(185, 181, 5))]),
+    P('eyebrow', '#7a4a2b', [S(BROW)])
+  ]},
+
+  { id: 'berry', name: 'Juicy Strawberry', ms: 'Strawberi Segar', pack: 'real', tint: '#ffe4e6', lw: 3.6, steps: [
+    { n: 'strawberry', sh: [S(BERRY)] },
+    { n: 'leaves', sh: [S(BERRY_LEAF)] },
+    { n: 'stalk', sh: [S(BERRY_STEM)] },
+    { n: 'seeds', sh: [S(E(124, 160, 3, 5), DOT), S(E(160, 174, 3, 5), DOT), S(E(196, 160, 3, 5), DOT), S(E(108, 190, 3, 5), DOT), S(E(142, 204, 3, 5), DOT), S(E(180, 204, 3, 5), DOT), S(E(212, 190, 3, 5), DOT), S(E(160, 236, 3, 5), DOT), S(E(130, 230, 3, 5), DOT), S(E(190, 230, 3, 5), DOT)] },
+    P('strawberry', '#e8343f', [S(BERRY)]),
+    P('shadow side', '#c21f33', [S('M228,112 C254,160 222,236 160,268 C200,228 226,170 212,110 Z')]),
+    P('shine', '#ff9aa0', [S(E(106, 150, 8, 22))]),
+    P('leaves', '#3aa655', [S(BERRY_LEAF)]),
+    P('stalk', '#2f8a46', [S(BERRY_STEM)])
+  ]},
+
+  { id: 'donut', name: 'Pink Donut', ms: 'Donat Merah Jambu', pack: 'real', tint: '#fff1cf', lw: 3.6, steps: [
+    { n: 'donut', sh: [S(C(160, 165, 100))] },
+    { n: 'icing', sh: [S(scallop(160, 165, 78, 9))] },
+    { n: 'hole', sh: [S(C(160, 165, 30))] },
+    { n: 'sprinkles', sh: [S('M108,122 L120,114 M150,102 L158,113 M196,110 L208,120 M216,152 L228,158 M208,198 L198,208 M158,224 L171,228 M118,208 L108,198 M94,162 L102,151', LINE)] },
+    P('donut', '#e2a55a', [S(C(160, 165, 100) + ' ' + HOLE)]),
+    P('icing', '#ff7eb6', [S(scallop(160, 165, 78, 9) + ' ' + HOLE)]),
+    P('shadow on the icing', '#e85c9c', [S('M226,196 C206,236 158,250 118,230 C160,238 200,224 216,188 Z')]),
+    P('shine', '#ffffff', [S('M98,132 C106,114 122,100 142,93 C128,105 116,119 110,138 Z')])
+  ]},
+
+  { id: 'gem', name: 'Shiny Diamond', ms: 'Berlian Berkilau', pack: 'real', tint: '#e2f0ff', lw: 3.6, steps: [
+    { n: 'diamond shape', sh: [S(GEM)] },
+    { n: 'middle line', sh: [S('M40,150 L280,150', LINE)] },
+    { n: 'top cuts', sh: [S('M90,90 L120,150 L160,90 L200,150 L230,90', LINE)] },
+    { n: 'bottom cuts', sh: [S('M120,150 L160,280 L200,150', LINE)] },
+    { n: 'sparkles', sh: [S(starPath(58, 60, 14, 6, 5)), S(starPath(270, 72, 11, 5, 5)), S(starPath(252, 246, 9, 4, 5))] },
+    P('lightest cuts', '#c7f0fc', [S('M90,90 L160,90 L120,150 Z'), S('M160,90 L230,90 L200,150 Z')]),
+    P('light cuts', '#8fe0f7', [S('M160,90 L200,150 L120,150 Z'), S('M90,90 L120,150 L40,150 Z')]),
+    P('middle cuts', '#5cc3ea', [S('M230,90 L280,150 L200,150 Z'), S('M120,150 L200,150 L160,280 Z')]),
+    P('dark cut', '#3aa6dc', [S('M40,150 L120,150 L160,280 Z')]),
+    P('darkest cut', '#2586c4', [S('M200,150 L280,150 L160,280 Z')]),
+    P('sparkles', '#ffd23f', [S(starPath(58, 60, 14, 6, 5)), S(starPath(270, 72, 11, 5, 5)), S(starPath(252, 246, 9, 4, 5))])
+  ]},
+
+  { id: 'cherry', name: 'Twin Cherries', ms: 'Ceri Kembar', pack: 'real', tint: '#ffe6ea', lw: 3.6, steps: [
+    { n: 'first cherry', sh: [S(C(112, 214, 50))] },
+    { n: 'second cherry', sh: [S(C(214, 224, 46))] },
+    { n: 'stalks', sh: [S('M118,165 C124,120 150,84 196,60 M210,179 C210,130 204,90 196,60', LINE)] },
+    { n: 'leaf', sh: [S(LEAF)] },
+    { n: 'leaf line', sh: [S('M204,58 Q240,50 274,56', LINE)] },
+    P('cherries', '#d81e3a', [S(C(112, 214, 50)), S(C(214, 224, 46))]),
+    P('shadows', '#a9142c', [S('M160,230 C152,256 124,268 98,261 C128,258 146,244 152,218 Z'), S('M258,240 C250,262 226,272 202,267 C228,262 244,250 250,226 Z')]),
+    P('shine', '#ffffff', [S(E(92, 194, 8, 13)), S(E(197, 206, 7, 11))]),
+    P('leaf', '#3aa655', [S(LEAF)])
+  ]},
+
+  { id: 'fly', name: 'Pretty Butterfly', ms: 'Rama-rama Cantik', pack: 'real', tint: '#f0e6ff', lw: 3.6, steps: [
+    { n: 'body', sh: [S(E(160, 172, 9, 48))] },
+    { n: 'head', sh: [S(C(160, 114, 11))] },
+    { n: 'feelers', sh: [S('M156,104 C150,82 138,68 124,64 M164,104 C170,82 182,68 196,64', LINE)] },
+    { n: 'top wings', sh: pair(WING_UP, BEH) },
+    { n: 'bottom wings', sh: pair(WING_LOW, BEH) },
+    { n: 'wing spots', sh: [S(C(92, 118, 14)), S(C(228, 118, 14)), S(C(106, 226, 10)), S(C(214, 226, 10))] },
+    { n: 'wing lines', sh: pair('M146,158 C120,140 96,146 72,150 M146,186 C124,196 108,206 96,216', LINE) },
+    P('top wings', '#8e5cff', pair(WING_UP)),
+    P('bottom wings', '#ff7ac8', pair(WING_LOW)),
+    P('dark wing tips', '#6b3fd4', pair('M36,100 C24,134 70,176 112,174 C72,158 54,130 60,90 Z')),
+    P('wing spots', '#ffd23f', [S(C(92, 118, 14)), S(C(228, 118, 14)), S(C(106, 226, 10)), S(C(214, 226, 10))]),
+    P('body', '#5a3b2a', [S(E(160, 172, 9, 48)), S(C(160, 114, 11))])
+  ]},
+
+  { id: 'dress', name: 'Party Dress', ms: 'Gaun Parti', pack: 'real', tint: '#ffe3f3', lw: 3.6, steps: [
+    { n: 'top', sh: [S(BODICE)] },
+    { n: 'belt', sh: [S(BELT)] },
+    { n: 'skirt', sh: [S(SKIRT)] },
+    { n: 'skirt folds', sh: [S('M146,146 C138,190 120,240 104,279 M160,146 L160,287 M174,146 C182,190 200,240 216,279', LINE)] },
+    { n: 'bow', sh: bow(160, 132, 15, 9, 4.5) },
+    P('skirt', '#ff7ac8', [S(SKIRT)]),
+    P('skirt shadows', '#e0409a', [S('M146,146 C138,190 120,240 104,279 L130,284 C138,240 148,190 153,146 Z'), S('M174,146 C182,190 200,240 216,279 L190,284 C182,240 172,190 167,146 Z')]),
+    P('top', '#b05cff', [S(BODICE)]),
+    P('belt', '#ffd23f', [S(BELT)]),
+    P('shine', '#ffffff', [S(E(144, 92, 4, 14)), S(E(84, 250, 5, 12))])
+  ]}
+];
+CHARS.unshift.apply(CHARS, REAL);
+PACKS.unshift({ id: 'real', name: 'Real Art', ms: 'Seni Sebenar', icon: '✏️', hard: true });
+Object.assign(PART_MS, {
+  'top lip': 'bibir atas', 'bottom lip': 'bibir bawah', 'top lip lines': 'garisan bibir atas', 'bottom lip lines': 'garisan bibir bawah',
+  'light part of the top lip': 'bahagian cerah bibir atas', 'shadow under the bottom lip': 'bayang bawah bibir', 'shine on the top lip': 'kilau bibir atas',
+  'shine on the bottom lip': 'kilau bibir bawah', 'eye shape': 'bentuk mata', 'coloured ring': 'gelang berwarna', 'pupil': 'anak mata',
+  'eyelid line': 'garisan kelopak mata', 'eyebrow': 'kening', 'eyelid': 'kelopak mata', 'light middle': 'bahagian tengah cerah', 'eye shine': 'kilau mata',
+  'strawberry': 'strawberi', 'leaves': 'daun', 'stalk': 'tangkai', 'shadow side': 'bahagian bayang', 'shine': 'kilauan', 'donut': 'donat', 'icing': 'aising',
+  'hole': 'lubang', 'shadow on the icing': 'bayang aising', 'diamond shape': 'bentuk berlian', 'middle line': 'garisan tengah', 'top cuts': 'potongan atas',
+  'bottom cuts': 'potongan bawah', 'sparkles': 'kerlipan', 'lightest cuts': 'potongan paling cerah', 'light cuts': 'potongan cerah',
+  'middle cuts': 'potongan sederhana', 'dark cut': 'potongan gelap', 'darkest cut': 'potongan paling gelap', 'first cherry': 'ceri pertama',
+  'second cherry': 'ceri kedua', 'stalks': 'tangkai', 'leaf': 'daun', 'leaf line': 'garisan daun', 'cherries': 'ceri', 'shadows': 'bayang',
+  'top wings': 'sayap atas', 'bottom wings': 'sayap bawah', 'wing spots': 'bintik sayap', 'wing lines': 'garisan sayap', 'dark wing tips': 'hujung sayap gelap',
+  'skirt folds': 'lipatan skirt', 'skirt shadows': 'bayang skirt', 'top': 'baju', 'belt': 'tali pinggang', 'skirt': 'skirt'
+});
+
 (function () {
 'use strict';
 
@@ -702,9 +1140,10 @@ const PART_MS = {
 ------------------------------------------------------------------- */
 const INK = '#2b2440';
 const LW = 5;              // outline thickness (in 320-box units)
-const RES = 640;           // canvas pixel size
+const RES = 960;           // canvas pixel size
 const K = RES / 320;       // box units -> pixels
-const TOL = 15;            // how close the finger must be to the guide
+const TOL = 15;            // how close the finger must be to the guide (on screen)
+const ID = { s: 1, tx: 0, ty: 0 };   // camera: no zoom
 const NEED = 0.9;          // share of the guide that must be traced
 const KEY = 'doodlepals_v1';
 const COLORS = ['#ff4d4d', '#ff9f1c', '#ffd23f', '#9be564', '#2fbf71', '#2ec4b6', '#5ac8fa', '#3a86ff',
@@ -743,7 +1182,7 @@ const STR = {
     tagline: 'Trace it, colour it, collect the stars!', ofStars: 'of {0} stars',
     freeDraw: 'Free Draw', freeSub: 'Draw anything!', quick: 'Quick Draw', quickSub: 'Beat the clock!',
     album: 'My Gallery', albumSub: 'All my pictures', albumEmpty: 'No pictures yet. Finish a drawing and it will show up here!',
-    step: 'Step {0}/{1}: trace the {2}', colourTime: 'Colour time! Pick a colour and paint', freeHint: 'Draw anything you like!',
+    step: 'Step {0}/{1}: trace the {2}', paintStep: 'Step {0}/{1}: colour the {2}', colourTime: 'Colour time! Pick a colour and paint', freeHint: 'Draw anything you like!',
     timeUp: 'Time is up! No rush, keep drawing', beat: 'You beat the clock! Now colour it',
     undo: 'Undo', showme: 'Show me', skip: 'Skip', brush: 'Brush', fill: 'Fill', eraser: 'Eraser', sticker: 'Sticker', scene: 'Scene',
     clear: 'Clear', done: 'Done', save: 'Save', next: 'Next', home: 'Home', keep: 'Keep drawing', close: 'Close', del: 'Delete',
@@ -753,13 +1192,14 @@ const STR = {
     leave: 'Leave this drawing?', delAsk: 'Delete this picture?', locked: 'Collect {0} stars to open this',
     unlocked: 'New gift', nextGift: 'Next gift at {0} stars: {1}', allGifts: 'You opened every gift!',
     pickSticker: 'Tap the picture to add a sticker', pickScene: 'Pick a scene',
+    zoomHint: 'Tap the part you want to zoom in on', hard: 'Hard', easy: 'Easy',
     k_sticker: 'sticker', k_scene: 'scene', k_brush: 'brush'
   },
   ms: {
     tagline: 'Lukis, warna dan kumpul bintang!', ofStars: 'daripada {0} bintang',
     freeDraw: 'Lukis Bebas', freeSub: 'Lukis apa sahaja!', quick: 'Lukis Pantas', quickSub: 'Kejar masa!',
     album: 'Galeri Saya', albumSub: 'Semua lukisan saya', albumEmpty: 'Belum ada lukisan. Siapkan satu lukisan dan ia akan muncul di sini!',
-    step: 'Langkah {0}/{1}: lukis {2}', colourTime: 'Masa mewarna! Pilih warna dan warnakan', freeHint: 'Lukis apa sahaja yang kamu suka!',
+    step: 'Langkah {0}/{1}: lukis {2}', paintStep: 'Langkah {0}/{1}: warnakan {2}', colourTime: 'Masa mewarna! Pilih warna dan warnakan', freeHint: 'Lukis apa sahaja yang kamu suka!',
     timeUp: 'Masa tamat! Tak apa, teruskan melukis', beat: 'Kamu menang lawan masa! Sekarang warnakan',
     undo: 'Undur', showme: 'Tunjuk', skip: 'Langkau', brush: 'Berus', fill: 'Isi', eraser: 'Padam', sticker: 'Pelekat', scene: 'Latar',
     clear: 'Kosong', done: 'Siap', save: 'Simpan', next: 'Lanjut', home: 'Utama', keep: 'Teruskan', close: 'Tutup', del: 'Buang',
@@ -769,6 +1209,7 @@ const STR = {
     leave: 'Keluar dari lukisan ini?', delAsk: 'Buang lukisan ini?', locked: 'Kumpul {0} bintang untuk buka',
     unlocked: 'Hadiah baru', nextGift: 'Hadiah seterusnya pada {0} bintang: {1}', allGifts: 'Semua hadiah sudah dibuka!',
     pickSticker: 'Sentuh lukisan untuk letak pelekat', pickScene: 'Pilih latar',
+    zoomHint: 'Sentuh bahagian yang hendak dibesarkan', hard: 'Susah', easy: 'Senang',
     k_sticker: 'pelekat', k_scene: 'latar', k_brush: 'berus'
   }
 };
@@ -949,35 +1390,60 @@ function getScratch(size) {
   }
   return scratch[size];
 }
-function inkStyle(c) { c.lineWidth = LW; c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = INK; c.fillStyle = INK; c.setLineDash([]); }
+const lwOf = ch => ch.lw || LW;      // detailed drawings use a thinner line
+function setView(ctx, size, v) { const k = size / 320; ctx.setTransform(k * v.s, 0, 0, k * v.s, k * v.tx, k * v.ty); }
+const pathOf = sh => sh.p || (sh.p = new Path2D(sh.d));
 
-// Draw steps 0..upto-1 of a character on ctx (a size x size canvas).
-// Later body parts sit on top of earlier ones; "behind" parts tuck underneath.
-function drawArt(ctx, size, ch, upto) {
-  const k = size / 320, sc = getScratch(size);
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(0, 0, size, size);
-  sc.mctx.setTransform(1, 0, 0, 1, 0, 0); sc.mctx.clearRect(0, 0, size, size);
+// Order the shapes from back to front: normal parts go on top, "behind" parts go underneath everything so far.
+function zList(ch, upto) {
+  const list = [];
   for (let s = 0; s < upto; s++) {
-    for (const sh of ch.steps[s].sh) {
-      const p = new Path2D(sh.d), solid = !sh.line;
-      if (sh.behind) {
-        const x = sc.tctx;
-        x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, size, size);
-        x.setTransform(k, 0, 0, k, 0, 0); inkStyle(x);
-        if (sh.fill) x.fill(p);
-        x.stroke(p);
-        x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'destination-out'; x.drawImage(sc.mask, 0, 0);
-        ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(sc.tmp, 0, 0);
-      } else {
-        ctx.setTransform(k, 0, 0, k, 0, 0); inkStyle(ctx);
-        if (solid) { ctx.globalCompositeOperation = 'destination-out'; ctx.fill(p); ctx.globalCompositeOperation = 'source-over'; }
-        if (sh.fill) ctx.fill(p);
-        ctx.stroke(p);
-      }
-      if (solid) { sc.mctx.setTransform(k, 0, 0, k, 0, 0); sc.mctx.fillStyle = '#000'; sc.mctx.fill(p); }
-    }
+    if (ch.steps[s].paint) continue;                 // colouring steps are not outlines
+    for (const sh of ch.steps[s].sh) { if (sh.behind) list.unshift(sh); else list.push(sh); }
+  }
+  return list;
+}
+// Colouring steps (Real Art): fill each finished colour area, in order, so shadows and shine sit on top of the base colour.
+function drawPaint(ctx, size, ch, upto, view, keep) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over';
+  if (!keep) ctx.clearRect(0, 0, size, size);
+  setView(ctx, size, view || ID);
+  for (let s = 0; s < upto; s++) {
+    const st = ch.steps[s]; if (!st.paint) continue;
+    ctx.fillStyle = st.paint;
+    for (const sh of st.sh) ctx.fill(pathOf(sh));
   }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+const hasPaint = ch => ch.steps.some(st => st.paint);
+// whole finished picture (colour areas + outlines) on a new canvas
+function fullPic(size, ch) {
+  const c = mk(size), x = c.getContext('2d'), ink = mk(size);
+  drawArt(ink.getContext('2d'), size, ch, ch.steps.length);
+  drawPaint(x, size, ch, ch.steps.length, ID); x.drawImage(ink, 0, 0);
+  return c;
+}
+// Draw steps 0..upto-1 of a character on ctx (a size x size canvas), seen through the camera "view".
+function drawArt(ctx, size, ch, upto, view) {
+  view = view || ID;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(0, 0, size, size);
+  setView(ctx, size, view);
+  ctx.lineWidth = lwOf(ch) / Math.sqrt(view.s); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = INK; ctx.fillStyle = INK; ctx.setLineDash([]);
+  for (const sh of zList(ch, upto)) {
+    const p = pathOf(sh);
+    if (!sh.line) { ctx.globalCompositeOperation = 'destination-out'; ctx.fill(p); ctx.globalCompositeOperation = 'source-over'; }   // a body part hides what is under it
+    if (sh.fill) ctx.fill(p);
+    ctx.stroke(p);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+// Solid shape of everything traced so far (used to hide the parts of a guide that sit behind the body)
+function drawMask(size, ch, upto, view) {
+  const sc = getScratch(size), m = sc.mctx;
+  m.setTransform(1, 0, 0, 1, 0, 0); m.globalCompositeOperation = 'source-over'; m.clearRect(0, 0, size, size);
+  setView(m, size, view || ID); m.fillStyle = '#000';
+  for (let s = 0; s < upto; s++) if (!ch.steps[s].paint) for (const sh of ch.steps[s].sh) if (!sh.line) m.fill(pathOf(sh));
+  m.setTransform(1, 0, 0, 1, 0, 0);
   return sc;
 }
 
@@ -1012,7 +1478,9 @@ function showHome() {
   gift.textContent = '🎁 ' + (nx ? t('nextGift', nx.at, giftName(nx)) : t('allGifts'));
   g.appendChild(gift);
   for (const pk of PACKS) {
-    const h = document.createElement('div'); h.className = 'pack'; h.textContent = pk.icon + ' ' + packName(pk); g.appendChild(h);
+    const h = document.createElement('div'); h.className = 'pack'; h.textContent = pk.icon + ' ' + packName(pk);
+    const lv = document.createElement('span'); lv.className = 'lvl' + (pk.hard ? ' hard' : ''); lv.textContent = pk.hard ? '\u2605\u2605\u2605 ' + t('hard') : '\u2605 ' + t('easy'); h.appendChild(lv);
+    g.appendChild(h);
     const grid = document.createElement('div'); grid.className = 'grid'; g.appendChild(grid);
     CHARS.filter(c => c.pack === pk.id).forEach(ch => {
       const b = document.createElement('button'); b.className = 'card';
@@ -1020,7 +1488,7 @@ function showHome() {
       if (save.thumbs[ch.id]) {
         const im = new Image(); im.src = save.thumbs[ch.id]; im.alt = chName(ch); pic.appendChild(im);
       } else {
-        const cv = mk(240); drawArt(cv.getContext('2d'), 240, ch, ch.steps.length); pic.appendChild(cv);
+        const cv = hasPaint(ch) ? fullPic(240, ch) : mk(240); if (!hasPaint(ch)) drawArt(cv.getContext('2d'), 240, ch, ch.steps.length); pic.appendChild(cv);
       }
       b.appendChild(pic);
       const n = document.createElement('div'); n.className = 'nm'; n.textContent = (save.crowns[ch.id] ? '🏆 ' : '') + chName(ch); b.appendChild(n);
@@ -1066,9 +1534,32 @@ function dataBlob(u) {
   for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
   return new Blob([a], { type: p[0].slice(5).split(';')[0] });
 }
+// Inside the Capacitor phone app the browser ways of saving do not work,
+// so the picture is written to the app's cache and handed to the phone's Share sheet.
+// Needs the @capacitor/filesystem and @capacitor/share plugins; without them it falls back to the browser way.
+function capPlugins() {
+  try {
+    const cap = window.Capacitor || window.parent.Capacitor;      // the game may run inside the menu page
+    if (cap && cap.isNativePlatform && cap.isNativePlatform() && cap.Plugins && cap.Plugins.Filesystem && cap.Plugins.Share) return cap.Plugins;
+  } catch (e) {}
+  return null;
+}
+function nativeShare(P, b, name) {
+  return new Promise((ok, fail) => {
+    const fr = new FileReader();
+    fr.onerror = fail;
+    fr.onload = () => {
+      P.Filesystem.writeFile({ path: name, data: String(fr.result).split(',')[1], directory: 'CACHE' })
+        .then(r => P.Share.share({ title: 'Doodle Pals', url: r.uri })).then(ok, fail);
+    };
+    fr.readAsDataURL(b);
+  });
+}
 function sharePic(b) {
   if (!b) return;
   const name = 'my-doodle-pal.' + (b.type === 'image/jpeg' ? 'jpg' : 'png');
+  const P = capPlugins();
+  if (P) { nativeShare(P, b, name).catch(() => {}); return; }
   try {
     const f = new File([b], name, { type: b.type });
     if (navigator.canShare && navigator.canShare({ files: [f] })) { navigator.share({ files: [f], title: 'Doodle Pals' }).catch(() => {}); return; }
@@ -1088,27 +1579,62 @@ let stk = 'star';        // chosen sticker
 let undo = [];           // snapshots: { c: layer, d: pixels }
 let parts = [];          // sparkle particles
 let ptr = null;          // active finger
+let zoomPick = false;    // waiting for a tap that says where to zoom (colouring)
+const viewEl = $('view');
 
 function clearAll() {
   [bctx, cctx, ictx, sctx, gctx].forEach(c => { c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'source-over'; c.clearRect(0, 0, RES, RES); });
-  undo = []; parts = [];
+  undo = []; parts = []; zoomPick = false;
+  viewEl.style.transition = 'none'; viewEl.style.transform = 'none'; $('bZoom').classList.remove('sel');
 }
+// ----- camera -----
+const sameView = (a, b) => Math.abs(a.s - b.s) < 0.01 && Math.abs(a.tx - b.tx) < 0.5 && Math.abs(a.ty - b.ty) < 0.5;
+function clampView(s, cx, cy) {            // zoom s, centred on (cx, cy), kept inside the paper
+  const lim = 320 - 320 * s;
+  return { s, tx: Math.min(0, Math.max(lim, 160 - cx * s)), ty: Math.min(0, Math.max(lim, 160 - cy * s)) };
+}
+// Tracing: glide from the current camera to "target", then call done() to redraw sharp at the new zoom.
+function moveCamera(target, done) {
+  const v0 = cur.view;
+  if (sameView(v0, target)) { cur.view = target; done(); return; }
+  const r = target.s / v0.s, me = cur;
+  viewEl.style.transition = 'transform .36s ease';
+  viewEl.style.transform = 'translate(' + ((target.tx - v0.tx * r) / 3.2) + '%,' + ((target.ty - v0.ty * r) / 3.2) + '%) scale(' + r + ')';
+  setTimeout(() => {
+    if (cur !== me) return;
+    cur.view = target; viewEl.style.transition = 'none'; viewEl.style.transform = 'none'; done();
+  }, 390);
+}
+// Colouring: the picture itself is enlarged (zoom button).
+function setPaintView(v) {
+  cur.view = v;
+  viewEl.style.transition = 'transform .3s ease';
+  viewEl.style.transform = v.s === 1 ? 'none' : 'translate(' + (v.tx / 3.2) + '%,' + (v.ty / 3.2) + '%) scale(' + v.s + ')';
+  $('bZoom').classList.toggle('sel', v.s !== 1);
+}
+$('bZoom').onclick = () => {
+  if (!cur || cur.mode === 'trace') return;
+  if (cur.view.s !== 1) { zoomPick = false; setPaintView(ID); return; }
+  zoomPick = !zoomPick; $('bZoom').classList.toggle('sel', zoomPick);
+  if (zoomPick) $('tStep').textContent = '\uD83D\uDD0D ' + t('zoomHint'); else setTool(tool);
+};
 function openDraw() { $('party').classList.remove('on'); show('draw'); }
 
 function startChar(ch, quick) {
   clearAll(); openDraw();
   const ghost = mk(RES); drawArt(ghost.getContext('2d'), RES, ch, ch.steps.length);
   cur = { ch, mode: 'trace', step: 0, ghost, guide: mk(RES), samples: [], cov: null, nCov: 0, strokes: [],
-          good: 0, total: 0, accSum: 0, accN: 0, skips: 0, lock: false, hintUntil: 0, colors: new Set(), inkData: null, sil: null, scene: 'none',
+          good: 0, total: 0, accSum: 0, accN: 0, skips: 0, lock: false, hintUntil: 0, colors: new Set(), inkData: null, sil: null, scene: 'none', view: ID,
           quick: quick ? { t0: performance.now(), limit: ch.steps.length * 10000, failed: false } : null, crown: false };
   $('tName').textContent = (quick ? '⚡ ' : '') + chName(ch);
   $('timer').classList.toggle('on', !!quick); $('timer').classList.remove('low'); $('timerFill').style.width = '100%';
-  $('traceBar').classList.add('on'); $('paintBar').classList.remove('on');
+  $('traceBar').classList.add('on'); $('paintBar').classList.remove('on'); $('bZoom').classList.remove('on');
   beginStep(0);
 }
 function startFree() {
   clearAll(); openDraw();
-  cur = { ch: null, mode: 'free', colors: new Set(), inkData: null, sil: null, scene: 'none', ts: Date.now() };
+  cur = { ch: null, mode: 'free', colors: new Set(), inkData: null, sil: null, scene: 'none', view: ID, ts: Date.now() };
+  $('bZoom').classList.add('on');
   $('timer').classList.remove('on');
   $('tName').textContent = t('freeDraw'); $('tStep').textContent = t('freeHint');
   $('dots').innerHTML = '';
@@ -1131,26 +1657,29 @@ function showDots() {
 ------------------------------------------------------------------- */
 function beginStep(i) {
   const ch = cur.ch, st = ch.steps[i];
-  cur.step = i; cur.lock = false; cur.strokes = []; cur.good = 0; cur.total = 0; cur.nCov = 0;
-  const sc = drawArt(ictx, RES, ch, i);                       // outlines finished so far
-  const md = sc.mctx.getImageData(0, 0, RES, RES).data;       // where earlier body parts are
+  cur.step = i; cur.lock = true; cur.strokes = []; cur.good = 0; cur.total = 0; cur.nCov = 0;
+  cur.guide.getContext('2d').clearRect(0, 0, RES, RES);
+  const md = drawMask(RES, ch, i, ID).mctx.getImageData(0, 0, RES, RES).data;       // where earlier body parts are
 
-  // dotted guide for this step
-  const g = cur.guide.getContext('2d');
-  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, RES, RES);
-  cur.samples = [];
-  for (const sh of st.sh) {
-    const p = new Path2D(sh.d), x = sc.tctx;
-    x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, RES, RES);
-    x.setTransform(K, 0, 0, K, 0, 0);
-    x.lineWidth = 4; x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#8f86b5'; x.setLineDash([7, 8]);
-    x.stroke(p); x.setLineDash([]);
-    if (sh.behind) { x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'destination-out'; x.drawImage(sc.mask, 0, 0); x.globalCompositeOperation = 'source-over'; }
-    g.drawImage(sc.tmp, 0, 0);
-
-    // points along the guide that the finger has to pass over
+  // points along the guide that the finger has to pass over
+  cur.samples = []; cur.paint = st.paint || null; cur.dotR = 3.3;
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  if (st.paint) {
+    // colouring step: the points to cover are spread over the inside of the area
+    const tx = getScratch(RES).tctx; tx.setTransform(1, 0, 0, 1, 0, 0);
+    for (const sh of st.sh) {                       // size of the area
+      meas.setAttribute('d', sh.d);
+      const L = meas.getTotalLength();
+      for (let j = 0; j <= 60; j++) { const q = meas.getPointAtLength(L * j / 60); if (q.x < x0) x0 = q.x; if (q.x > x1) x1 = q.x; if (q.y < y0) y0 = q.y; if (q.y > y1) y1 = q.y; }
+    }
+    const gap = Math.min(7, Math.max(1.6, Math.max(x1 - x0, y1 - y0) / 16));
+    cur.dotR = gap * 0.85;
+    for (const sh of st.sh) for (let y = y0 + gap / 2; y <= y1; y += gap) for (let x = x0 + gap / 2; x <= x1; x += gap)
+      if (tx.isPointInPath(pathOf(sh), x, y)) cur.samples.push({ x, y });
+  }
+  for (const sh of st.paint ? [] : st.sh) {
     meas.setAttribute('d', sh.d);
-    const L = meas.getTotalLength(), n = Math.max(3, Math.ceil(L / 4));
+    const L = meas.getTotalLength(), n = Math.max(3, Math.ceil(L / 2.5));
     for (let j = 0; j <= n; j++) {
       const q = meas.getPointAtLength(L * j / n);
       if (sh.behind) {
@@ -1158,16 +1687,53 @@ function beginStep(i) {
         if (px >= 0 && py >= 0 && px < RES && py < RES && md[(py * RES + px) * 4 + 3] > 128) continue; // hidden part
       }
       cur.samples.push({ x: q.x, y: q.y });
+      if (q.x < x0) x0 = q.x; if (q.x > x1) x1 = q.x; if (q.y < y0) y0 = q.y; if (q.y > y1) y1 = q.y;
     }
   }
   cur.cov = new Uint8Array(cur.samples.length);
-  $('tStep').textContent = t('step', i + 1, ch.steps.length, partName(st.n));
+  $('tStep').textContent = t(st.paint ? 'paintStep' : 'step', i + 1, ch.steps.length, partName(st.n));
   showDots();
-  if (!cur.samples.length) completeStep(true, true);
+  if (!cur.samples.length) { cur.lock = false; completeStep(true, true); return; }
+
+  // the camera zooms in on small parts so they are easy to draw
+  let z = Math.min(3, 320 / (Math.max(x1 - x0, y1 - y0) + 64));
+  if (z < 1.25) z = 1;
+  const me = cur;
+  moveCamera(z === 1 ? ID : clampView(z, (x0 + x1) / 2, (y0 + y1) / 2), () => { if (cur === me && cur.step === i) { renderStep(); cur.lock = false; } });
+}
+// draw the finished outlines and the dotted guide for the current step, at the current zoom
+function renderStep() {
+  const ch = cur.ch, i = cur.step, v = cur.view;
+  drawArt(ictx, RES, ch, i, v);
+  drawPaint(cctx, RES, ch, i, v);                     // colour areas finished so far
+  const sc = drawMask(RES, ch, i, v), g = cur.guide.getContext('2d'), q = Math.sqrt(v.s);
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, RES, RES);
+  if (cur.paint) {                                    // colouring step: show the area to rub, in a pale tint of its colour
+    const tint = cur.paint === '#ffffff' ? '#8fb8ff' : cur.paint;
+    setView(g, RES, v);
+    for (const sh of ch.steps[i].sh) {
+      g.globalAlpha = 0.45; g.fillStyle = tint; g.fill(pathOf(sh));
+      g.globalAlpha = 0.55; g.lineWidth = 4 / q; g.strokeStyle = INK; g.setLineDash([]); g.stroke(pathOf(sh));       // dark edge so it shows on any colour
+      g.globalAlpha = 1; g.lineWidth = 2.2 / q; g.strokeStyle = '#ffffff'; g.setLineDash([5 / q, 5 / q]); g.stroke(pathOf(sh)); g.setLineDash([]);
+    }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    return;
+  }
+  for (const sh of ch.steps[i].sh) {
+    const x = sc.tctx;
+    x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, RES, RES);
+    setView(x, RES, v);
+    x.lineWidth = 4 / q; x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#8f86b5'; x.setLineDash([7 / q, 8 / q]);
+    x.stroke(pathOf(sh)); x.setLineDash([]);
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    if (sh.behind) { x.globalCompositeOperation = 'destination-out'; x.drawImage(sc.mask, 0, 0); x.globalCompositeOperation = 'source-over'; }
+    g.drawImage(sc.tmp, 0, 0);
+  }
 }
 
+const needOf = () => cur.paint ? 0.8 : NEED;      // a colouring area is done when most of it is rubbed
 function tracePoint(p) {
-  const s = cur.samples, c = cur.cov, T2 = TOL * TOL; let near = false;
+  const s = cur.samples, c = cur.cov, T = (cur.paint ? 17 : TOL) / cur.view.s, T2 = T * T; let near = false;   // colouring uses a fat finger brush
   for (let i = 0; i < s.length; i++) {
     const dx = s[i].x - p.x, dy = s[i].y - p.y;
     if (dx * dx + dy * dy <= T2) { near = true; if (!c[i]) { c[i] = 1; cur.nCov++; } }
@@ -1177,10 +1743,10 @@ function tracePoint(p) {
 function traceMove(p) {
   const st = cur.strokes[cur.strokes.length - 1]; if (!st) return;
   const a = st[st.length - 1], dx = p.x - a.x, dy = p.y - a.y, d = Math.hypot(dx, dy);
-  const n = Math.max(1, Math.ceil(d / 5));
+  const n = Math.max(1, Math.ceil(d / Math.max(1.2, 5 / cur.view.s)));
   for (let i = 1; i <= n; i++) tracePoint({ x: a.x + dx * i / n, y: a.y + dy * i / n });
   st.push(p);
-  if (!cur.lock && cur.nCov >= NEED * cur.samples.length) completeStep(false);
+  if (!cur.lock && cur.nCov >= needOf() * cur.samples.length) completeStep(false);
 }
 
 function completeStep(skipped, silent) {
@@ -1189,11 +1755,13 @@ function completeStep(skipped, silent) {
   if (skipped) { if (!silent) cur.skips++; }
   else if (cur.total > 0) { cur.accSum += cur.good / cur.total; cur.accN++; }
   const done = cur.step + 1, ch = cur.ch;
-  drawArt(ictx, RES, ch, done);          // snap to a neat clean line
+  drawArt(ictx, RES, ch, done, cur.view);          // snap to a neat clean line
+  drawPaint(cctx, RES, ch, done, cur.view);        // a colouring step fills its whole area neatly
+  if (cur.paint) cur.colors.add(cur.paint);
   cur.strokes = []; cur.guide.getContext('2d').clearRect(0, 0, RES, RES);
   if (!silent) {
     sfx.step();
-    for (let i = 0; i < cur.samples.length; i += 6) burst(cur.samples[i], 2);
+    for (let i = 0; i < cur.samples.length; i += (cur.paint ? 30 : 10)) burst(cur.samples[i], 2, cur.paint && cur.paint !== '#ffffff' ? cur.paint : undefined);
     stage.classList.remove('pop'); void stage.offsetWidth; stage.classList.add('pop');
   }
   cur.samples = []; cur.cov = new Uint8Array(0); cur.nCov = 0;
@@ -1205,27 +1773,34 @@ function completeStep(skipped, silent) {
 }
 
 function enterPaint() {
-  cur.mode = 'paint'; cur.lock = false;
-  const sc = drawArt(ictx, RES, cur.ch, cur.ch.steps.length);
-  cur.inkData = ictx.getImageData(0, 0, RES, RES).data;
-  // white shape of the pal, so a background scene does not show through its body
-  cur.sil = mk(RES); const x = cur.sil.getContext('2d');
-  x.drawImage(sc.mask, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#fff'; x.fillRect(0, 0, RES, RES);
-  $('tStep').textContent = t('colourTime');
-  $('timer').classList.remove('on');
-  if (cur.quick && !cur.quick.failed && cur.skips === 0) {          // traced everything before the clock ran out
-    cur.crown = true; save.crowns[cur.ch.id] = true; persist(); sfx.win();
-    $('tStep').textContent = '🏆 ' + t('beat');
-  }
-  $('traceBar').classList.remove('on'); $('paintBar').classList.add('on');
-  $('pClear').style.display = 'none';
-  buildPickers(); setTool('brush');
-  showDots();
+  cur.lock = true;
+  const me = cur;
+  moveCamera(ID, () => {                                  // zoom back out to the whole picture
+    if (cur !== me) return;
+    cur.mode = 'paint'; cur.lock = false;
+    drawArt(ictx, RES, cur.ch, cur.ch.steps.length, ID);
+    drawPaint(cctx, RES, cur.ch, cur.ch.steps.length, ID);
+    cur.paint = null;
+    cur.inkData = ictx.getImageData(0, 0, RES, RES).data;
+    // white shape of the pal, so a background scene does not show through its body
+    const sc = drawMask(RES, cur.ch, cur.ch.steps.length, ID);
+    cur.sil = mk(RES); const x = cur.sil.getContext('2d');
+    x.drawImage(sc.mask, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#fff'; x.fillRect(0, 0, RES, RES);
+    $('timer').classList.remove('on');
+    $('traceBar').classList.remove('on'); $('paintBar').classList.add('on'); $('bZoom').classList.add('on');
+    $('pClear').style.display = 'none';
+    buildPickers(); setTool('brush');
+    if (cur.quick && !cur.quick.failed && cur.skips === 0) {          // traced everything before the clock ran out
+      cur.crown = true; save.crowns[cur.ch.id] = true; persist(); sfx.win();
+      $('tStep').textContent = '\uD83C\uDFC6 ' + t('beat');
+    }
+    showDots();
+  });
 }
 
 $('tUndo').onclick = () => {
   if (!cur || cur.mode !== 'trace' || cur.lock) return;
-  if (cur.nCov > 0 || cur.strokes.length) beginStep(cur.step);
+  if (cur.nCov > 0 || cur.strokes.length) { cur.strokes = []; cur.cov.fill(0); cur.nCov = 0; cur.good = 0; cur.total = 0; }
   else if (cur.step > 0) beginStep(cur.step - 1);
 };
 $('tHint').onclick = () => { if (cur && cur.mode === 'trace') cur.hintUntil = performance.now() + 1400; };
@@ -1234,7 +1809,7 @@ $('tSkip').onclick = () => { if (cur && cur.mode === 'trace' && !cur.lock) compl
 /* ------------------------------------------------------------------
    Colouring: brush, fill, eraser, stickers, scenes, undo
 ------------------------------------------------------------------- */
-function pushUndo(c) { c = c || cctx; undo.push({ c, d: c.getImageData(0, 0, RES, RES) }); if (undo.length > 12) undo.shift(); }
+function pushUndo(c) { c = c || cctx; undo.push({ c, d: c.getImageData(0, 0, RES, RES) }); if (undo.length > 8) undo.shift(); }
 function star5(x, y, r) {                      // little five-point star
   cctx.beginPath();
   for (let i = 0; i < 10; i++) {
@@ -1244,7 +1819,7 @@ function star5(x, y, r) {                      // little five-point star
   cctx.closePath(); cctx.fill();
 }
 function dab(a, b) {
-  const er = tool === 'eraser', st = er ? 'normal' : bstyle, size = SIZES[sizeI];
+  const er = tool === 'eraser', st = er ? 'normal' : bstyle, size = SIZES[sizeI] / cur.view.s;   // finer brush when zoomed in
   const dist = Math.hypot(b.x - a.x, b.y - a.y);
   let col = color;
   cctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1309,7 +1884,7 @@ function flood(px, py, hex) {
 
 // put a sticker on the picture
 function stamp(p) {
-  const r = STAMP[sizeI] * K;
+  const r = STAMP[sizeI] * K / cur.view.s;
   sctx.save(); sctx.setTransform(1, 0, 0, 1, 0, 0);
   sctx.translate(p.x * K, p.y * K); sctx.rotate((Math.random() - 0.5) * 0.4); sctx.scale(r, r);
   STK[stk](sctx); sctx.restore();
@@ -1336,6 +1911,7 @@ function setTool(tl) {
     else if (tl === 'scene') $('tStep').textContent = t('pickScene');
     else $('tStep').textContent = cur.mode === 'free' ? t('freeHint') : t('colourTime');
   }
+  if (zoomPick) { zoomPick = false; $('bZoom').classList.toggle('sel', !!cur && cur.view.s !== 1); }
 }
 document.querySelectorAll('#paintBar [data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
 $('pUndo').onclick = () => { const u = undo.pop(); if (u) u.c.putImageData(u.d, 0, 0); };
@@ -1411,7 +1987,8 @@ function buildPickers() {
 ------------------------------------------------------------------- */
 function pos(e) {
   const r = stage.getBoundingClientRect();
-  return { x: (e.clientX - r.left) / r.width * 320, y: (e.clientY - r.top) / r.height * 320 };
+  const v = cur ? cur.view : ID;                // undo the camera to get the place on the paper
+  return { x: ((e.clientX - r.left) / r.width * 320 - v.tx) / v.s, y: ((e.clientY - r.top) / r.height * 320 - v.ty) / v.s };
 }
 cGuide.addEventListener('pointerdown', e => {
   if (!cur || ptr !== null) return;
@@ -1422,7 +1999,9 @@ cGuide.addEventListener('pointerdown', e => {
   if (cur.mode === 'trace') {
     if (cur.lock) return;
     cur.strokes.push([p]); tracePoint(p);
-    if (cur.nCov >= NEED * cur.samples.length) completeStep(false);
+    if (cur.nCov >= needOf() * cur.samples.length) completeStep(false);
+  } else if (zoomPick) {
+    zoomPick = false; setPaintView(clampView(2.4, p.x, p.y)); setTool(tool);   // zoom in where she tapped
   } else if (tool === 'scene') {
     setTool('brush');                         // a tap on the picture goes back to the brush
   } else if (tool === 'sticker') {
@@ -1477,36 +2056,40 @@ function frame(now) {
       $('tStep').textContent = t('timeUp');
     }
   }
+  const v = cur.mode === 'trace' ? cur.view : ID, z = v.s;    // when colouring, the zoom is done by enlarging the layers
   if (cur.mode === 'trace') {
-    g.globalAlpha = 0.11; g.drawImage(cur.ghost, 0, 0); g.globalAlpha = 1;    // faint preview of the whole pal
+    setView(g, RES, v);
+    g.globalAlpha = 0.11; g.drawImage(cur.ghost, 0, 0, 320, 320); g.globalAlpha = 1;    // faint preview of the whole pal
+    g.setTransform(1, 0, 0, 1, 0, 0);
     g.drawImage(cur.guide, 0, 0);                                             // dotted line for this step
-    g.setTransform(K, 0, 0, K, 0, 0);
+    setView(g, RES, v);
     const s = cur.samples, c = cur.cov;
     if (now < cur.hintUntil) {                                                // "Show me" - flash the whole shape
       g.fillStyle = 'rgba(255,93,143,.8)';
-      for (let i = 0; i < s.length; i++) { g.beginPath(); g.arc(s[i].x, s[i].y, 3.2, 0, 6.2832); g.fill(); }
+      for (let i = 0; i < s.length; i++) { g.beginPath(); g.arc(s[i].x, s[i].y, 3.2 / z, 0, 6.2832); g.fill(); }
     }
-    g.fillStyle = '#22c58b';                                                  // the part already traced
-    for (let i = 0; i < s.length; i++) if (c[i]) { g.beginPath(); g.arc(s[i].x, s[i].y, 3.3, 0, 6.2832); g.fill(); }
-    g.strokeStyle = 'rgba(43,36,64,.3)'; g.lineWidth = 3; g.lineCap = 'round'; g.lineJoin = 'round';
-    for (const st of cur.strokes) { g.beginPath(); g.moveTo(st[0].x, st[0].y); for (let i = 1; i < st.length; i++) g.lineTo(st[i].x, st[i].y); g.stroke(); }
+    g.fillStyle = cur.paint || '#22c58b';                                     // the part already traced (or coloured)
+    const dr = cur.paint ? cur.dotR : 3.3 / z;
+    for (let i = 0; i < s.length; i++) if (c[i]) { g.beginPath(); g.arc(s[i].x, s[i].y, dr, 0, 6.2832); g.fill(); }
+    g.strokeStyle = 'rgba(43,36,64,.3)'; g.lineWidth = 3 / z; g.lineCap = 'round'; g.lineJoin = 'round';
+    if (!cur.paint) for (const st of cur.strokes) { g.beginPath(); g.moveTo(st[0].x, st[0].y); for (let i = 1; i < st.length; i++) g.lineTo(st[i].x, st[i].y); g.stroke(); }
     if (!cur.lock && ptr === null) {                                          // moving dot shows where to draw
       const unc = []; for (let i = 0; i < s.length; i++) if (!c[i]) unc.push(s[i]);
       if (unc.length) {
-        const idx = Math.floor(now / 40) % (unc.length + 14);
+        const sp = Math.max(1, Math.round(1.6 * z)), idx = (Math.floor(now / 40) * sp) % (unc.length + 14 * sp);
         if (idx < unc.length) {
           const q = unc[idx];
-          g.beginPath(); g.arc(q.x, q.y, 9, 0, 6.2832); g.fillStyle = 'rgba(255,93,143,.92)'; g.fill();
-          g.lineWidth = 3; g.strokeStyle = '#fff'; g.stroke();
-          g.font = '22px sans-serif'; g.fillText('👆', q.x - 2, q.y + 30);
+          g.beginPath(); g.arc(q.x, q.y, 9 / z, 0, 6.2832); g.fillStyle = 'rgba(255,93,143,.92)'; g.fill();
+          g.lineWidth = 3 / z; g.strokeStyle = '#fff'; g.stroke();
+          g.font = (22 / z) + 'px sans-serif'; g.fillText('\uD83D\uDC46', q.x - 2 / z, q.y + 30 / z);
         }
       }
     }
   } else g.setTransform(K, 0, 0, K, 0, 0);
   for (let i = parts.length - 1; i >= 0; i--) {                               // sparkles
-    const p = parts[i]; p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.life -= 0.028;
+    const p = parts[i]; p.x += p.vx / z; p.y += p.vy / z; p.vy += 0.05; p.life -= 0.028;
     if (p.life <= 0) { parts.splice(i, 1); continue; }
-    g.globalAlpha = p.life; g.fillStyle = p.c; g.beginPath(); g.arc(p.x, p.y, p.r, 0, 6.2832); g.fill();
+    g.globalAlpha = p.life; g.fillStyle = p.c; g.beginPath(); g.arc(p.x, p.y, p.r / z, 0, 6.2832); g.fill();
   }
   g.globalAlpha = 1;
 }
