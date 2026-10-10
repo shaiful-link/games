@@ -23,7 +23,7 @@ button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touc
 .screen.on{display:flex;}
 
 /* ---------- Home ---------- */
-#home{overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--cream);}
+#home,#album{overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--cream);}
 .awning{flex:none;padding:18px 16px 26px;text-align:center;color:#fff;position:relative;
   background:repeating-linear-gradient(90deg,var(--pink) 0 34px,#ff86ab 34px 68px);}
 .awning:after{content:"";position:absolute;left:0;right:0;bottom:-11px;height:12px;
@@ -34,25 +34,32 @@ button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touc
 .pill{display:inline-block;margin-top:10px;background:#fff;color:var(--ink);border-radius:999px;padding:6px 16px;font-size:17px;
   box-shadow:0 3px 0 rgba(43,36,64,.18);}
 .pill b{color:#f5a400;}
-#bMuteHome{position:absolute;right:12px;top:14px;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.9);font-size:20px;}
-#gallery{padding:24px 14px 30px;max-width:560px;width:100%;margin:0 auto;}
-.free{display:flex;align-items:center;gap:14px;width:100%;padding:14px 16px;border-radius:22px;color:#fff;text-align:left;
+.corner{position:absolute;top:14px;height:42px;border-radius:21px;background:rgba(255,255,255,.92);font-size:20px;color:var(--ink);}
+#bMuteHome{right:12px;width:42px;}
+#bLang{left:12px;padding:0 12px;font-size:14px;}
+#bLang b{color:var(--pink);}
+#bLang span{opacity:.45;}
+#bAlbumBack{left:12px;width:42px;}
+#gallery,#albumGrid{padding:24px 14px 30px;max-width:560px;width:100%;margin:0 auto;}
+.trio{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+.big3{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:86px;padding:8px 4px;border-radius:20px;color:#fff;
   background:linear-gradient(120deg,var(--purple),#b06cff);box-shadow:0 5px 0 #5a3fd1;}
-.free .big{font-size:30px;}
-.free .t1{font-size:18px;}
-.free .t2{font-size:12px;opacity:.95;margin-top:2px;}
-.free.quick{background:linear-gradient(120deg,#ff8a1c,#ffb52e);box-shadow:0 5px 0 #cf6f00;}
-.duo{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-.duo .free{padding:12px 10px;gap:8px;}
-.pack{margin:24px 4px 10px;font-size:21px;display:flex;align-items:center;gap:8px;}
+.big3 .ic{font-size:28px;line-height:1.1;}
+.big3 .t1{font-size:15px;margin-top:3px;}
+.big3 .t2{font-size:11px;opacity:.95;margin-top:1px;}
+.big3.quick{background:linear-gradient(120deg,#ff8a1c,#ffb52e);box-shadow:0 5px 0 #cf6f00;}
+.big3.album{background:linear-gradient(120deg,#17b3a4,#4fd8c7);box-shadow:0 5px 0 #0f8c80;}
+#nextGift{margin:14px 4px 0;font-size:14px;color:#6d6488;text-align:center;}
+.pack{margin:22px 4px 10px;font-size:21px;display:flex;align-items:center;gap:8px;}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .card{background:var(--card);border-radius:22px;padding:10px 10px 12px;box-shadow:0 5px 0 rgba(43,36,64,.14);text-align:center;}
-.card:active,.free:active{transform:translateY(3px);}
+.card:active,.big3:active{transform:translateY(3px);}
 .card .pic{border-radius:16px;overflow:hidden;aspect-ratio:1;display:block;}
 .card .pic canvas,.card .pic img{width:100%;height:100%;display:block;}
-.card .nm{font-size:18px;margin-top:8px;}
+.card .nm{font-size:17px;margin-top:8px;}
 .stars{font-size:20px;letter-spacing:2px;color:#d9d3e6;}
 .stars .y{color:#ffb800;}
+.empty{text-align:center;color:#6d6488;font-size:16px;padding:40px 20px;}
 
 /* ---------- Draw ---------- */
 #draw{background:linear-gradient(180deg,#fff1d6,#ffe1ec);overflow:hidden;}
@@ -61,9 +68,9 @@ button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touc
 .rnd:active{transform:translateY(2px);}
 .ttl{flex:1;min-width:0;text-align:center;}
 #tName{font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-#tStep{font-size:14px;color:#6d6488;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-#dots{flex:none;display:flex;justify-content:center;gap:6px;height:18px;align-items:center;}
-#dots i{width:10px;height:10px;border-radius:50%;background:#e4d9ee;display:block;}
+#tStep{font-size:14px;line-height:1.15;color:#6d6488;margin-top:1px;}
+#dots{flex:none;display:flex;justify-content:center;gap:5px;height:18px;align-items:center;}
+#dots i{width:9px;height:9px;border-radius:50%;background:#e4d9ee;display:block;}
 #dots i.done{background:var(--teal);}
 #dots i.now{background:var(--pink);transform:scale(1.35);}
 #timer{flex:none;display:none;height:10px;margin:6px 44px 0;border-radius:10px;background:#f1e3f3;overflow:hidden;}
@@ -78,42 +85,55 @@ button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touc
 #stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
 #stage.pop{animation:pop .35s ease;}
 @keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.035)}100%{transform:scale(1)}}
-.bar{flex:none;display:none;padding:6px 10px 10px;max-width:560px;width:100%;margin:0 auto;}
+.bar{flex:none;display:none;padding:6px 8px 10px;max-width:560px;width:100%;margin:0 auto;}
 .bar.on{display:block;}
-.row{display:flex;gap:6px;justify-content:center;}
-.tool{flex:1;max-width:96px;min-height:54px;border-radius:16px;background:#fff;font-size:22px;line-height:1.1;
+.row{display:flex;gap:4px;justify-content:center;}
+.tool{flex:1;min-width:0;max-width:96px;min-height:54px;border-radius:14px;background:#fff;font-size:20px;line-height:1.1;
   box-shadow:0 3px 0 rgba(43,36,64,.16);display:flex;flex-direction:column;align-items:center;justify-content:center;}
-.tool small{font-size:11px;margin-top:2px;}
+.tool small{font-size:10px;margin-top:2px;white-space:nowrap;}
 .tool:active{transform:translateY(2px);}
 .tool.sel{background:var(--yellow);box-shadow:0 3px 0 #d9a900;}
 .tool.go{background:var(--teal);color:#fff;box-shadow:0 3px 0 #1c9c90;}
+#traceBar .tool{font-size:22px;} #traceBar .tool small{font-size:11px;} #traceBar .row{gap:6px;}
 .sizes{display:flex;gap:6px;justify-content:center;align-items:center;margin:8px 0 6px;}
 .sizes .gap{width:8px;flex:none;}
+.sz{position:relative;width:40px;height:36px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 0 rgba(43,36,64,.14);overflow:hidden;}
 .sz.st{font-size:18px;}
-.sz{width:40px;height:36px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 0 rgba(43,36,64,.14);}
 .sz i{display:block;border-radius:50%;background:var(--ink);}
 .sz.sel{background:var(--yellow);}
-#palette{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;justify-items:center;}
+.panel{display:none;grid-template-columns:repeat(8,1fr);gap:6px;justify-items:center;min-height:86px;align-content:start;}
+.panel.on{display:grid;}
 .sw{width:100%;max-width:40px;aspect-ratio:1;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 0 rgba(43,36,64,.2);}
 .sw.sel{outline:3px solid var(--ink);outline-offset:1px;transform:scale(1.08);}
+.pk{position:relative;width:100%;max-width:42px;aspect-ratio:1;border-radius:12px;background:#fff;box-shadow:0 2px 0 rgba(43,36,64,.16);overflow:hidden;}
+.pk canvas{width:100%;height:100%;display:block;}
+.pk.sel{outline:3px solid var(--ink);outline-offset:1px;}
+#scenes{grid-template-columns:repeat(6,1fr);}
+#scenes .pk{max-width:54px;}
+.lock{position:absolute;inset:0;border-radius:inherit;background:rgba(255,255,255,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-size:13px;line-height:1.05;color:var(--ink);}
+.lock small{font-size:10px;color:#b07a00;}
 
-/* ---------- Celebration ---------- */
-#party{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(43,36,64,.62);z-index:20;padding:16px;}
-#party.on{display:flex;}
+/* ---------- Overlays ---------- */
+.over{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(43,36,64,.62);z-index:20;padding:16px;}
+.over.on{display:flex;}
 .sheet{background:#fff;border-radius:28px;padding:18px 18px 16px;width:100%;max-width:380px;text-align:center;
   animation:rise .4s cubic-bezier(.2,1.4,.4,1);}
 @keyframes rise{from{transform:translateY(40px) scale(.9);opacity:0}to{transform:none;opacity:1}}
 .sheet h2{margin:0 0 8px;font-size:28px;color:var(--pink);}
-#pImg{width:62%;border-radius:18px;box-shadow:0 0 0 4px var(--yellow);-webkit-touch-callout:default;-webkit-user-select:auto;user-select:auto;}
+.shot{width:62%;border-radius:18px;box-shadow:0 0 0 4px var(--yellow);-webkit-touch-callout:default;-webkit-user-select:auto;user-select:auto;}
 #pImg{animation:wig 1.1s ease-in-out infinite alternate;}
 @keyframes wig{from{transform:rotate(-3deg) scale(.98)}to{transform:rotate(3deg) scale(1.03)}}
+#vImg{width:86%;}
 #pStars{font-size:46px;letter-spacing:6px;margin-top:8px;height:58px;}
 #pStars span{display:inline-block;color:#e3deee;transition:color .2s;}
 #pStars span.y{color:#ffb800;animation:starpop .45s cubic-bezier(.2,1.8,.4,1);}
 @keyframes starpop{from{transform:scale(.2) rotate(-40deg)}to{transform:none}}
-#pMsg{font-size:15px;color:#6d6488;min-height:20px;margin:2px 0 12px;}
+#pMsg{font-size:15px;color:#6d6488;min-height:20px;margin:2px 0 6px;}
+#pGift{font-size:15px;color:#0f8c80;margin:0 0 10px;}
+#vName{font-size:18px;margin:10px 0 12px;}
 .btns{display:flex;gap:8px;}
-.btn{flex:1;min-height:52px;border-radius:16px;font-size:16px;color:#fff;background:var(--purple);box-shadow:0 4px 0 #5a3fd1;}
+.btn{flex:1;min-width:0;min-height:52px;border-radius:16px;font-size:15px;color:#fff;background:var(--purple);box-shadow:0 4px 0 #5a3fd1;}
 .btn.alt{background:var(--teal);box-shadow:0 4px 0 #1c9c90;}
 .btn.soft{background:#efeaf7;color:var(--ink);box-shadow:0 4px 0 #d6cde6;}
 .btn:active{transform:translateY(3px);}
@@ -125,12 +145,23 @@ button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touc
 <!-- ================= HOME ================= -->
 <div id="home" class="screen on">
   <div class="awning">
-    <button id="bMuteHome" aria-label="Sound"></button>
+    <button id="bLang" class="corner" aria-label="Language"></button>
+    <button id="bMuteHome" class="corner" aria-label="Sound"></button>
     <h1>Doodle Pals</h1>
-    <p>Trace it, colour it, collect the stars!</p>
+    <p data-t="tagline"></p>
     <div class="pill">&#9733; <b id="totStars">0</b> <span id="totOf"></span></div>
   </div>
   <div id="gallery"></div>
+</div>
+
+<!-- ================= MY GALLERY ================= -->
+<div id="album" class="screen">
+  <div class="awning">
+    <button id="bAlbumBack" class="corner" aria-label="Home">&#127968;</button>
+    <h1 data-t="album"></h1>
+    <p data-t="albumSub"></p>
+  </div>
+  <div id="albumGrid"></div>
 </div>
 
 <!-- ================= DRAW ================= -->
@@ -144,8 +175,10 @@ button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touc
   <div id="timer"><i id="timerFill"></i></div>
   <div class="stageWrap">
     <div id="stage">
+      <canvas id="cBg" width="640" height="640"></canvas>
       <canvas id="cColor" width="640" height="640"></canvas>
       <canvas id="cInk" width="640" height="640"></canvas>
+      <canvas id="cStick" width="640" height="640"></canvas>
       <canvas id="cGuide" width="640" height="640"></canvas>
     </div>
   </div>
@@ -153,38 +186,56 @@ button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touc
   <!-- tracing tools -->
   <div id="traceBar" class="bar">
     <div class="row">
-      <button class="tool" id="tUndo">&#8617;&#65039;<small>Undo</small></button>
-      <button class="tool" id="tHint">&#128161;<small>Show me</small></button>
-      <button class="tool" id="tSkip">&#9193;&#65039;<small>Skip</small></button>
+      <button class="tool" id="tUndo">&#8617;&#65039;<small data-t="undo"></small></button>
+      <button class="tool" id="tHint">&#128161;<small data-t="showme"></small></button>
+      <button class="tool" id="tSkip">&#9193;&#65039;<small data-t="skip"></small></button>
     </div>
   </div>
 
   <!-- colouring tools -->
   <div id="paintBar" class="bar">
     <div class="row">
-      <button class="tool sel" id="pBrush" data-tool="brush">&#128396;&#65039;<small>Brush</small></button>
-      <button class="tool" id="pFill" data-tool="fill">&#129699;<small>Fill</small></button>
-      <button class="tool" id="pErase" data-tool="eraser">&#129533;<small>Eraser</small></button>
-      <button class="tool" id="pUndo">&#8617;&#65039;<small>Undo</small></button>
-      <button class="tool" id="pClear">&#128465;&#65039;<small>Clear</small></button>
-      <button class="tool go" id="pDone">&#9989;<small>Done</small></button>
+      <button class="tool sel" data-tool="brush">&#128396;&#65039;<small data-t="brush"></small></button>
+      <button class="tool" data-tool="fill">&#129699;<small data-t="fill"></small></button>
+      <button class="tool" data-tool="eraser">&#129533;<small data-t="eraser"></small></button>
+      <button class="tool" data-tool="sticker">&#127880;<small data-t="sticker"></small></button>
+      <button class="tool" data-tool="scene">&#127748;<small data-t="scene"></small></button>
+      <button class="tool" id="pUndo">&#8617;&#65039;<small data-t="undo"></small></button>
+      <button class="tool" id="pClear">&#128465;&#65039;<small data-t="clear"></small></button>
+      <button class="tool go" id="pDone">&#9989;<small data-t="done"></small></button>
     </div>
     <div class="sizes" id="sizes"></div>
-    <div id="palette"></div>
+    <div id="palette" class="panel on"></div>
+    <div id="stickers" class="panel"></div>
+    <div id="scenes" class="panel"></div>
   </div>
 </div>
 
 <!-- ================= CELEBRATION ================= -->
-<div id="party">
+<div id="party" class="over">
   <div class="sheet">
-    <h2 id="pTitle">You did it!</h2>
-    <img id="pImg" alt="Your drawing">
+    <h2 id="pTitle"></h2>
+    <img id="pImg" class="shot" alt="">
     <div id="pStars"><span>&#9733;</span><span>&#9733;</span><span>&#9733;</span></div>
     <div id="pMsg"></div>
+    <div id="pGift"></div>
     <div class="btns">
-      <button class="btn alt" id="pSave">&#128247; Save</button>
-      <button class="btn" id="pNext">Next &#10145;&#65039;</button>
-      <button class="btn soft" id="pHome">&#127968; Home</button>
+      <button class="btn alt" id="pSave"></button>
+      <button class="btn" id="pNext"></button>
+      <button class="btn soft" id="pHome"></button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= PICTURE VIEWER (My Gallery) ================= -->
+<div id="viewer" class="over">
+  <div class="sheet">
+    <img id="vImg" class="shot" alt="">
+    <div id="vName"></div>
+    <div class="btns">
+      <button class="btn alt" id="vSave"></button>
+      <button class="btn soft" id="vDel"></button>
+      <button class="btn" id="vClose"></button>
     </div>
   </div>
 </div>
@@ -192,7 +243,6 @@ button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touc
 <svg width="0" height="0" style="position:absolute;left:-9px;top:-9px"><path id="meas" d=""/></svg>
 
 <script>
-/*ART-START*/
 /* ------------------------------------------------------------------
    CHARACTER ART (all original designs)
    Each character is a list of steps. Each step has shapes (SVG paths
@@ -200,6 +250,9 @@ button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touc
      behind : drawn behind everything traced so far
      line   : plain line (not a closed body part)
      fill   : solid dark fill (eyes, nose)
+   fit  : [scale, moveX, moveY] shrinks the head to make room for a body
+   body : extra steps (body, arms, legs) added after the head steps
+   ms   : name in Bahasa Melayu
 ------------------------------------------------------------------- */
 const r1 = n => Math.round(n * 10) / 10;
 const E = (x, y, rx, ry) => `M${x - rx},${y} a${rx},${ry} 0 1,0 ${2 * rx},0 a${rx},${ry} 0 1,0 ${-2 * rx},0 Z`;
@@ -215,27 +268,65 @@ function scallop(cx, cy, R, n) {
   }
   return d + ' Z';
 }
+// star with n points
+function starPath(cx, cy, R, r, n) {
+  n = n || 5; let d = '';
+  for (let i = 0; i < n * 2; i++) {
+    const a = i * Math.PI / n - Math.PI / 2, rr = i % 2 ? r : R;
+    d += (i ? ' L' : 'M') + r1(cx + Math.cos(a) * rr) + ',' + r1(cy + Math.sin(a) * rr);
+  }
+  return d + ' Z';
+}
 // mirror a path left-right (absolute "x,y" pairs only)
 const mir = d => d.replace(/(-?[\d.]+),(-?[\d.]+)/g, (m, x, y) => (320 - parseFloat(x)) + ',' + y);
+// shrink and move a path: new = old * s + (dx, dy)
+function tf(d, s, dx, dy) {
+  const tok = d.match(/[a-zA-Z]|-?[\d.]+/g); let out = '', i = 0, cmd = '';
+  while (i < tok.length) {
+    if (/[a-zA-Z]/.test(tok[i])) { cmd = tok[i++]; out += cmd; if (cmd === 'Z' || cmd === 'z') { out += ' '; continue; } }
+    const rel = cmd === cmd.toLowerCase(), c = cmd.toUpperCase();
+    const fx = v => r1(rel ? v * s : v * s + dx), fy = v => r1(rel ? v * s : v * s + dy);
+    if (c === 'A') {
+      out += r1(tok[i] * s) + ',' + r1(tok[i + 1] * s) + ' ' + tok[i + 2] + ' ' + tok[i + 3] + ',' + tok[i + 4] + ' ' + fx(+tok[i + 5]) + ',' + fy(+tok[i + 6]) + ' ';
+      i += 7;
+    } else {
+      const n = { M: 1, L: 1, Q: 2, C: 3 }[c];
+      for (let k = 0; k < n; k++) { out += fx(+tok[i]) + ',' + fy(+tok[i + 1]) + ' '; i += 2; }
+    }
+  }
+  return out.trim();
+}
 const S = (d, o) => Object.assign({ d }, o || {});
-const BEH = { behind: true }, LINE = { line: true }, DOT = { fill: true };
+const BEH = { behind: true }, LINE = { line: true }, DOT = { fill: true }, BLINE = { behind: true, line: true };
+const bow = (x, y, w, h, k) => [S(`M${x},${y} L${x - w},${y - h} L${x - w},${y + h} Z`), S(`M${x},${y} L${x + w},${y - h} L${x + w},${y + h} Z`), S(C(x, y, k))];
+const pair = (d, o) => [S(d, o), S(mir(d), o)];
 
 const PACKS = [
-  { id: 'circus', name: 'Circus Stars', icon: '\uD83C\uDFAA' },
-  { id: 'monster', name: 'Toy Monsters', icon: '\uD83E\uDDF8' }
+  { id: 'circus', name: 'Circus Stars', ms: 'Bintang Sarkas', icon: '🎪' },
+  { id: 'monster', name: 'Toy Monsters', ms: 'Raksasa Mainan', icon: '🧸' },
+  { id: 'sea', name: 'Sea Friends', ms: 'Kawan Laut', icon: '🐠' },
+  { id: 'royal', name: 'Royal Land', ms: 'Negeri Diraja', icon: '🏰' },
+  { id: 'food', name: 'Yummy Pals', ms: 'Kawan Sedap', icon: '🧁' },
+  { id: 'zoom', name: 'Zoom Zoom', ms: 'Laju Laju', icon: '🚀' }
 ];
 
 const CHARS = [
-  { id: 'bobo', name: 'Bobo the Clown', pack: 'circus', tint: '#ffe3ec', steps: [
+  /* ---------------- Circus Stars ---------------- */
+  { id: 'bobo', name: 'Bobo the Clown', ms: 'Bobo si Badut', pack: 'circus', tint: '#ffe3ec', fit: [0.58, 67.2, 4], steps: [
     { n: 'head', sh: [S(C(160, 170, 70))] },
     { n: 'curly hair', sh: [S(scallop(82, 160, 30, 7), BEH), S(scallop(238, 160, 30, 7), BEH)] },
     { n: 'party hat', sh: [S('M126,114 L160,34 L194,114 Z'), S(C(160, 30, 12))] },
     { n: 'eyes', sh: [S(C(134, 160, 7), DOT), S(C(186, 160, 7), DOT)] },
     { n: 'round nose', sh: [S(C(160, 186, 14))] },
     { n: 'big smile', sh: [S('M122,202 Q160,248 198,202', LINE)] },
-    { n: 'bow tie', sh: [S('M160,264 L116,242 L116,286 Z'), S('M160,264 L204,242 L204,286 Z'), S(C(160, 264, 10))] }
+    { n: 'bow tie', sh: bow(160, 264, 44, 22, 10) }
+  ], body: [
+    { n: 'round body', sh: [S(E(160, 214, 50, 52), BEH)] },
+    { n: 'buttons', sh: [S(C(160, 204, 7)), S(C(160, 230, 7))] },
+    { n: 'arms', sh: [S(E(100, 206, 28, 13), BEH), S(E(220, 206, 28, 13), BEH)] },
+    { n: 'big shoes', sh: [S(E(132, 272, 30, 12), BEH), S(E(188, 272, 30, 12), BEH)] }
   ]},
-  { id: 'leo', name: 'Leo the Lion', pack: 'circus', tint: '#fff0c9', steps: [
+  { id: 'leo', name: 'Leo the Lion', ms: 'Leo si Singa', pack: 'circus', tint: '#fff0c9', fit: [0.62, 60.8, -28], steps: [
     { n: 'face', sh: [S(C(160, 186, 56))] },
     { n: 'ears', sh: [S(C(114, 138, 18), BEH), S(C(206, 138, 18), BEH)] },
     { n: 'fluffy mane', sh: [S(scallop(160, 186, 84, 12), BEH)] },
@@ -243,16 +334,25 @@ const CHARS = [
     { n: 'eyes', sh: [S(C(140, 176, 6), DOT), S(C(180, 176, 6), DOT)] },
     { n: 'nose and mouth', sh: [S('M150,194 L170,194 L160,206 Z', DOT), S('M160,206 L160,214 M144,212 Q152,224 160,214 Q168,224 176,212', LINE)] },
     { n: 'whiskers', sh: [S('M126,200 L100,194 M126,208 L100,214 M194,200 L220,194 M194,208 L220,214', LINE)] }
+  ], body: [
+    { n: 'body', sh: [S(E(160, 200, 44, 58), BEH)] },
+    { n: 'front paws', sh: [S(E(142, 256, 17, 11)), S(E(178, 256, 17, 11))] },
+    { n: 'back feet', sh: [S(E(106, 250, 18, 12), BEH), S(E(214, 250, 18, 12), BEH)] },
+    { n: 'tail', sh: [S('M202,222 Q246,228 244,186', LINE), S(C(244, 174, 11))] }
   ]},
-  { id: 'ellie', name: 'Ellie the Elephant', pack: 'circus', tint: '#dff3ff', steps: [
+  { id: 'ellie', name: 'Ellie the Elephant', ms: 'Ellie si Gajah', pack: 'circus', tint: '#dff3ff', fit: [0.58, 67.2, -4], steps: [
     { n: 'head', sh: [S(C(160, 150, 60))] },
     { n: 'big ears', sh: [S(E(82, 140, 46, 58), BEH), S(E(238, 140, 46, 58), BEH)] },
     { n: 'party hat', sh: [S('M136,97 L160,42 L184,97 Z'), S(C(160, 38, 9))] },
     { n: 'eyes', sh: [S(C(130, 140, 6), DOT), S(C(190, 140, 6), DOT)] },
     { n: 'long trunk', sh: [S('M142,162 C136,210 138,256 162,266 C186,276 204,258 194,240 L179,246 C181,256 168,258 166,244 C164,222 178,200 178,162 Z')] },
     { n: 'trunk lines', sh: [S('M141,198 Q158,205 174,198 M142,224 Q154,230 167,224', LINE)] }
+  ], body: [
+    { n: 'round body', sh: [S(E(160, 204, 56, 58), BEH)] },
+    { n: 'arms', sh: [S(E(102, 200, 16, 26), BEH), S(E(218, 200, 16, 26), BEH)] },
+    { n: 'feet', sh: [S(E(130, 264, 22, 14)), S(E(190, 264, 22, 14))] }
   ]},
-  { id: 'pippa', name: 'Pippa the Penguin', pack: 'circus', tint: '#e5e9ff', steps: [
+  { id: 'pippa', name: 'Pippa the Penguin', ms: 'Pippa si Penguin', pack: 'circus', tint: '#e5e9ff', steps: [
     { n: 'body', sh: [S(E(160, 178, 68, 92))] },
     { n: 'tummy', sh: [S(E(160, 204, 44, 60))] },
     { n: 'eyes', sh: [S(C(138, 124, 11)), S(C(182, 124, 11)), S(C(140, 126, 4), DOT), S(C(180, 126, 4), DOT)] },
@@ -261,15 +361,21 @@ const CHARS = [
     { n: 'feet', sh: [S(E(132, 272, 24, 11), BEH), S(E(188, 272, 24, 11), BEH)] },
     { n: 'juggling balls', sh: [S(C(62, 72, 15)), S(C(160, 40, 15)), S(C(258, 72, 15))] }
   ]},
-  { id: 'momo', name: 'Momo the Monkey', pack: 'circus', tint: '#ffe9d2', steps: [
+  { id: 'momo', name: 'Momo the Monkey', ms: 'Momo si Monyet', pack: 'circus', tint: '#ffe9d2', fit: [0.62, 60.8, -28], steps: [
     { n: 'head', sh: [S(C(160, 165, 66))] },
     { n: 'ears', sh: [S(C(90, 165, 26), BEH), S(C(230, 165, 26), BEH)] },
     { n: 'face', sh: [S('M160,132 C138,106 104,130 116,164 C98,206 134,226 160,226 C186,226 222,206 204,164 C216,130 182,106 160,132 Z')] },
     { n: 'eyes', sh: [S(C(140, 156, 6), DOT), S(C(180, 156, 6), DOT)] },
     { n: 'nose and smile', sh: [S('M154,180 L154,186 M166,180 L166,186 M134,196 Q160,220 186,196', LINE)] },
     { n: 'little hat', sh: [S('M138,106 L146,66 L174,66 L182,106 Z'), S('M160,66 Q192,60 192,86', LINE), S(C(192, 92, 6), DOT)] }
+  ], body: [
+    { n: 'body', sh: [S(E(160, 166, 36, 52), BEH)] },
+    { n: 'tummy', sh: [S(E(160, 174, 20, 30))] },
+    { n: 'long arms', sh: pair('M130,140 Q88,150 86,204 Q86,220 98,220 Q110,220 110,204 Q112,172 136,164 Z', BEH) },
+    { n: 'feet', sh: [S(E(136, 226, 22, 12), BEH), S(E(184, 226, 22, 12), BEH)] },
+    { n: 'curly tail', sh: [S('M192,196 Q246,198 244,152 Q242,124 222,132 Q208,140 220,154', LINE)] }
   ]},
-  { id: 'jingles', name: 'Jingles the Jester', pack: 'circus', tint: '#e9e2ff', steps: [
+  { id: 'jingles', name: 'Jingles the Jester', ms: 'Jingles si Pelawak', pack: 'circus', tint: '#e9e2ff', fit: [0.56, 70.4, -26], steps: [
     { n: 'head', sh: [S(C(160, 184, 60))] },
     { n: 'jester hat', sh: [S('M100,162 Q72,112 44,88 Q104,72 160,118 Q216,72 276,88 Q248,112 220,162 Q160,132 100,162 Z')] },
     { n: 'bells', sh: [S(C(40, 82, 11)), S(C(280, 82, 11)), S(C(160, 112, 10))] },
@@ -277,8 +383,14 @@ const CHARS = [
     { n: 'rosy cheeks', sh: [S(C(120, 206, 9)), S(C(200, 206, 9))] },
     { n: 'smile', sh: [S('M138,210 Q160,230 182,210', LINE)] },
     { n: 'pointy collar', sh: [S('M94,238 L110,278 L130,254 L146,286 L160,258 L174,286 L190,254 L210,278 L226,238 Z', BEH)] }
+  ], body: [
+    { n: 'tunic', sh: [S('M130,112 L190,112 L206,212 L114,212 Z', BEH)] },
+    { n: 'diamond', sh: [S('M160,146 L174,170 L160,194 L146,170 Z')] },
+    { n: 'arms', sh: pair('M128,130 L88,170 L100,184 L134,156 Z', BEH) },
+    { n: 'legs', sh: pair('M124,212 L122,262 L152,262 L156,212 Z', BEH) },
+    { n: 'pointy shoes', sh: pair('M152,262 L152,280 L112,280 Q94,280 96,264 Q108,272 122,262 Z') }
   ]},
-  { id: 'hopper', name: 'Hopper the Bunny', pack: 'circus', tint: '#ffe8e0', steps: [
+  { id: 'hopper', name: 'Hopper the Bunny', ms: 'Hopper si Arnab', pack: 'circus', tint: '#ffe8e0', fit: [0.6, 64, -16], steps: [
     { n: 'head', sh: [S(E(160, 192, 60, 52))] },
     { n: 'long ears', sh: [S(E(130, 100, 19, 52), BEH), S(E(190, 100, 19, 52), BEH)] },
     { n: 'inside of the ears', sh: [S(E(130, 100, 8, 32)), S(E(190, 100, 8, 32))] },
@@ -286,8 +398,13 @@ const CHARS = [
     { n: 'nose and mouth', sh: [S('M152,200 L168,200 L160,210 Z', DOT), S('M160,210 L160,216 M146,216 Q153,227 160,216 Q167,227 174,216', LINE)] },
     { n: 'whiskers', sh: [S('M122,204 L94,198 M122,212 L94,218 M198,204 L226,198 M198,212 L226,218', LINE)] },
     { n: 'star badge', sh: [S('M160,250 L166,264 L181,265 L169,275 L173,290 L160,282 L147,290 L151,275 L139,265 L154,264 Z')] }
+  ], body: [
+    { n: 'body', sh: [S(E(160, 194, 44, 60), BEH)] },
+    { n: 'arms', sh: [S(E(112, 190, 13, 28), BEH), S(E(208, 190, 13, 28), BEH)] },
+    { n: 'big feet', sh: [S(E(134, 256, 26, 12)), S(E(186, 256, 26, 12))] },
+    { n: 'fluffy tail', sh: [S(scallop(210, 238, 14, 7), BEH)] }
   ]},
-  { id: 'patches', name: 'Patches the Rag Doll', pack: 'circus', tint: '#ffeccf', steps: [
+  { id: 'patches', name: 'Patches the Rag Doll', ms: 'Patches si Patung Kain', pack: 'circus', tint: '#ffeccf', fit: [0.7, 48, -56], steps: [
     { n: 'head', sh: [S(C(160, 172, 64))] },
     { n: 'braids', sh: [S(E(82, 204, 18, 42), BEH), S(E(238, 204, 18, 42), BEH)] },
     { n: 'hair', sh: [S('M100,152 Q100,106 160,106 Q220,106 220,152 Q200,130 180,148 Q160,126 140,148 Q120,130 100,152 Z')] },
@@ -295,9 +412,15 @@ const CHARS = [
     { n: 'button holes', sh: [S(C(132, 178, 2.6), DOT), S(C(140, 178, 2.6), DOT), S(C(180, 178, 2.6), DOT), S(C(188, 178, 2.6), DOT)] },
     { n: 'smile', sh: [S('M138,208 Q160,226 182,208', LINE)] },
     { n: 'patch', sh: [S('M192,196 L208,193 L211,209 L195,212 Z')] },
-    { n: 'bow', sh: [S('M206,112 L182,98 L182,126 Z'), S('M206,112 L230,98 L230,126 Z'), S(C(206, 112, 7))] }
+    { n: 'bow', sh: bow(206, 112, 24, 14, 7) }
+  ], body: [
+    { n: 'dress', sh: [S('M136,102 L184,102 L218,224 L102,224 Z', BEH)] },
+    { n: 'pocket', sh: [S('M166,176 L190,176 L190,200 L166,200 Z')] },
+    { n: 'arms', sh: pair('M132,120 L92,164 L104,176 L138,146 Z', BEH) },
+    { n: 'legs', sh: pair('M134,224 L134,264 L152,264 L152,224 Z', BEH) },
+    { n: 'shoes', sh: [S(E(140, 270, 20, 10)), S(E(180, 270, 20, 10))] }
   ]},
-  { id: 'twirl', name: 'Twirl the Dancer', pack: 'circus', tint: '#ffe1f0', steps: [
+  { id: 'twirl', name: 'Twirl the Dancer', ms: 'Twirl si Penari', pack: 'circus', tint: '#ffe1f0', fit: [0.78, 26, -34], steps: [
     { n: 'head', sh: [S(C(150, 150, 54))] },
     { n: 'hair bun', sh: [S(C(150, 84, 24), BEH)] },
     { n: 'hair', sh: [S('M98,144 Q100,96 150,96 Q200,96 202,144 Q186,114 142,114 Q114,116 98,144 Z')] },
@@ -305,20 +428,32 @@ const CHARS = [
     { n: 'smile', sh: [S('M134,174 Q150,190 166,174', LINE)] },
     { n: 'dress', sh: [S('M124,200 L176,200 L204,290 L96,290 Z', BEH)] },
     { n: 'arm and ribbon', sh: [S('M184,226 L222,214 M222,214 Q270,220 262,176 Q254,136 286,122 Q304,96 276,60', LINE)] }
+  ], body: [
+    { n: 'other arm', sh: [S('M117,140 L92,166', LINE)] },
+    { n: 'legs', sh: [S('M125,192 L125,254 L137,254 L137,192 Z', BEH), S('M149,192 L149,254 L161,254 L161,192 Z', BEH)] },
+    { n: 'dancing shoes', sh: [S(E(129, 260, 15, 8)), S(E(157, 260, 15, 8))] }
   ]},
-  { id: 'topper', name: 'Mr Topper', pack: 'circus', tint: '#ffdcdc', steps: [
+  { id: 'topper', name: 'Mr Topper', ms: 'Encik Topper', pack: 'circus', tint: '#ffdcdc', fit: [0.6, 64, -18], steps: [
     { n: 'head', sh: [S(C(160, 192, 56))] },
     { n: 'ears', sh: [S(C(102, 192, 13), BEH), S(C(218, 192, 13), BEH)] },
     { n: 'tall hat', sh: [S('M98,146 L222,146 L222,132 L98,132 Z'), S('M120,132 L114,52 L206,52 L200,132 Z')] },
     { n: 'hat band', sh: [S('M118,110 L202,110', LINE)] },
     { n: 'eyes', sh: [S(C(140, 180, 6), DOT), S(C(180, 180, 6), DOT)] },
-    { n: 'curly moustache', sh: [S('M160,206 Q140,194 124,206 Q108,216 104,200 Q104,224 128,220 Q148,218 160,206 Z'), S(mir('M160,206 Q140,194 124,206 Q108,216 104,200 Q104,224 128,220 Q148,218 160,206 Z'))] },
+    { n: 'curly moustache', sh: pair('M160,206 Q140,194 124,206 Q108,216 104,200 Q104,224 128,220 Q148,218 160,206 Z') },
     { n: 'smile', sh: [S('M146,228 Q160,238 174,228', LINE)] },
-    { n: 'bow tie', sh: [S('M160,266 L122,248 L122,284 Z'), S('M160,266 L198,248 L198,284 Z'), S(C(160, 266, 9))] }
+    { n: 'bow tie', sh: bow(160, 266, 38, 18, 9) }
+  ], body: [
+    { n: 'coat', sh: [S('M126,134 L194,134 L204,226 L116,226 Z', BEH)] },
+    { n: 'buttons', sh: [S(C(160, 176, 4), DOT), S(C(160, 200, 4), DOT)] },
+    { n: 'arms', sh: pair('M124,142 L92,192 L106,202 L132,168 Z', BEH) },
+    { n: 'legs', sh: pair('M130,226 L130,268 L154,268 L156,226 Z', BEH) },
+    { n: 'shoes', sh: [S(E(138, 274, 22, 9)), S(E(182, 274, 22, 9))] }
   ]},
+
+  /* ---------------- Toy Monsters ---------------- */
   { id: 'zub', name: 'Zub', pack: 'monster', tint: '#d9f7f1', steps: [
     { n: 'round body', sh: [S(E(160, 178, 84, 80))] },
-    { n: 'horns', sh: [S('M106,122 Q82,90 94,58 Q124,78 138,106 Z', BEH), S(mir('M106,122 Q82,90 94,58 Q124,78 138,106 Z'), BEH)] },
+    { n: 'horns', sh: pair('M106,122 Q82,90 94,58 Q124,78 138,106 Z', BEH) },
     { n: 'one big eye', sh: [S(C(160, 152, 34)), S(C(160, 156, 14), DOT)] },
     { n: 'happy mouth', sh: [S('M110,204 Q160,256 210,204 Z')] },
     { n: 'teeth', sh: [S('M126,205 L136,218 L146,205 M174,205 L184,218 L194,205', LINE)] },
@@ -327,7 +462,7 @@ const CHARS = [
   ]},
   { id: 'fluffo', name: 'Fluffo', pack: 'monster', tint: '#f1e4ff', steps: [
     { n: 'fluffy body', sh: [S(scallop(160, 178, 74, 14))] },
-    { n: 'feelers', sh: [S('M138,110 Q124,78 114,62', { behind: true, line: true }), S(mir('M138,110 Q124,78 114,62'), { behind: true, line: true }), S(C(112, 54, 10)), S(C(208, 54, 10))] },
+    { n: 'feelers', sh: [S('M138,110 Q124,78 114,62', BLINE), S(mir('M138,110 Q124,78 114,62'), BLINE), S(C(112, 54, 10)), S(C(208, 54, 10))] },
     { n: 'three eyes', sh: [S(C(126, 162, 15)), S(C(160, 144, 15)), S(C(194, 162, 15)), S(C(128, 164, 5), DOT), S(C(160, 147, 5), DOT), S(C(192, 164, 5), DOT)] },
     { n: 'smile', sh: [S('M128,206 Q160,234 192,206', LINE)] },
     { n: 'tooth', sh: [S('M152,218 L168,218 L168,232 L152,232 Z')] },
@@ -336,8 +471,8 @@ const CHARS = [
   ]},
   { id: 'nibbles', name: 'Nibbles', pack: 'monster', tint: '#ffe6f4', steps: [
     { n: 'body', sh: [S(C(160, 186, 62))] },
-    { n: 'pointy ears', sh: [S('M114,156 L104,96 L150,128 Z', BEH), S(mir('M114,156 L104,96 L150,128 Z'), BEH)] },
-    { n: 'wings', sh: [S('M106,186 L38,146 Q52,178 42,204 Q64,196 78,222 Q90,206 110,212 Z', BEH), S(mir('M106,186 L38,146 Q52,178 42,204 Q64,196 78,222 Q90,206 110,212 Z'), BEH)] },
+    { n: 'pointy ears', sh: pair('M114,156 L104,96 L150,128 Z', BEH) },
+    { n: 'wings', sh: pair('M106,186 L38,146 Q52,178 42,204 Q64,196 78,222 Q90,206 110,212 Z', BEH) },
     { n: 'eyes', sh: [S(C(138, 176, 14)), S(C(182, 176, 14)), S(C(140, 178, 5), DOT), S(C(180, 178, 5), DOT)] },
     { n: 'smile', sh: [S('M138,208 Q160,228 182,208', LINE)] },
     { n: 'little fang', sh: [S('M153,216 L160,231 L167,216 Z')] },
@@ -346,7 +481,7 @@ const CHARS = [
   { id: 'gogo', name: 'Gogo', pack: 'monster', tint: '#e6f8d6', steps: [
     { n: 'tall body', sh: [S('M108,96 Q108,52 160,52 Q212,52 212,96 L212,236 Q212,268 180,268 L140,268 Q108,268 108,236 Z')] },
     { n: 'spiky hair', sh: [S('M148,54 L142,30 M160,52 L160,26 M172,54 L178,30', LINE)] },
-    { n: 'waving arms', sh: [S('M112,176 Q66,166 58,112 Q56,96 70,98 Q82,100 82,114 Q88,142 112,148 Z', BEH), S(mir('M112,176 Q66,166 58,112 Q56,96 70,98 Q82,100 82,114 Q88,142 112,148 Z'), BEH)] },
+    { n: 'waving arms', sh: pair('M112,176 Q66,166 58,112 Q56,96 70,98 Q82,100 82,114 Q88,142 112,148 Z', BEH) },
     { n: 'eyes', sh: [S(C(140, 108, 15)), S(C(180, 108, 15)), S(C(142, 110, 5), DOT), S(C(178, 110, 5), DOT)] },
     { n: 'mouth', sh: [S('M128,146 L192,146 Q192,180 160,180 Q128,180 128,146 Z')] },
     { n: 'teeth', sh: [S('M144,146 L144,156 L156,156 L156,146 M164,146 L164,156 L176,156 L176,146', LINE)] },
@@ -358,12 +493,12 @@ const CHARS = [
     { n: 'round ears', sh: [S(C(110, 92, 17), BEH), S(C(210, 92, 17), BEH)] },
     { n: 'eyes', sh: [S(C(140, 136, 13)), S(C(180, 136, 13)), S(C(141, 138, 5), DOT), S(C(179, 138, 5), DOT)] },
     { n: 'nose and smile', sh: [S(C(160, 156, 5), DOT), S('M142,170 Q160,186 178,170', LINE)] },
-    { n: 'long hugging arms', sh: [S('M112,150 Q48,160 42,244 Q40,266 59,266 Q78,266 76,244 Q80,198 124,186 Z', BEH), S(mir('M112,150 Q48,160 42,244 Q40,266 59,266 Q78,266 76,244 Q80,198 124,186 Z'), BEH)] },
+    { n: 'long hugging arms', sh: pair('M112,150 Q48,160 42,244 Q40,266 59,266 Q78,266 76,244 Q80,198 124,186 Z', BEH) },
     { n: 'feet', sh: [S(E(134, 226, 22, 13), BEH), S(E(186, 226, 22, 13), BEH)] }
   ]},
   { id: 'bibi', name: 'Bibi', pack: 'monster', tint: '#ffe0ec', steps: [
     { n: 'egg body', sh: [S(E(160, 192, 70, 78))] },
-    { n: 'bow', sh: [S('M160,110 L134,95 L134,125 Z'), S('M160,110 L186,95 L186,125 Z'), S(C(160, 110, 8))] },
+    { n: 'bow', sh: bow(160, 110, 26, 15, 8) },
     { n: 'eyes', sh: [S(C(134, 164, 13)), S(C(186, 164, 13)), S(C(135, 166, 5), DOT), S(C(185, 166, 5), DOT)] },
     { n: 'eyelashes', sh: [S('M123,154 L114,146 M131,150 L127,139 M197,154 L206,146 M189,150 L193,139', LINE)] },
     { n: 'smile', sh: [S('M142,192 Q160,208 178,192', LINE)] },
@@ -371,16 +506,20 @@ const CHARS = [
     { n: 'arms', sh: [S(E(84, 204, 18, 12), BEH), S(E(236, 204, 18, 12), BEH)] },
     { n: 'feet', sh: [S(E(134, 272, 22, 12), BEH), S(E(186, 272, 22, 12), BEH)] }
   ]},
-  { id: 'mimi', name: 'Mimi the Sleepy Cat', pack: 'monster', tint: '#e3e0ff', steps: [
+  { id: 'mimi', name: 'Mimi the Sleepy Cat', ms: 'Mimi si Kucing Mengantuk', pack: 'monster', tint: '#e3e0ff', fit: [0.62, 60.8, -10], steps: [
     { n: 'head', sh: [S(E(160, 196, 68, 58))] },
-    { n: 'ears', sh: [S('M102,172 L98,112 L146,144 Z', BEH), S(mir('M102,172 L98,112 L146,144 Z'), BEH)] },
+    { n: 'ears', sh: pair('M102,172 L98,112 L146,144 Z', BEH) },
     { n: 'sleepy eyes', sh: [S('M126,194 Q139,206 152,194 M168,194 Q181,206 194,194', LINE)] },
     { n: 'nose and mouth', sh: [S('M153,212 L167,212 L160,220 Z', DOT), S('M160,220 Q152,231 144,224 M160,220 Q168,231 176,224', LINE)] },
     { n: 'whiskers', sh: [S('M118,214 L90,208 M118,222 L90,228 M202,214 L230,208 M202,222 L230,228', LINE)] },
     { n: 'moon', sh: [S('M252,30 A36,36 0 1,0 290,76 A30,30 0 0,1 252,30 Z')] },
     { n: 'sleepy Zs', sh: [S('M36,84 L60,84 L36,112 L60,112 M74,44 L92,44 L74,64 L92,64', LINE)] }
+  ], body: [
+    { n: 'body', sh: [S(E(160, 204, 62, 50), BEH)] },
+    { n: 'paws', sh: [S(E(140, 250, 16, 9)), S(E(180, 250, 16, 9))] },
+    { n: 'tail', sh: [S('M216,226 Q258,228 252,196 Q248,180 236,188', LINE)] }
   ]},
-  { id: 'dotty', name: 'Dotty the Doll', pack: 'monster', tint: '#fff3c4', steps: [
+  { id: 'dotty', name: 'Dotty the Doll', ms: 'Dotty si Anak Patung', pack: 'monster', tint: '#fff3c4', fit: [0.78, 35.2, -58], steps: [
     { n: 'head', sh: [S(C(160, 150, 58))] },
     { n: 'curly pigtails', sh: [S(scallop(82, 130, 26, 7), BEH), S(scallop(238, 130, 26, 7), BEH)] },
     { n: 'hair', sh: [S('M104,140 Q106,92 160,92 Q214,92 216,140 Q200,116 186,134 Q174,112 160,132 Q146,112 134,134 Q120,116 104,140 Z')] },
@@ -388,9 +527,172 @@ const CHARS = [
     { n: 'cheeks and smile', sh: [S(C(118, 180, 7)), S(C(202, 180, 7)), S('M146,184 Q160,196 174,184', LINE)] },
     { n: 'dress', sh: [S('M124,206 Q160,192 196,206 L226,292 L94,292 Z', BEH)] },
     { n: 'buttons', sh: [S(C(160, 236, 5), DOT), S(C(160, 262, 5), DOT)] }
+  ], body: [
+    { n: 'arms', sh: [S('M130,118 L104,144 M190,118 L216,144', LINE), S(C(100, 150, 8)), S(C(220, 150, 8))] },
+    { n: 'legs', sh: [S('M140,170 L140,244 L154,244 L154,170 Z', BEH), S('M166,170 L166,244 L180,244 L180,170 Z', BEH)] },
+    { n: 'shoes', sh: [S(E(144, 252, 18, 10)), S(E(176, 252, 18, 10))] }
+  ]},
+
+  /* ---------------- Sea Friends ---------------- */
+  { id: 'finn', name: 'Finn the Fish', ms: 'Finn si Ikan', pack: 'sea', tint: '#d6f1ff', steps: [
+    { n: 'body', sh: [S(E(150, 170, 82, 56))] },
+    { n: 'tail', sh: [S('M224,170 L288,122 L288,218 Z', BEH)] },
+    { n: 'top fin', sh: [S('M118,122 Q150,70 190,124 Z', BEH)] },
+    { n: 'eyes', sh: [S(C(108, 158, 13)), S(C(106, 160, 5), DOT)] },
+    { n: 'smile', sh: [S('M84,186 Q98,200 116,190', LINE)] },
+    { n: 'stripes', sh: [S('M156,117 Q172,170 156,223 M192,126 Q204,170 192,214', LINE)] },
+    { n: 'bubbles', sh: [S(C(54, 104, 9)), S(C(40, 72, 7)), S(C(66, 50, 5))] }
+  ]},
+  { id: 'ollie', name: 'Ollie the Octopus', ms: 'Ollie si Sotong Kurita', pack: 'sea', tint: '#ffe0f0', steps: [
+    { n: 'head', sh: [S(E(160, 118, 70, 62))] },
+    { n: 'side arms', sh: pair('M102,150 Q54,186 70,244 Q76,262 92,252 Q84,214 124,176 Z', BEH) },
+    { n: 'middle arms', sh: pair('M126,168 Q110,228 126,272 Q136,286 148,270 Q138,236 152,178 Z', BEH) },
+    { n: 'eyes', sh: [S(C(136, 116, 12)), S(C(184, 116, 12)), S(C(137, 118, 5), DOT), S(C(183, 118, 5), DOT)] },
+    { n: 'smile', sh: [S('M144,144 Q160,158 176,144', LINE)] },
+    { n: 'spots', sh: [S(C(118, 82, 6)), S(C(160, 72, 5)), S(C(202, 82, 6))] }
+  ]},
+  { id: 'shelly', name: 'Shelly the Turtle', ms: 'Shelly si Penyu', pack: 'sea', tint: '#dcf5d4', steps: [
+    { n: 'shell', sh: [S(E(150, 170, 86, 60))] },
+    { n: 'head', sh: [S(C(252, 150, 30), BEH)] },
+    { n: 'eye and smile', sh: [S(C(262, 142, 4.5), DOT), S('M252,160 Q263,170 274,160', LINE)] },
+    { n: 'legs', sh: [S(E(96, 230, 22, 16), BEH), S(E(204, 230, 22, 16), BEH)] },
+    { n: 'tail', sh: [S('M70,180 L40,194 L72,202 Z', BEH)] },
+    { n: 'shell pattern', sh: [S('M150,124 L186,148 L186,192 L150,216 L114,192 L114,148 Z')] },
+    { n: 'shell lines', sh: [S('M114,148 L80,140 M186,148 L220,140 M114,192 L88,210 M186,192 L212,210', LINE)] }
+  ]},
+  { id: 'stella', name: 'Stella the Starfish', ms: 'Stella si Tapak Sulaiman', pack: 'sea', tint: '#ffe9c9', steps: [
+    { n: 'star body', sh: [S(starPath(160, 168, 118, 56, 5))] },
+    { n: 'eyes', sh: [S(C(142, 156, 6), DOT), S(C(178, 156, 6), DOT)] },
+    { n: 'cheeks', sh: [S(C(124, 172, 7)), S(C(196, 172, 7))] },
+    { n: 'smile', sh: [S('M144,176 Q160,192 176,176', LINE)] },
+    { n: 'spots', sh: [S(C(160, 92, 6)), S(C(232, 146, 6)), S(C(204, 228, 6)), S(C(116, 228, 6)), S(C(88, 146, 6))] }
+  ]},
+
+  /* ---------------- Royal Land ---------------- */
+  { id: 'lili', name: 'Princess Lili', ms: 'Puteri Lili', pack: 'royal', tint: '#ffe3f3', steps: [
+    { n: 'head', sh: [S(C(160, 116, 44))] },
+    { n: 'long hair', sh: [S('M114,120 Q104,58 160,60 Q216,58 206,120 L214,176 Q198,184 186,172 L186,150 L134,150 L134,172 Q122,184 106,176 Z', BEH)] },
+    { n: 'tiara', sh: [S('M132,86 L138,56 L150,76 L160,48 L170,76 L182,56 L188,86 Z')] },
+    { n: 'eyes', sh: [S(C(144, 118, 5.5), DOT), S(C(176, 118, 5.5), DOT)] },
+    { n: 'smile', sh: [S('M146,136 Q160,148 174,136', LINE)] },
+    { n: 'gown', sh: [S('M138,156 L182,156 L232,288 L88,288 Z', BEH)] },
+    { n: 'arms', sh: [S('M122,198 L98,232 M198,198 L222,232', LINE), S(C(95, 237, 7)), S(C(225, 237, 7))] },
+    { n: 'gown frill', sh: [S('M98,262 Q160,284 222,262', LINE)] }
+  ]},
+  { id: 'unicorn', name: 'Sparkle the Unicorn', ms: 'Sparkle si Unikorn', pack: 'royal', tint: '#ece4ff', steps: [
+    { n: 'head', sh: [S(E(160, 190, 58, 66))] },
+    { n: 'ears', sh: pair('M116,154 L108,100 L146,132 Z', BEH) },
+    { n: 'horn', sh: [S('M146,134 L160,46 L174,134 Z')] },
+    { n: 'horn stripes', sh: [S('M150,110 L170,100 M154,86 L166,80', LINE)] },
+    { n: 'fluffy mane', sh: [S(scallop(98, 168, 24, 7), BEH), S(scallop(94, 214, 22, 7), BEH)] },
+    { n: 'eyes', sh: [S(C(136, 180, 6), DOT), S(C(184, 180, 6), DOT)] },
+    { n: 'smile', sh: [S('M142,224 Q160,242 178,224', LINE)] },
+    { n: 'rosy cheeks', sh: [S(C(124, 206, 8)), S(C(196, 206, 8))] }
+  ]},
+  { id: 'castle', name: 'Castle', ms: 'Istana', pack: 'royal', tint: '#e2ecff', steps: [
+    { n: 'wall', sh: [S('M96,150 L96,134 L116,134 L116,150 L136,150 L136,134 L156,134 L156,150 L164,150 L164,134 L184,134 L184,150 L204,150 L204,134 L224,134 L224,280 L96,280 Z')] },
+    { n: 'towers', sh: pair('M56,112 L104,112 L104,280 L56,280 Z', BEH) },
+    { n: 'roofs', sh: pair('M48,112 L80,52 L112,112 Z') },
+    { n: 'door', sh: [S('M138,280 L138,232 Q160,204 182,232 L182,280 Z')] },
+    { n: 'windows', sh: [S(C(80, 152, 10)), S(C(240, 152, 10)), S(C(160, 180, 9))] },
+    { n: 'flags', sh: pair('M80,52 L80,22 L104,31 L80,40', LINE) }
+  ]},
+
+  /* ---------------- Yummy Pals ---------------- */
+  { id: 'coco', name: 'Coco the Cupcake', ms: 'Coco si Kek Cawan', pack: 'food', tint: '#ffe6ef', steps: [
+    { n: 'frosting', sh: [S('M92,160 Q72,120 114,110 Q118,70 160,74 Q202,70 206,110 Q248,120 228,160 Z')] },
+    { n: 'cup', sh: [S('M100,156 L220,156 L202,262 L118,262 Z', BEH)] },
+    { n: 'cherry', sh: [S(C(160, 60, 15)), S('M160,45 Q166,30 178,26', LINE)] },
+    { n: 'eyes', sh: [S(C(140, 196, 6), DOT), S(C(180, 196, 6), DOT)] },
+    { n: 'cheeks', sh: [S(C(122, 212, 7)), S(C(198, 212, 7))] },
+    { n: 'smile', sh: [S('M146,214 Q160,228 174,214', LINE)] },
+    { n: 'sprinkles', sh: [S('M124,128 L136,122 M150,104 L160,112 M184,124 L196,118 M170,140 L182,146 M132,148 L142,142', LINE)] }
+  ]},
+  { id: 'pop', name: 'Pop the Ice Cream', ms: 'Pop si Aiskrim', pack: 'food', tint: '#fff1cf', steps: [
+    { n: 'scoop', sh: [S(C(160, 120, 62))] },
+    { n: 'cone', sh: [S('M108,164 L212,164 L160,294 Z', BEH)] },
+    { n: 'cherry', sh: [S(C(160, 50, 13)), S('M160,37 Q166,24 176,20', LINE)] },
+    { n: 'eyes', sh: [S(C(140, 114, 6), DOT), S(C(180, 114, 6), DOT)] },
+    { n: 'cheeks', sh: [S(C(122, 130, 7)), S(C(198, 130, 7))] },
+    { n: 'smile', sh: [S('M146,132 Q160,146 174,132', LINE)] },
+    { n: 'cone lines', sh: [S('M128,196 L170,246 M150,186 L186,228', LINE)] }
+  ]},
+  { id: 'mel', name: 'Mel the Watermelon', ms: 'Mel si Tembikai', pack: 'food', tint: '#e1f7dd', steps: [
+    { n: 'slice', sh: [S('M56,120 L264,120 A104,104 0 0,1 56,120 Z')] },
+    { n: 'rind', sh: [S('M76,120 A84,84 0 0,0 244,120', LINE)] },
+    { n: 'eyes', sh: [S(C(138, 148, 6), DOT), S(C(182, 148, 6), DOT)] },
+    { n: 'cheeks', sh: [S(C(118, 162, 7)), S(C(202, 162, 7))] },
+    { n: 'smile', sh: [S('M146,164 Q160,178 174,164', LINE)] },
+    { n: 'seeds', sh: [S(E(100, 140, 4, 6), DOT), S(E(220, 140, 4, 6), DOT), S(E(160, 192, 4, 6), DOT), S(E(128, 184, 4, 6), DOT), S(E(192, 184, 4, 6), DOT)] }
+  ]},
+
+  /* ---------------- Zoom Zoom ---------------- */
+  { id: 'beep', name: 'Beep the Car', ms: 'Beep si Kereta', pack: 'zoom', tint: '#ffe2d6', steps: [
+    { n: 'car body', sh: [S('M44,204 L44,172 Q44,152 70,150 L100,148 Q122,100 160,100 L200,100 Q232,100 248,148 L262,150 Q284,154 284,178 L284,204 Z')] },
+    { n: 'wheels', sh: [S(C(102, 208, 28)), S(C(226, 208, 28))] },
+    { n: 'wheel caps', sh: [S(C(102, 208, 10)), S(C(226, 208, 10))] },
+    { n: 'windows', sh: [S('M120,148 Q134,118 160,118 L160,148 Z'), S('M172,118 L198,118 Q218,118 230,148 L172,148 Z')] },
+    { n: 'lights', sh: [S(E(274, 172, 7, 10)), S(E(52, 174, 5, 9))] }
+  ]},
+  { id: 'zoomy', name: 'Zoomy the Rocket', ms: 'Zoomy si Roket', pack: 'zoom', tint: '#e0e6ff', steps: [
+    { n: 'rocket body', sh: [S('M160,34 Q216,96 204,204 L116,204 Q104,96 160,34 Z')] },
+    { n: 'wings', sh: pair('M114,150 L72,228 L118,206 Z', BEH) },
+    { n: 'window', sh: [S(C(160, 114, 28))] },
+    { n: 'eyes', sh: [S(C(150, 110, 4.5), DOT), S(C(170, 110, 4.5), DOT)] },
+    { n: 'smile', sh: [S('M150,122 Q160,131 170,122', LINE)] },
+    { n: 'bottom', sh: [S('M126,204 L194,204 L186,226 L134,226 Z')] },
+    { n: 'fire', sh: [S('M140,226 Q130,264 160,296 Q190,264 180,226 Z')] },
+    { n: 'little stars', sh: [S(starPath(60, 84, 12, 5, 5)), S(starPath(262, 60, 14, 6, 5)), S(starPath(256, 160, 9, 4, 5))] }
+  ]},
+  { id: 'toot', name: 'Toot the Train', ms: 'Toot si Kereta Api', pack: 'zoom', tint: '#dff5ee', steps: [
+    { n: 'cabin', sh: [S('M64,84 L150,84 L150,216 L64,216 Z')] },
+    { n: 'roof', sh: [S('M54,84 L160,84 L160,70 L54,70 Z')] },
+    { n: 'engine', sh: [S('M150,136 L262,136 L262,216 L150,216 Z')] },
+    { n: 'chimney', sh: [S('M212,136 L206,96 L246,96 L240,136 Z')] },
+    { n: 'window', sh: [S('M84,106 L130,106 L130,150 L84,150 Z')] },
+    { n: 'wheels', sh: [S(C(102, 226, 28)), S(C(176, 232, 20)), S(C(232, 232, 20))] },
+    { n: 'eyes', sh: [S(C(194, 168, 5), DOT), S(C(224, 168, 5), DOT)] },
+    { n: 'smile', sh: [S('M196,184 Q209,195 222,184', LINE)] },
+    { n: 'smoke', sh: [S(C(230, 70, 13)), S(C(256, 44, 17))] }
   ]}
 ];
-/*ART-END*/
+
+// shrink the heads that have a body, then add the body steps
+CHARS.forEach(ch => {
+  if (ch.fit) ch.steps.forEach(st => st.sh.forEach(sh => { sh.d = tf(sh.d, ch.fit[0], ch.fit[1], ch.fit[2]); }));
+  if (ch.body) ch.steps = ch.steps.concat(ch.body);
+});
+
+// Bahasa Melayu names for the parts she traces
+const PART_MS = {
+  'head': 'kepala', 'curly hair': 'rambut kerinting', 'party hat': 'topi parti', 'eyes': 'mata', 'round nose': 'hidung bulat',
+  'big smile': 'senyuman lebar', 'bow tie': 'tali leher kupu-kupu', 'round body': 'badan bulat', 'buttons': 'butang', 'arms': 'tangan',
+  'big shoes': 'kasut besar', 'face': 'muka', 'ears': 'telinga', 'fluffy mane': 'surai gebu', 'top hat': 'topi tinggi',
+  'nose and mouth': 'hidung dan mulut', 'whiskers': 'misai', 'body': 'badan', 'front paws': 'kaki depan', 'back feet': 'kaki belakang',
+  'tail': 'ekor', 'big ears': 'telinga besar', 'long trunk': 'belalai panjang', 'trunk lines': 'garisan belalai', 'feet': 'kaki',
+  'tummy': 'perut', 'beak': 'paruh', 'wings': 'sayap', 'juggling balls': 'bola lambung', 'nose and smile': 'hidung dan senyuman',
+  'little hat': 'topi kecil', 'long arms': 'tangan panjang', 'curly tail': 'ekor bergulung', 'jester hat': 'topi pelawak', 'bells': 'loceng',
+  'rosy cheeks': 'pipi merah', 'smile': 'senyuman', 'pointy collar': 'kolar tajam', 'tunic': 'baju', 'diamond': 'bentuk berlian',
+  'legs': 'kaki', 'pointy shoes': 'kasut tajam', 'long ears': 'telinga panjang', 'inside of the ears': 'bahagian dalam telinga',
+  'star badge': 'lencana bintang', 'big feet': 'kaki besar', 'fluffy tail': 'ekor gebu', 'braids': 'tocang', 'hair': 'rambut',
+  'button eyes': 'mata butang', 'button holes': 'lubang butang', 'patch': 'tampalan', 'bow': 'riben', 'dress': 'gaun', 'pocket': 'poket',
+  'shoes': 'kasut', 'hair bun': 'sanggul', 'arm and ribbon': 'tangan dan reben', 'other arm': 'tangan sebelah lagi',
+  'dancing shoes': 'kasut menari', 'tall hat': 'topi tinggi', 'hat band': 'jalur topi', 'curly moustache': 'misai melentik', 'coat': 'kot',
+  'horns': 'tanduk', 'one big eye': 'satu mata besar', 'happy mouth': 'mulut gembira', 'teeth': 'gigi', 'fluffy body': 'badan gebu',
+  'feelers': 'sesungut', 'three eyes': 'tiga mata', 'tooth': 'gigi', 'pointy ears': 'telinga tajam', 'little fang': 'taring kecil',
+  'tall body': 'badan tinggi', 'spiky hair': 'rambut tegak', 'waving arms': 'tangan melambai', 'mouth': 'mulut', 'spots': 'bintik',
+  'round ears': 'telinga bulat', 'long hugging arms': 'tangan panjang untuk peluk', 'egg body': 'badan bujur', 'eyelashes': 'bulu mata',
+  'heart': 'bentuk hati', 'sleepy eyes': 'mata mengantuk', 'moon': 'bulan', 'sleepy Zs': 'huruf Z', 'paws': 'tapak kaki',
+  'curly pigtails': 'tocang kerinting', 'cheeks and smile': 'pipi dan senyuman', 'top fin': 'sirip atas', 'stripes': 'jalur',
+  'bubbles': 'buih', 'side arms': 'lengan tepi', 'middle arms': 'lengan tengah', 'shell': 'cangkerang', 'eye and smile': 'mata dan senyuman',
+  'shell pattern': 'corak cangkerang', 'shell lines': 'garisan cangkerang', 'star body': 'badan bintang', 'cheeks': 'pipi',
+  'long hair': 'rambut panjang', 'tiara': 'tiara', 'gown': 'gaun', 'gown frill': 'ropol gaun', 'horn': 'tanduk',
+  'horn stripes': 'jalur tanduk', 'nose': 'hidung', 'wall': 'dinding', 'towers': 'menara', 'roofs': 'bumbung', 'door': 'pintu',
+  'windows': 'tingkap', 'flags': 'bendera', 'frosting': 'krim', 'cup': 'cawan', 'cherry': 'ceri', 'sprinkles': 'taburan', 'scoop': 'aiskrim',
+  'cone': 'kon', 'cone lines': 'garisan kon', 'slice': 'hirisan', 'rind': 'kulit', 'seeds': 'biji', 'car body': 'badan kereta',
+  'wheels': 'roda', 'wheel caps': 'tengah roda', 'lights': 'lampu', 'rocket body': 'badan roket', 'window': 'tingkap', 'bottom': 'bahagian bawah',
+  'fire': 'api', 'little stars': 'bintang kecil', 'cabin': 'kabin', 'roof': 'bumbung', 'engine': 'enjin', 'chimney': 'serombong', 'smoke': 'asap'
+};
 
 (function () {
 'use strict';
@@ -399,7 +701,7 @@ const CHARS = [
    Settings
 ------------------------------------------------------------------- */
 const INK = '#2b2440';
-const LW = 5.5;            // outline thickness (in 320-box units)
+const LW = 5;              // outline thickness (in 320-box units)
 const RES = 640;           // canvas pixel size
 const K = RES / 320;       // box units -> pixels
 const TOL = 15;            // how close the finger must be to the guide
@@ -407,27 +709,113 @@ const NEED = 0.9;          // share of the guide that must be traced
 const KEY = 'doodlepals_v1';
 const COLORS = ['#ff4d4d', '#ff9f1c', '#ffd23f', '#9be564', '#2fbf71', '#2ec4b6', '#5ac8fa', '#3a86ff',
                 '#8e5cff', '#ff7ac8', '#e0409a', '#a5683a', '#ffd1a8', '#ffffff', '#b8b8c4', '#2b2440'];
-const SIZES = [6, 14, 26];
+const SIZES = [6, 14, 26];          // brush sizes
+const STAMP = [16, 24, 36];         // sticker sizes
 
 const $ = id => document.getElementById(id);
-const stage = $('stage'), cColor = $('cColor'), cInk = $('cInk'), cGuide = $('cGuide');
+const stage = $('stage'), cBg = $('cBg'), cColor = $('cColor'), cInk = $('cInk'), cStick = $('cStick'), cGuide = $('cGuide');
+const bctx = cBg.getContext('2d');
 const cctx = cColor.getContext('2d', { willReadFrequently: true });
 const ictx = cInk.getContext('2d', { willReadFrequently: true });
+const sctx = cStick.getContext('2d', { willReadFrequently: true });
 const gctx = cGuide.getContext('2d');
 const meas = $('meas');
 
 /* ------------------------------------------------------------------
-   Saved progress (stars, finished pictures, sound on/off)
+   Saved progress (stars, trophies, pictures, sound, language)
 ------------------------------------------------------------------- */
-let save = { stars: {}, thumbs: {}, crowns: {}, mute: false };
+let save = { stars: {}, thumbs: {}, crowns: {}, album: [], mute: false, lang: '' };
 try { Object.assign(save, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) {}
+if (!Array.isArray(save.album)) save.album = [];
 function persist() {
   try { localStorage.setItem(KEY, JSON.stringify(save)); }
-  catch (e) { try { save.thumbs = {}; localStorage.setItem(KEY, JSON.stringify(save)); } catch (e2) {} }
+  catch (e) {                       // phone storage full: drop the oldest free drawings and try again
+    try { save.album = save.album.slice(0, 3); localStorage.setItem(KEY, JSON.stringify(save)); } catch (e2) {}
+  }
 }
+const totalStars = () => Object.keys(save.stars).reduce((a, k) => a + (save.stars[k] || 0), 0);
 
 /* ------------------------------------------------------------------
-   Sound (short chimes only - step done, stars, celebration)
+   Words: English and Bahasa Melayu
+------------------------------------------------------------------- */
+const STR = {
+  en: {
+    tagline: 'Trace it, colour it, collect the stars!', ofStars: 'of {0} stars',
+    freeDraw: 'Free Draw', freeSub: 'Draw anything!', quick: 'Quick Draw', quickSub: 'Beat the clock!',
+    album: 'My Gallery', albumSub: 'All my pictures', albumEmpty: 'No pictures yet. Finish a drawing and it will show up here!',
+    step: 'Step {0}/{1}: trace the {2}', colourTime: 'Colour time! Pick a colour and paint', freeHint: 'Draw anything you like!',
+    timeUp: 'Time is up! No rush, keep drawing', beat: 'You beat the clock! Now colour it',
+    undo: 'Undo', showme: 'Show me', skip: 'Skip', brush: 'Brush', fill: 'Fill', eraser: 'Eraser', sticker: 'Sticker', scene: 'Scene',
+    clear: 'Clear', done: 'Done', save: 'Save', next: 'Next', home: 'Home', keep: 'Keep drawing', close: 'Close', del: 'Delete',
+    didIt: 'You did it!', amazing: 'Amazing!', lovely: 'Lovely drawing!', saveMsg: 'Save it to show your family.',
+    m_traced: 'You traced it all', m_neat: 'neat lines', m_colours: 'lovely colours', m_trophy: 'Quick Draw trophy',
+    moreColours: 'Use more colours for 3 stars.', tryAgain: 'Try again for 3 stars.',
+    leave: 'Leave this drawing?', delAsk: 'Delete this picture?', locked: 'Collect {0} stars to open this',
+    unlocked: 'New gift', nextGift: 'Next gift at {0} stars: {1}', allGifts: 'You opened every gift!',
+    pickSticker: 'Tap the picture to add a sticker', pickScene: 'Pick a scene',
+    k_sticker: 'sticker', k_scene: 'scene', k_brush: 'brush'
+  },
+  ms: {
+    tagline: 'Lukis, warna dan kumpul bintang!', ofStars: 'daripada {0} bintang',
+    freeDraw: 'Lukis Bebas', freeSub: 'Lukis apa sahaja!', quick: 'Lukis Pantas', quickSub: 'Kejar masa!',
+    album: 'Galeri Saya', albumSub: 'Semua lukisan saya', albumEmpty: 'Belum ada lukisan. Siapkan satu lukisan dan ia akan muncul di sini!',
+    step: 'Langkah {0}/{1}: lukis {2}', colourTime: 'Masa mewarna! Pilih warna dan warnakan', freeHint: 'Lukis apa sahaja yang kamu suka!',
+    timeUp: 'Masa tamat! Tak apa, teruskan melukis', beat: 'Kamu menang lawan masa! Sekarang warnakan',
+    undo: 'Undur', showme: 'Tunjuk', skip: 'Langkau', brush: 'Berus', fill: 'Isi', eraser: 'Padam', sticker: 'Pelekat', scene: 'Latar',
+    clear: 'Kosong', done: 'Siap', save: 'Simpan', next: 'Lanjut', home: 'Utama', keep: 'Teruskan', close: 'Tutup', del: 'Buang',
+    didIt: 'Kamu berjaya!', amazing: 'Hebat!', lovely: 'Cantiknya lukisan!', saveMsg: 'Simpan dan tunjuk kepada keluarga.',
+    m_traced: 'Semua sudah dilukis', m_neat: 'garisan kemas', m_colours: 'warna cantik', m_trophy: 'Piala Lukis Pantas',
+    moreColours: 'Guna lebih banyak warna untuk 3 bintang.', tryAgain: 'Cuba lagi untuk 3 bintang.',
+    leave: 'Keluar dari lukisan ini?', delAsk: 'Buang lukisan ini?', locked: 'Kumpul {0} bintang untuk buka',
+    unlocked: 'Hadiah baru', nextGift: 'Hadiah seterusnya pada {0} bintang: {1}', allGifts: 'Semua hadiah sudah dibuka!',
+    pickSticker: 'Sentuh lukisan untuk letak pelekat', pickScene: 'Pilih latar',
+    k_sticker: 'pelekat', k_scene: 'latar', k_brush: 'berus'
+  }
+};
+// names of the stickers, scenes and brushes: [English, Bahasa Melayu]
+const NAMES = {
+  star: ['Star', 'Bintang'], heart: ['Heart', 'Hati'], flower: ['Flower', 'Bunga'], balloon: ['Balloon', 'Belon'], moon: ['Moon', 'Bulan'],
+  cloud: ['Cloud', 'Awan'], bow: ['Bow', 'Riben'], butterfly: ['Butterfly', 'Rama-rama'], rainbow: ['Rainbow', 'Pelangi'], gem: ['Gem', 'Permata'],
+  sun: ['Sun', 'Matahari'], icecream: ['Ice cream', 'Aiskrim'],
+  none: ['Plain', 'Kosong'], circus: ['Circus', 'Sarkas'], garden: ['Garden', 'Taman'], night: ['Night sky', 'Langit malam'],
+  beach: ['Beach', 'Pantai'], sky: ['Rainbow sky', 'Langit pelangi'],
+  normal: ['Normal', 'Biasa'], rainbowb: ['Rainbow', 'Pelangi'], glow: ['Glow', 'Cahaya'], sparkle: ['Sparkle', 'Kilauan']
+};
+let lang = save.lang || (/^ms/i.test(navigator.language || '') ? 'ms' : 'en');
+function t(k) {
+  let s = STR[lang][k]; if (s === undefined) s = STR.en[k];
+  for (let i = 1; i < arguments.length; i++) s = s.replace('{' + (i - 1) + '}', arguments[i]);
+  return s;
+}
+const nm = id => (NAMES[id] || [id, id])[lang === 'ms' ? 1 : 0];
+const partName = n => lang === 'ms' ? (PART_MS[n] || n) : n;
+const chName = ch => lang === 'ms' && ch.ms ? ch.ms : ch.name;
+const packName = p => lang === 'ms' && p.ms ? p.ms : p.name;
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-t]').forEach(e => { e.textContent = t(e.dataset.t); });
+  $('bLang').innerHTML = lang === 'en' ? '<b>EN</b> <span>BM</span>' : '<span>EN</span> <b>BM</b>';
+  $('pSave').textContent = '📷 ' + t('save'); $('vSave').textContent = '📷 ' + t('save');
+  $('pHome').textContent = '🏠 ' + t('home'); $('vClose').textContent = t('close'); $('vDel').textContent = '🗑️ ' + t('del');
+}
+$('bLang').onclick = () => { lang = lang === 'en' ? 'ms' : 'en'; save.lang = lang; persist(); applyLang(); showHome(); };
+
+/* ------------------------------------------------------------------
+   Gifts: stickers, scenes and brushes that open as she collects stars
+------------------------------------------------------------------- */
+const UNLOCKS = [
+  { at: 3, kind: 'sticker', id: 'balloon' }, { at: 6, kind: 'scene', id: 'night' }, { at: 8, kind: 'brush', id: 'glow' },
+  { at: 9, kind: 'sticker', id: 'moon' }, { at: 12, kind: 'sticker', id: 'cloud' }, { at: 15, kind: 'scene', id: 'beach' },
+  { at: 16, kind: 'brush', id: 'sparkle' }, { at: 18, kind: 'sticker', id: 'bow' }, { at: 21, kind: 'sticker', id: 'butterfly' },
+  { at: 24, kind: 'scene', id: 'sky' }, { at: 27, kind: 'sticker', id: 'rainbow' }, { at: 30, kind: 'sticker', id: 'gem' },
+  { at: 33, kind: 'sticker', id: 'sun' }, { at: 36, kind: 'sticker', id: 'icecream' }
+];
+const needStars = (kind, id) => { const u = UNLOCKS.find(u => u.kind === kind && u.id === id); return u ? u.at : 0; };
+const isOpen = (kind, id) => totalStars() >= needStars(kind, id);
+const giftName = u => lang === 'ms' ? t('k_' + u.kind) + ' ' + nm(u.id).toLowerCase() : nm(u.id) + ' ' + t('k_' + u.kind);
+
+/* ------------------------------------------------------------------
+   Sound (short chimes only)
 ------------------------------------------------------------------- */
 let ac = null;
 function tone(f, t0, dur, vol) {
@@ -435,26 +823,119 @@ function tone(f, t0, dur, vol) {
   try {
     ac = ac || new (window.AudioContext || window.webkitAudioContext)();
     if (ac.state === 'suspended') ac.resume();
-    const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + t0;
+    const o = ac.createOscillator(), g = ac.createGain(), tt = ac.currentTime + t0;
     o.type = 'triangle'; o.frequency.value = f;
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(vol || 0.16, t + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.gain.setValueAtTime(0.0001, tt);
+    g.gain.linearRampToValueAtTime(vol || 0.16, tt + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, tt + dur);
     o.connect(g); g.connect(ac.destination);
-    o.start(t); o.stop(t + dur + 0.05);
+    o.start(tt); o.stop(tt + dur + 0.05);
   } catch (e) {}
 }
 const sfx = {
   step() { tone(660, 0, 0.16); tone(880, 0.1, 0.22); },
   star(i) { tone([784, 988, 1175][i], 0, 0.4, 0.2); },
+  pop() { tone(520, 0, 0.09, 0.12); tone(780, 0.05, 0.1, 0.1); },
   win() { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, i * 0.11, 0.32, 0.18)); }
 };
 function showMute() {
-  const ic = save.mute ? '\uD83D\uDD07' : '\uD83D\uDD0A';
+  const ic = save.mute ? '🔇' : '🔊';
   $('bMute').textContent = ic; $('bMuteHome').textContent = ic;
 }
 function toggleMute() { save.mute = !save.mute; persist(); showMute(); if (!save.mute) tone(700, 0, 0.12); }
 $('bMute').onclick = toggleMute; $('bMuteHome').onclick = toggleMute;
+
+/* ------------------------------------------------------------------
+   Stickers (drawn by code, in a box from -1 to 1)
+------------------------------------------------------------------- */
+function ol(c, fill) { c.fillStyle = fill; c.fill(); c.lineWidth = 0.1; c.strokeStyle = INK; c.lineJoin = 'round'; c.lineCap = 'round'; c.stroke(); }
+function circ(c, x, y, r, fill) { c.beginPath(); c.arc(x, y, r, 0, 6.2832); ol(c, fill); }
+function elli(c, x, y, rx, ry, fill) { c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, 6.2832); ol(c, fill); }
+function poly(c, pts, fill) { c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.closePath(); ol(c, fill); }
+function starPts(R, r) { const a = []; for (let i = 0; i < 10; i++) { const g = i * Math.PI / 5 - Math.PI / 2, q = i % 2 ? r : R; a.push([Math.cos(g) * q, Math.sin(g) * q]); } return a; }
+function crescent(c, R, ix, iy, r) {
+  const d = Math.hypot(ix, iy), a = (R * R - r * r + d * d) / (2 * d), th = Math.atan2(iy, ix), ph = Math.acos(a / R);
+  const p1 = [R * Math.cos(th + ph), R * Math.sin(th + ph)], p2 = [R * Math.cos(th - ph), R * Math.sin(th - ph)];
+  c.beginPath(); c.arc(0, 0, R, th + ph, th - ph + 2 * Math.PI, false);
+  c.arc(ix, iy, r, Math.atan2(p2[1] - iy, p2[0] - ix), Math.atan2(p1[1] - iy, p1[0] - ix), true); c.closePath();
+}
+const STK = {
+  star(c) { poly(c, starPts(0.98, 0.45), '#ffd23f'); },
+  heart(c) { c.beginPath(); c.moveTo(0, 0.88); c.bezierCurveTo(-1.35, -0.1, -0.75, -1.1, 0, -0.42); c.bezierCurveTo(0.75, -1.1, 1.35, -0.1, 0, 0.88); c.closePath(); ol(c, '#ff4d6d'); },
+  flower(c) { for (let i = 0; i < 5; i++) { const a = i * 1.2566 - 1.5708; circ(c, Math.cos(a) * 0.55, Math.sin(a) * 0.55, 0.4, '#ff9ecb'); } circ(c, 0, 0, 0.32, '#ffd23f'); },
+  balloon(c) {
+    c.beginPath(); c.moveTo(0, 0.42); c.quadraticCurveTo(0.28, 0.7, 0, 0.98); c.lineWidth = 0.08; c.strokeStyle = INK; c.lineCap = 'round'; c.stroke();
+    poly(c, [[0, 0.3], [-0.14, 0.5], [0.14, 0.5]], '#5ac8fa'); elli(c, 0, -0.3, 0.62, 0.7, '#5ac8fa');
+  },
+  moon(c) { crescent(c, 0.92, 0.42, -0.16, 0.74); ol(c, '#ffe066'); },
+  cloud(c) {
+    const b = [[-0.48, 0.18, 0.36], [0, -0.12, 0.5], [0.5, 0.2, 0.34], [0, 0.26, 0.4]];
+    c.strokeStyle = INK; c.lineWidth = 0.2; b.forEach(p => { c.beginPath(); c.arc(p[0], p[1], p[2], 0, 6.2832); c.stroke(); });
+    c.fillStyle = '#e8f6ff'; b.forEach(p => { c.beginPath(); c.arc(p[0], p[1], p[2], 0, 6.2832); c.fill(); });
+  },
+  bow(c) { poly(c, [[0, 0], [-0.95, -0.55], [-0.95, 0.55]], '#ff7ac8'); poly(c, [[0, 0], [0.95, -0.55], [0.95, 0.55]], '#ff7ac8'); circ(c, 0, 0, 0.24, '#ff4d9a'); },
+  butterfly(c) {
+    elli(c, -0.5, -0.3, 0.44, 0.5, '#b28dff'); elli(c, 0.5, -0.3, 0.44, 0.5, '#b28dff');
+    elli(c, -0.4, 0.42, 0.32, 0.34, '#ff9ecb'); elli(c, 0.4, 0.42, 0.32, 0.34, '#ff9ecb'); elli(c, 0, 0.02, 0.1, 0.6, INK);
+  },
+  rainbow(c) {
+    c.lineCap = 'butt'; c.lineWidth = 0.2;
+    ['#ff4d4d', '#ffb52e', '#2fbf71', '#3a86ff'].forEach((col, i) => { c.beginPath(); c.arc(0, 0.5, 0.9 - i * 0.2, Math.PI, 2 * Math.PI); c.strokeStyle = col; c.stroke(); });
+  },
+  gem(c) { poly(c, [[-0.55, -0.6], [0.55, -0.6], [0.95, -0.1], [0, 0.9], [-0.95, -0.1]], '#2ec4b6'); },
+  sun(c) {
+    c.strokeStyle = '#ff9f1c'; c.lineWidth = 0.14; c.lineCap = 'round';
+    for (let i = 0; i < 10; i++) { const a = i * 0.6283; c.beginPath(); c.moveTo(Math.cos(a) * 0.68, Math.sin(a) * 0.68); c.lineTo(Math.cos(a) * 0.96, Math.sin(a) * 0.96); c.stroke(); }
+    circ(c, 0, 0, 0.52, '#ffd23f');
+  },
+  icecream(c) { poly(c, [[-0.46, 0], [0.46, 0], [0, 0.98]], '#e9b56b'); circ(c, 0, -0.3, 0.56, '#ff9ecb'); }
+};
+const STICKERS = Object.keys(STK);
+
+/* ------------------------------------------------------------------
+   Background scenes (drawn by code, in the 320 box)
+------------------------------------------------------------------- */
+function rect(c, col, x, y, w, h) { c.fillStyle = col; c.fillRect(x, y, w, h); }
+function disc(c, col, x, y, r) { c.fillStyle = col; c.beginPath(); c.arc(x, y, r, 0, 6.2832); c.fill(); }
+function puff(c, x, y, s) { [[-22, 6, 16], [0, -4, 22], [24, 6, 15], [0, 10, 18]].forEach(p => disc(c, '#ffffff', x + p[0] * s, y + p[1] * s, p[2] * s)); }
+function tinyStar(c, col, x, y, r) { c.fillStyle = col; c.beginPath(); starPts(r, r * 0.45).forEach((p, i) => i ? c.lineTo(x + p[0], y + p[1]) : c.moveTo(x + p[0], y + p[1])); c.closePath(); c.fill(); }
+const SCENES = {
+  none() {},
+  circus(c) {
+    for (let i = 0; i < 8; i++) rect(c, i % 2 ? '#fff3f6' : '#ffc2d2', i * 40, 0, 40, 320);
+    rect(c, '#f6c56b', 0, 268, 320, 52); rect(c, '#e9a93f', 0, 268, 320, 6);
+    const cols = ['#ffd23f', '#5ac8fa', '#8e5cff', '#2fbf71', '#ff9f1c'];
+    for (let i = 0; i < 8; i++) { const x = i * 40; c.fillStyle = cols[i % 5]; c.beginPath(); c.moveTo(x + 4, 0); c.lineTo(x + 36, 0); c.lineTo(x + 20, 28); c.closePath(); c.fill(); }
+  },
+  garden(c) {
+    rect(c, '#cdeeff', 0, 0, 320, 320); disc(c, '#ffe066', 54, 54, 28); puff(c, 236, 54, 1); puff(c, 130, 34, 0.6);
+    c.fillStyle = '#a9e37c'; c.beginPath(); c.ellipse(70, 262, 170, 50, 0, 0, 6.2832); c.fill();
+    c.fillStyle = '#8fd65c'; c.beginPath(); c.ellipse(250, 270, 170, 46, 0, 0, 6.2832); c.fill();
+    rect(c, '#7fcf4f', 0, 268, 320, 52);
+    [[30, 290, '#ff7ac8'], [86, 302, '#ffd23f'], [150, 292, '#ff4d4d'], [222, 304, '#8e5cff'], [288, 290, '#ff9f1c']].forEach(f => {
+      for (let i = 0; i < 5; i++) { const a = i * 1.2566; disc(c, f[2], f[0] + Math.cos(a) * 6, f[1] + Math.sin(a) * 6, 5); }
+      disc(c, '#fff6c2', f[0], f[1], 4);
+    });
+  },
+  night(c) {
+    rect(c, '#3d4296', 0, 0, 320, 320); rect(c, '#4b51ab', 0, 170, 320, 150);
+    c.save(); c.translate(258, 56); c.scale(30, 30); crescent(c, 0.92, 0.42, -0.16, 0.74); c.fillStyle = '#ffe9a0'; c.fill(); c.restore();
+    [[40, 40, 7], [96, 78, 5], [150, 30, 6], [200, 96, 4], [24, 130, 5], [296, 150, 6], [70, 190, 4], [250, 214, 5], [130, 132, 4], [36, 250, 5], [290, 268, 4]].forEach(s => tinyStar(c, '#fff3b0', s[0], s[1], s[2]));
+    c.fillStyle = '#2f3378'; c.beginPath(); c.ellipse(160, 330, 240, 50, 0, 0, 6.2832); c.fill();
+  },
+  beach(c) {
+    rect(c, '#cdeeff', 0, 0, 320, 170); disc(c, '#ffe066', 262, 52, 28); puff(c, 80, 50, 0.9);
+    rect(c, '#5ac8fa', 0, 170, 320, 60); rect(c, '#8fdcff', 0, 170, 320, 8);
+    c.fillStyle = '#ffe1a8'; c.beginPath(); c.moveTo(0, 232); c.quadraticCurveTo(80, 216, 160, 230); c.quadraticCurveTo(240, 244, 320, 226); c.lineTo(320, 320); c.lineTo(0, 320); c.closePath(); c.fill();
+    [[40, 280], [120, 300], [200, 276], [276, 298]].forEach(p => disc(c, '#f3c98a', p[0], p[1], 4));
+  },
+  sky(c) {
+    rect(c, '#dff3ff', 0, 0, 320, 320);
+    ['#ff7a7a', '#ffb86b', '#ffe066', '#8be28b', '#7cc4ff', '#b79cff'].forEach((col, i) => { c.strokeStyle = col; c.lineWidth = 14; c.beginPath(); c.arc(160, 300, 250 - i * 14, Math.PI, 2 * Math.PI); c.stroke(); });
+    puff(c, 44, 292, 1.5); puff(c, 276, 292, 1.5); puff(c, 160, 40, 0.8);
+  }
+};
+const SCENE_IDS = ['none', 'circus', 'garden', 'night', 'beach', 'sky'];
 
 /* ------------------------------------------------------------------
    Drawing the character line art
@@ -480,12 +961,12 @@ function drawArt(ctx, size, ch, upto) {
     for (const sh of ch.steps[s].sh) {
       const p = new Path2D(sh.d), solid = !sh.line;
       if (sh.behind) {
-        const t = sc.tctx;
-        t.setTransform(1, 0, 0, 1, 0, 0); t.globalCompositeOperation = 'source-over'; t.clearRect(0, 0, size, size);
-        t.setTransform(k, 0, 0, k, 0, 0); inkStyle(t);
-        if (sh.fill) t.fill(p);
-        t.stroke(p);
-        t.setTransform(1, 0, 0, 1, 0, 0); t.globalCompositeOperation = 'destination-out'; t.drawImage(sc.mask, 0, 0);
+        const x = sc.tctx;
+        x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, size, size);
+        x.setTransform(k, 0, 0, k, 0, 0); inkStyle(x);
+        if (sh.fill) x.fill(p);
+        x.stroke(p);
+        x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'destination-out'; x.drawImage(sc.mask, 0, 0);
         ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(sc.tmp, 0, 0);
       } else {
         ctx.setTransform(k, 0, 0, k, 0, 0); inkStyle(ctx);
@@ -503,90 +984,137 @@ function drawArt(ctx, size, ch, upto) {
 /* ------------------------------------------------------------------
    Home screen
 ------------------------------------------------------------------- */
+function show(id) { ['home', 'album', 'draw'].forEach(s => $(s).classList.toggle('on', s === id)); }
 function starsHtml(n) {
   let h = '';
-  for (let i = 0; i < 3; i++) h += '<span class="' + (i < n ? 'y' : '') + '">\u2605</span>';
+  for (let i = 0; i < 3; i++) h += '<span class="' + (i < n ? 'y' : '') + '">★</span>';
   return h;
 }
+function bigBtn(cls, icon, a, b, fn) {
+  const x = document.createElement('button'); x.className = 'big3 ' + cls;
+  x.innerHTML = '<span class="ic">' + icon + '</span><span class="t1">' + a + '</span><span class="t2">' + b + '</span>';
+  x.onclick = fn; return x;
+}
 function showHome() {
-  $('party').classList.remove('on');
-  $('draw').classList.remove('on'); $('home').classList.add('on');
-  cur = null;
+  $('party').classList.remove('on'); $('viewer').classList.remove('on'); $('timer').classList.remove('on');
+  show('home'); cur = null;
   const g = $('gallery'); g.innerHTML = '';
-  $('timer').classList.remove('on');
-  const duo = document.createElement('div'); duo.className = 'duo'; g.appendChild(duo);
-  const free = document.createElement('button');
-  free.className = 'free';
-  free.innerHTML = '<span class="big">\uD83C\uDFA8</span><span><div class="t1">Free Draw</div><div class="t2">Draw anything!</div></span>';
-  free.onclick = () => startFree();
-  duo.appendChild(free);
+  const trio = document.createElement('div'); trio.className = 'trio'; g.appendChild(trio);
+  trio.appendChild(bigBtn('', '🎨', t('freeDraw'), t('freeSub'), () => startFree()));
   // Quick Draw: a random pal against the clock, win a trophy
-  const quick = document.createElement('button');
-  quick.className = 'free quick';
-  quick.innerHTML = '<span class="big">\u26A1</span><span><div class="t1">Quick Draw</div><div class="t2">Beat the clock!</div></span>';
-  quick.onclick = () => {
+  trio.appendChild(bigBtn('quick', '⚡', t('quick'), t('quickSub'), () => {
     const open = CHARS.filter(c => !save.crowns[c.id]), pool = open.length ? open : CHARS;
     startChar(pool[Math.floor(Math.random() * pool.length)], true);
-  };
-  duo.appendChild(quick);
-  let tot = 0;
+  }));
+  trio.appendChild(bigBtn('album', '🖼️', t('album'), t('albumSub'), showAlbum));
+  const tot = totalStars(), nx = UNLOCKS.find(u => u.at > tot);
+  const gift = document.createElement('div'); gift.id = 'nextGift';
+  gift.textContent = '🎁 ' + (nx ? t('nextGift', nx.at, giftName(nx)) : t('allGifts'));
+  g.appendChild(gift);
   for (const pk of PACKS) {
-    const h = document.createElement('div'); h.className = 'pack'; h.textContent = pk.icon + ' ' + pk.name; g.appendChild(h);
+    const h = document.createElement('div'); h.className = 'pack'; h.textContent = pk.icon + ' ' + packName(pk); g.appendChild(h);
     const grid = document.createElement('div'); grid.className = 'grid'; g.appendChild(grid);
     CHARS.filter(c => c.pack === pk.id).forEach(ch => {
-      const st = save.stars[ch.id] || 0; tot += st;
       const b = document.createElement('button'); b.className = 'card';
       const pic = document.createElement('span'); pic.className = 'pic'; pic.style.background = ch.tint;
       if (save.thumbs[ch.id]) {
-        const im = new Image(); im.src = save.thumbs[ch.id]; im.alt = ch.name; pic.appendChild(im);
+        const im = new Image(); im.src = save.thumbs[ch.id]; im.alt = chName(ch); pic.appendChild(im);
       } else {
         const cv = mk(240); drawArt(cv.getContext('2d'), 240, ch, ch.steps.length); pic.appendChild(cv);
       }
       b.appendChild(pic);
-      const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = (save.crowns[ch.id] ? '\uD83C\uDFC6 ' : '') + ch.name; b.appendChild(nm);
-      const ss = document.createElement('div'); ss.className = 'stars'; ss.innerHTML = starsHtml(st); b.appendChild(ss);
+      const n = document.createElement('div'); n.className = 'nm'; n.textContent = (save.crowns[ch.id] ? '🏆 ' : '') + chName(ch); b.appendChild(n);
+      const ss = document.createElement('div'); ss.className = 'stars'; ss.innerHTML = starsHtml(save.stars[ch.id] || 0); b.appendChild(ss);
       b.onclick = () => startChar(ch);
       grid.appendChild(b);
     });
   }
-  $('totStars').textContent = tot; $('totOf').textContent = 'of ' + (CHARS.length * 3) + ' stars';
+  $('totStars').textContent = tot; $('totOf').textContent = t('ofStars', CHARS.length * 3);
+}
+
+/* ------------------------------------------------------------------
+   My Gallery: every finished picture
+------------------------------------------------------------------- */
+let viewing = null;
+function showAlbum() {
+  show('album'); $('viewer').classList.remove('on');
+  const g = $('albumGrid'); g.innerHTML = '';
+  const items = [];
+  CHARS.forEach(ch => { if (save.thumbs[ch.id]) items.push({ src: save.thumbs[ch.id], name: chName(ch), ch }); });
+  save.album.forEach(a => items.push({ src: a.src, name: t('freeDraw'), free: a }));
+  if (!items.length) { const e = document.createElement('div'); e.className = 'empty'; e.textContent = t('albumEmpty'); g.appendChild(e); return; }
+  const grid = document.createElement('div'); grid.className = 'grid'; g.appendChild(grid);
+  items.forEach(it => {
+    const b = document.createElement('button'); b.className = 'card';
+    const pic = document.createElement('span'); pic.className = 'pic';
+    const im = new Image(); im.src = it.src; im.alt = it.name; pic.appendChild(im); b.appendChild(pic);
+    const n = document.createElement('div'); n.className = 'nm'; n.textContent = it.name; b.appendChild(n);
+    b.onclick = () => { viewing = it; $('vImg').src = it.src; $('vName').textContent = it.name; $('viewer').classList.add('on'); };
+    grid.appendChild(b);
+  });
+}
+$('bAlbumBack').onclick = showHome;
+$('vClose').onclick = () => $('viewer').classList.remove('on');
+$('vSave').onclick = () => { if (viewing) sharePic(dataBlob(viewing.src)); };
+$('vDel').onclick = () => {
+  if (!viewing || !window.confirm(t('delAsk'))) return;
+  if (viewing.ch) delete save.thumbs[viewing.ch.id]; else save.album = save.album.filter(a => a !== viewing.free);
+  persist(); showAlbum();
+};
+function dataBlob(u) {
+  const p = u.split(','), bin = atob(p[1]), a = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+  return new Blob([a], { type: p[0].slice(5).split(';')[0] });
+}
+function sharePic(b) {
+  if (!b) return;
+  const name = 'my-doodle-pal.' + (b.type === 'image/jpeg' ? 'jpg' : 'png');
+  try {
+    const f = new File([b], name, { type: b.type });
+    if (navigator.canShare && navigator.canShare({ files: [f] })) { navigator.share({ files: [f], title: 'Doodle Pals' }).catch(() => {}); return; }
+  } catch (e) {}
+  const a = document.createElement('a'), u = URL.createObjectURL(b);
+  a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 5000);
 }
 
 /* ------------------------------------------------------------------
    Game state
 ------------------------------------------------------------------- */
 let cur = null;          // the drawing in progress
-let tool = 'brush', color = COLORS[0], size = SIZES[1];
-let bstyle = 'normal', hue = 0;   // brush style: normal, rainbow, glow, sparkle
-let undo = [];           // colour-layer snapshots
+let tool = 'brush', color = COLORS[0], sizeI = 1;
+let bstyle = 'normal', hue = 0;   // brush style: normal, rainbowb, glow, sparkle
+let stk = 'star';        // chosen sticker
+let undo = [];           // snapshots: { c: layer, d: pixels }
 let parts = [];          // sparkle particles
 let ptr = null;          // active finger
 
 function clearAll() {
-  [cctx, ictx, gctx].forEach(c => { c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'source-over'; c.clearRect(0, 0, RES, RES); });
+  [bctx, cctx, ictx, sctx, gctx].forEach(c => { c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'source-over'; c.clearRect(0, 0, RES, RES); });
   undo = []; parts = [];
 }
-function openDraw() { $('home').classList.remove('on'); $('party').classList.remove('on'); $('draw').classList.add('on'); }
+function openDraw() { $('party').classList.remove('on'); show('draw'); }
 
 function startChar(ch, quick) {
   clearAll(); openDraw();
   const ghost = mk(RES); drawArt(ghost.getContext('2d'), RES, ch, ch.steps.length);
   cur = { ch, mode: 'trace', step: 0, ghost, guide: mk(RES), samples: [], cov: null, nCov: 0, strokes: [],
-          good: 0, total: 0, accSum: 0, accN: 0, skips: 0, lock: false, hintUntil: 0, colors: new Set(), inkData: null,
+          good: 0, total: 0, accSum: 0, accN: 0, skips: 0, lock: false, hintUntil: 0, colors: new Set(), inkData: null, sil: null, scene: 'none',
           quick: quick ? { t0: performance.now(), limit: ch.steps.length * 10000, failed: false } : null, crown: false };
-  $('tName').textContent = (quick ? '\u26A1 ' : '') + ch.name;
+  $('tName').textContent = (quick ? '⚡ ' : '') + chName(ch);
   $('timer').classList.toggle('on', !!quick); $('timer').classList.remove('low'); $('timerFill').style.width = '100%';
   $('traceBar').classList.add('on'); $('paintBar').classList.remove('on');
   beginStep(0);
 }
 function startFree() {
   clearAll(); openDraw();
-  cur = { ch: null, mode: 'free', colors: new Set(), inkData: null };
+  cur = { ch: null, mode: 'free', colors: new Set(), inkData: null, sil: null, scene: 'none', ts: Date.now() };
   $('timer').classList.remove('on');
-  $('tName').textContent = 'Free Draw'; $('tStep').textContent = 'Draw anything you like!';
+  $('tName').textContent = t('freeDraw'); $('tStep').textContent = t('freeHint');
   $('dots').innerHTML = '';
   $('traceBar').classList.remove('on'); $('paintBar').classList.add('on');
   $('pClear').style.display = '';
+  buildPickers(); setTool('brush');
 }
 
 function showDots() {
@@ -612,12 +1140,12 @@ function beginStep(i) {
   g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, RES, RES);
   cur.samples = [];
   for (const sh of st.sh) {
-    const p = new Path2D(sh.d), t = sc.tctx;
-    t.setTransform(1, 0, 0, 1, 0, 0); t.globalCompositeOperation = 'source-over'; t.clearRect(0, 0, RES, RES);
-    t.setTransform(K, 0, 0, K, 0, 0);
-    t.lineWidth = 4; t.lineCap = 'round'; t.lineJoin = 'round'; t.strokeStyle = '#8f86b5'; t.setLineDash([7, 8]);
-    t.stroke(p); t.setLineDash([]);
-    if (sh.behind) { t.setTransform(1, 0, 0, 1, 0, 0); t.globalCompositeOperation = 'destination-out'; t.drawImage(sc.mask, 0, 0); t.globalCompositeOperation = 'source-over'; }
+    const p = new Path2D(sh.d), x = sc.tctx;
+    x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, RES, RES);
+    x.setTransform(K, 0, 0, K, 0, 0);
+    x.lineWidth = 4; x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#8f86b5'; x.setLineDash([7, 8]);
+    x.stroke(p); x.setLineDash([]);
+    if (sh.behind) { x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'destination-out'; x.drawImage(sc.mask, 0, 0); x.globalCompositeOperation = 'source-over'; }
     g.drawImage(sc.tmp, 0, 0);
 
     // points along the guide that the finger has to pass over
@@ -633,7 +1161,7 @@ function beginStep(i) {
     }
   }
   cur.cov = new Uint8Array(cur.samples.length);
-  $('tStep').textContent = 'Step ' + (i + 1) + ' of ' + ch.steps.length + ': trace the ' + st.n;
+  $('tStep').textContent = t('step', i + 1, ch.steps.length, partName(st.n));
   showDots();
   if (!cur.samples.length) completeStep(true, true);
 }
@@ -678,15 +1206,20 @@ function completeStep(skipped, silent) {
 
 function enterPaint() {
   cur.mode = 'paint'; cur.lock = false;
+  const sc = drawArt(ictx, RES, cur.ch, cur.ch.steps.length);
   cur.inkData = ictx.getImageData(0, 0, RES, RES).data;
-  $('tStep').textContent = 'Colour time! Pick a colour and paint';
+  // white shape of the pal, so a background scene does not show through its body
+  cur.sil = mk(RES); const x = cur.sil.getContext('2d');
+  x.drawImage(sc.mask, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#fff'; x.fillRect(0, 0, RES, RES);
+  $('tStep').textContent = t('colourTime');
   $('timer').classList.remove('on');
   if (cur.quick && !cur.quick.failed && cur.skips === 0) {          // traced everything before the clock ran out
     cur.crown = true; save.crowns[cur.ch.id] = true; persist(); sfx.win();
-    $('tStep').textContent = '\uD83C\uDFC6 You beat the clock! Now colour it';
+    $('tStep').textContent = '🏆 ' + t('beat');
   }
   $('traceBar').classList.remove('on'); $('paintBar').classList.add('on');
   $('pClear').style.display = 'none';
+  buildPickers(); setTool('brush');
   showDots();
 }
 
@@ -699,9 +1232,9 @@ $('tHint').onclick = () => { if (cur && cur.mode === 'trace') cur.hintUntil = pe
 $('tSkip').onclick = () => { if (cur && cur.mode === 'trace' && !cur.lock) completeStep(true); };
 
 /* ------------------------------------------------------------------
-   Colouring: brush, fill, eraser, undo
+   Colouring: brush, fill, eraser, stickers, scenes, undo
 ------------------------------------------------------------------- */
-function pushUndo() { undo.push(cctx.getImageData(0, 0, RES, RES)); if (undo.length > 12) undo.shift(); }
+function pushUndo(c) { c = c || cctx; undo.push({ c, d: c.getImageData(0, 0, RES, RES) }); if (undo.length > 12) undo.shift(); }
 function star5(x, y, r) {                      // little five-point star
   cctx.beginPath();
   for (let i = 0; i < 10; i++) {
@@ -711,19 +1244,19 @@ function star5(x, y, r) {                      // little five-point star
   cctx.closePath(); cctx.fill();
 }
 function dab(a, b) {
-  const er = tool === 'eraser', st = er ? 'normal' : bstyle;
+  const er = tool === 'eraser', st = er ? 'normal' : bstyle, size = SIZES[sizeI];
   const dist = Math.hypot(b.x - a.x, b.y - a.y);
   let col = color;
   cctx.setTransform(1, 0, 0, 1, 0, 0);
   cctx.globalCompositeOperation = er ? 'destination-out' : 'source-over';
-  if (st === 'rainbow') { hue = (hue + dist * 2.2 + 1) % 360; col = 'hsl(' + hue + ',95%,58%)'; }
-  if (st === 'sparkle') {                      // scatter sparkles along the stroke
+  if (st === 'rainbowb') { hue = (hue + dist * 2.2 + 1) % 360; col = 'hsl(' + hue + ',95%,58%)'; }
+  if (st === 'sparkle') {                      // scatter little stars along the stroke
     const n = Math.max(1, Math.round(dist / 4));
     cctx.fillStyle = col;
     for (let i = 0; i < n; i++) {
-      const t = Math.random(), off = size * 0.9 + 4;
-      const x = a.x + (b.x - a.x) * t + (Math.random() - 0.5) * 2 * off;
-      const y = a.y + (b.y - a.y) * t + (Math.random() - 0.5) * 2 * off;
+      const q = Math.random(), off = size * 0.9 + 4;
+      const x = a.x + (b.x - a.x) * q + (Math.random() - 0.5) * 2 * off;
+      const y = a.y + (b.y - a.y) * q + (Math.random() - 0.5) * 2 * off;
       cctx.globalAlpha = 0.55 + Math.random() * 0.45;
       star5(x * K, y * K, (2 + Math.random() * 3.6) * K * (0.6 + size / 28));
     }
@@ -774,16 +1307,42 @@ function flood(px, py, hex) {
   return true;
 }
 
-function setTool(t) {
-  tool = t;
-  document.querySelectorAll('#paintBar [data-tool]').forEach(b => b.classList.toggle('sel', b.dataset.tool === t));
+// put a sticker on the picture
+function stamp(p) {
+  const r = STAMP[sizeI] * K;
+  sctx.save(); sctx.setTransform(1, 0, 0, 1, 0, 0);
+  sctx.translate(p.x * K, p.y * K); sctx.rotate((Math.random() - 0.5) * 0.4); sctx.scale(r, r);
+  STK[stk](sctx); sctx.restore();
+}
+// change the background scene
+function setScene(id) {
+  cur.scene = id;
+  bctx.setTransform(1, 0, 0, 1, 0, 0); bctx.clearRect(0, 0, RES, RES);
+  if (id !== 'none') {
+    bctx.save(); bctx.setTransform(K, 0, 0, K, 0, 0); SCENES[id](bctx); bctx.restore();
+    bctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (cur.sil) bctx.drawImage(cur.sil, 0, 0);
+  }
+}
+
+function setTool(tl) {
+  tool = tl;
+  document.querySelectorAll('#paintBar [data-tool]').forEach(b => b.classList.toggle('sel', b.dataset.tool === tl));
+  $('palette').classList.toggle('on', tl !== 'sticker' && tl !== 'scene');
+  $('stickers').classList.toggle('on', tl === 'sticker');
+  $('scenes').classList.toggle('on', tl === 'scene');
+  if (cur && cur.mode !== 'trace') {
+    if (tl === 'sticker') $('tStep').textContent = t('pickSticker');
+    else if (tl === 'scene') $('tStep').textContent = t('pickScene');
+    else $('tStep').textContent = cur.mode === 'free' ? t('freeHint') : t('colourTime');
+  }
 }
 document.querySelectorAll('#paintBar [data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
-$('pUndo').onclick = () => { const u = undo.pop(); if (u) cctx.putImageData(u, 0, 0); };
-$('pClear').onclick = () => { if (!cur) return; pushUndo(); cctx.clearRect(0, 0, RES, RES); };
+$('pUndo').onclick = () => { const u = undo.pop(); if (u) u.c.putImageData(u.d, 0, 0); };
+$('pClear').onclick = () => { if (!cur) return; cctx.clearRect(0, 0, RES, RES); sctx.clearRect(0, 0, RES, RES); undo = []; };
 $('pDone').onclick = () => finish();
 
-// palette + brush sizes
+// colour palette
 COLORS.forEach((c, i) => {
   const b = document.createElement('button'); b.className = 'sw' + (i === 0 ? ' sel' : ''); b.style.background = c;
   if (c === '#ffffff') b.style.borderColor = '#d9d3e6';
@@ -793,20 +1352,59 @@ COLORS.forEach((c, i) => {
   };
   $('palette').appendChild(b);
 });
-SIZES.forEach((s, i) => {
-  const b = document.createElement('button'); b.className = 'sz' + (i === 1 ? ' sel' : '');
-  const d = [8, 15, 24][i]; b.innerHTML = '<i style="width:' + d + 'px;height:' + d + 'px"></i>';
-  b.onclick = () => { size = s; document.querySelectorAll('.sz:not(.st)').forEach(x => x.classList.toggle('sel', x === b)); };
-  $('sizes').appendChild(b);
-});
-// magic brush styles
-$('sizes').appendChild(Object.assign(document.createElement('span'), { className: 'gap' }));
-[['normal', '\u270F\uFE0F', 'Normal'], ['rainbow', '\uD83C\uDF08', 'Rainbow'], ['glow', '\uD83D\uDD06', 'Glow'], ['sparkle', '\u2728', 'Sparkle']].forEach((o, i) => {
-  const b = document.createElement('button'); b.className = 'sz st' + (i === 0 ? ' sel' : '');
-  b.textContent = o[1]; b.setAttribute('aria-label', o[2] + ' brush');
-  b.onclick = () => { bstyle = o[0]; document.querySelectorAll('.sz.st').forEach(x => x.classList.toggle('sel', x === b)); setTool('brush'); };
-  $('sizes').appendChild(b);
-});
+function lockBadge(n) {
+  const l = document.createElement('span'); l.className = 'lock';
+  l.innerHTML = '🔒<small>' + n + '★</small>'; return l;
+}
+function lockedMsg(n) { $('tStep').textContent = '🔒 ' + t('locked', n); }
+// sizes, brush styles, sticker and scene pickers (rebuilt each time, because gifts open as stars grow)
+function buildPickers() {
+  const sz = $('sizes'); sz.innerHTML = '';
+  SIZES.forEach((s, i) => {
+    const b = document.createElement('button'); b.className = 'sz' + (i === sizeI ? ' sel' : '');
+    const d = [8, 15, 24][i]; b.innerHTML = '<i style="width:' + d + 'px;height:' + d + 'px"></i>';
+    b.onclick = () => { sizeI = i; document.querySelectorAll('.sz:not(.st)').forEach(x => x.classList.toggle('sel', x === b)); };
+    sz.appendChild(b);
+  });
+  sz.appendChild(Object.assign(document.createElement('span'), { className: 'gap' }));
+  if (!isOpen('brush', bstyle)) bstyle = 'normal';
+  [['normal', '✏️'], ['rainbowb', '🌈'], ['glow', '🔆'], ['sparkle', '✨']].forEach(o => {
+    const b = document.createElement('button'); b.className = 'sz st' + (o[0] === bstyle ? ' sel' : '');
+    b.textContent = o[1]; b.setAttribute('aria-label', nm(o[0]));
+    const need = needStars('brush', o[0]), open = isOpen('brush', o[0]);
+    if (!open) b.appendChild(lockBadge(need));
+    b.onclick = () => {
+      if (!open) { lockedMsg(need); return; }
+      bstyle = o[0]; document.querySelectorAll('.sz.st').forEach(x => x.classList.toggle('sel', x === b)); setTool('brush');
+    };
+    sz.appendChild(b);
+  });
+  const sp = $('stickers'); sp.innerHTML = '';
+  if (!isOpen('sticker', stk)) stk = 'star';
+  STICKERS.forEach(id => {
+    const b = document.createElement('button'); b.className = 'pk' + (id === stk ? ' sel' : ''); b.setAttribute('aria-label', nm(id));
+    const cv = mk(84), x = cv.getContext('2d'); x.translate(42, 42); x.scale(31, 31); STK[id](x); b.appendChild(cv);
+    const need = needStars('sticker', id), open = isOpen('sticker', id);
+    if (!open) b.appendChild(lockBadge(need));
+    b.onclick = () => {
+      if (!open) { lockedMsg(need); return; }
+      stk = id; sp.querySelectorAll('.pk').forEach(q => q.classList.toggle('sel', q === b)); $('tStep').textContent = t('pickSticker');
+    };
+    sp.appendChild(b);
+  });
+  const cp = $('scenes'); cp.innerHTML = '';
+  SCENE_IDS.forEach(id => {
+    const b = document.createElement('button'); b.className = 'pk' + (cur && id === cur.scene ? ' sel' : ''); b.setAttribute('aria-label', nm(id));
+    const cv = mk(108), x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 108, 108); x.scale(108 / 320, 108 / 320); SCENES[id](x); b.appendChild(cv);
+    const need = needStars('scene', id), open = isOpen('scene', id);
+    if (!open) b.appendChild(lockBadge(need));
+    b.onclick = () => {
+      if (!open) { lockedMsg(need); return; }
+      setScene(id); cp.querySelectorAll('.pk').forEach(q => q.classList.toggle('sel', q === b)); sfx.pop();
+    };
+    cp.appendChild(b);
+  });
+}
 
 /* ------------------------------------------------------------------
    Finger input
@@ -820,18 +1418,22 @@ cGuide.addEventListener('pointerdown', e => {
   e.preventDefault(); ptr = e.pointerId;
   try { cGuide.setPointerCapture(ptr); } catch (_) {}
   const p = pos(e);
+  cur.painting = false;
   if (cur.mode === 'trace') {
     if (cur.lock) return;
     cur.strokes.push([p]); tracePoint(p);
     if (cur.nCov >= NEED * cur.samples.length) completeStep(false);
+  } else if (tool === 'scene') {
+    setTool('brush');                         // a tap on the picture goes back to the brush
+  } else if (tool === 'sticker') {
+    pushUndo(sctx); stamp(p); burst(p, 8); sfx.pop();
   } else if (tool === 'fill') {
     pushUndo();
     if (flood(Math.round(p.x * K), Math.round(p.y * K), color)) { cur.colors.add(color); burst(p, 8, color); }
     else undo.pop();
-    cur.painting = false;
   } else {
     pushUndo(); cur.last = p; cur.painting = true; dab(p, p);
-    if (tool === 'brush') { if (bstyle === 'rainbow') { cur.colors.add('rainbow1'); cur.colors.add('rainbow2'); } else cur.colors.add(color); }
+    if (tool === 'brush') { if (bstyle === 'rainbowb') { cur.colors.add('rainbow1'); cur.colors.add('rainbow2'); } else cur.colors.add(color); }
   }
 });
 cGuide.addEventListener('pointermove', e => {
@@ -849,7 +1451,7 @@ function endPtr(e) { if (e.pointerId !== ptr) return; ptr = null; if (cur) cur.p
 cGuide.addEventListener('pointerup', endPtr);
 cGuide.addEventListener('pointercancel', endPtr);
 document.addEventListener('gesturestart', e => e.preventDefault());
-document.addEventListener('contextmenu', e => { if (e.target.id !== 'pImg') e.preventDefault(); });
+document.addEventListener('contextmenu', e => { if (!e.target.classList || !e.target.classList.contains('shot')) e.preventDefault(); });
 
 /* ------------------------------------------------------------------
    Guide layer animation (dotted guide, moving hint dot, sparkles)
@@ -872,7 +1474,7 @@ function frame(now) {
     $('timer').classList.toggle('low', left < 0.25);
     if (left <= 0) {
       cur.quick.failed = true; $('timer').classList.remove('on');
-      $('tStep').textContent = 'Time is up! No rush, keep drawing';
+      $('tStep').textContent = t('timeUp');
     }
   }
   if (cur.mode === 'trace') {
@@ -896,7 +1498,7 @@ function frame(now) {
           const q = unc[idx];
           g.beginPath(); g.arc(q.x, q.y, 9, 0, 6.2832); g.fillStyle = 'rgba(255,93,143,.92)'; g.fill();
           g.lineWidth = 3; g.strokeStyle = '#fff'; g.stroke();
-          g.font = '22px sans-serif'; g.fillText('\uD83D\uDC46', q.x - 2, q.y + 30);
+          g.font = '22px sans-serif'; g.fillText('👆', q.x - 2, q.y + 30);
         }
       }
     }
@@ -911,15 +1513,16 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 /* ------------------------------------------------------------------
-   Finish: stars + celebration
+   Finish: stars, gifts and celebration
 ------------------------------------------------------------------- */
 let picBlob = null;
 function compose() {
   const c = mk(RES), x = c.getContext('2d');
   x.fillStyle = '#fff'; x.fillRect(0, 0, RES, RES);
-  x.drawImage(cColor, 0, 0); x.drawImage(cInk, 0, 0);
+  x.drawImage(cBg, 0, 0); x.drawImage(cColor, 0, 0); x.drawImage(cInk, 0, 0); x.drawImage(cStick, 0, 0);
   return c;
 }
+function small(comp) { const c = mk(400), x = c.getContext('2d'); x.drawImage(comp, 0, 0, 400, 400); return c.toDataURL('image/jpeg', 0.82); }
 function finish() {
   if (!cur || cur.mode === 'trace') return;
   const comp = compose();
@@ -928,44 +1531,42 @@ function finish() {
   $('pImg').src = comp.toDataURL('image/png');
   const stars = $('pStars').children;
   for (const s of stars) s.className = '';
-  let n = 0; const msgs = [];
+  let n = 0; const msgs = []; $('pGift').textContent = '';
   if (cur.mode === 'paint') {
     const d = cctx.getImageData(0, 0, RES, RES).data; let filled = 0;
     for (let i = 3; i < d.length; i += 16) if (d[i] > 40) filled++;
     const coverage = filled / (d.length / 16);
     const acc = cur.accN ? cur.accSum / cur.accN : 0;
-    n = 1; msgs.push('You traced it all');
-    if (cur.crown) msgs.unshift('Quick Draw trophy \uD83C\uDFC6');
-    if (acc >= 0.5 && cur.skips <= 1) { n++; msgs.push('neat lines'); }
-    if (coverage >= 0.15 && cur.colors.size >= 2) { n++; msgs.push('lovely colours'); }
-    const id = cur.ch.id;
+    n = 1; msgs.push(t('m_traced'));
+    if (cur.crown) msgs.unshift(t('m_trophy') + ' 🏆');
+    if (acc >= 0.5 && cur.skips <= 1) { n++; msgs.push(t('m_neat')); }
+    if (coverage >= 0.1 && cur.colors.size >= 2) { n++; msgs.push(t('m_colours')); }
+    const id = cur.ch.id, before = totalStars();
     save.stars[id] = Math.max(save.stars[id] || 0, n);
-    try { const t = mk(240), tx = t.getContext('2d'); tx.drawImage(comp, 0, 0, 240, 240); save.thumbs[id] = t.toDataURL('image/jpeg', 0.8); } catch (e) {}
+    const after = totalStars(), gifts = UNLOCKS.filter(u => u.at > before && u.at <= after);
+    if (gifts.length) $('pGift').textContent = '🎁 ' + t('unlocked') + ': ' + gifts.map(giftName).join(', ');
+    try { save.thumbs[id] = small(comp); } catch (e) {}
     persist();
-    $('pTitle').textContent = n === 3 ? 'Amazing!' : 'You did it!';
+    $('pTitle').textContent = n === 3 ? t('amazing') : t('didIt');
     $('pStars').style.display = '';
-    $('pMsg').textContent = msgs.join(', ') + '!' + (n < 3 ? (cur.colors.size < 2 ? ' Use more colours for 3 stars.' : ' Try again for 3 stars.') : '');
-    $('pNext').textContent = 'Next \u27A1\uFE0F';
+    $('pMsg').textContent = msgs.join(', ') + '! ' + (n < 3 ? (cur.colors.size < 2 ? t('moreColours') : t('tryAgain')) : '');
+    $('pNext').textContent = t('next') + ' ➡️';
   } else {
-    $('pTitle').textContent = 'Lovely drawing!';
+    try {                                         // keep free drawings in My Gallery (newest first, 12 at most)
+      save.album = save.album.filter(a => a.ts !== cur.ts);
+      save.album.unshift({ src: small(comp), ts: cur.ts }); save.album = save.album.slice(0, 12);
+    } catch (e) {}
+    persist();
+    $('pTitle').textContent = t('lovely');
     $('pStars').style.display = 'none';
-    $('pMsg').textContent = 'Save it to show your family.';
-    $('pNext').textContent = 'Keep drawing';
+    $('pMsg').textContent = t('saveMsg');
+    $('pNext').textContent = t('keep');
   }
   $('party').classList.add('on');
   sfx.win(); confetti();
   for (let i = 0; i < n; i++) setTimeout(() => { stars[i].className = 'y'; sfx.star(i); }, 700 + i * 380);
 }
-$('pSave').onclick = () => {
-  const b = picBlob; if (!b) return;
-  try {
-    const f = new File([b], 'my-doodle-pal.png', { type: 'image/png' });
-    if (navigator.canShare && navigator.canShare({ files: [f] })) { navigator.share({ files: [f], title: 'My drawing' }).catch(() => {}); return; }
-  } catch (e) {}
-  const a = document.createElement('a'), u = URL.createObjectURL(b);
-  a.href = u; a.download = 'my-doodle-pal.png'; document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(u), 5000);
-};
+$('pSave').onclick = () => sharePic(picBlob);
 $('pNext').onclick = () => {
   if (!cur || cur.mode === 'free') { $('party').classList.remove('on'); return; }
   const i = CHARS.indexOf(cur.ch); startChar(CHARS[(i + 1) % CHARS.length]);
@@ -973,7 +1574,7 @@ $('pNext').onclick = () => {
 $('pHome').onclick = showHome;
 $('bBack').onclick = () => {
   const busy = cur && (cur.mode === 'trace' ? cur.step > 0 : undo.length > 0);
-  if (!busy || window.confirm('Leave this drawing?')) showHome();
+  if (!busy || window.confirm(t('leave'))) showHome();
 };
 
 function confetti() {
@@ -999,6 +1600,7 @@ function confetti() {
    Start
 ------------------------------------------------------------------- */
 showMute();
+applyLang();
 showHome();
 })();
 </script>
