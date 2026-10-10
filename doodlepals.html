@@ -1132,6 +1132,118 @@ Object.assign(PART_MS, {
   'skirt folds': 'lipatan skirt', 'skirt shadows': 'bayang skirt', 'top': 'baju', 'belt': 'tali pinggang', 'skirt': 'skirt'
 });
 
+/* ------------------------------------------------------------------
+   Her favourite pals, redrawn the Real Art way
+   (Patches and Bobo as big detailed heads, Gogo as a full body)
+------------------------------------------------------------------- */
+const PT_HEAD = E(160, 172, 96, 90);
+const PT_BRAID = 'M84,120 C40,130 22,200 40,268 C46,288 72,286 76,266 C66,220 76,180 96,160 Z';
+const PT_FRINGE = 'M66,160 C62,100 110,74 160,76 C210,74 258,100 254,160 C240,130 226,120 212,138 C204,112 184,108 176,134 C168,108 152,108 144,134 C136,108 116,112 108,138 C94,120 80,130 66,160 Z';
+const PT_PATCH = 'M208,200 L234,196 L238,222 L212,226 Z';
+const PT_NOSE = 'M151,202 L169,202 L160,215 Z';
+const BB_HEAD = C(160, 178, 82);
+const BB_HAT = 'M112,112 L160,22 L208,112 Z';
+const BB_COLLAR = 'M92,246 Q78,268 100,276 Q104,296 126,288 Q140,306 160,292 Q180,306 194,288 Q216,296 220,276 Q242,268 228,246 Z';
+const BB_MOUTH = 'M112,216 Q160,270 208,216 Q160,238 112,216 Z';
+const GG_BODY = 'M108,96 Q108,48 160,48 Q212,48 212,96 L212,232 Q212,266 180,266 L140,266 Q108,266 108,232 Z';
+const GG_HAIR = 'M138,54 L130,22 L150,44 L160,14 L170,44 L190,22 L182,54 Z';
+const GG_ARM = 'M112,176 Q62,166 54,108 Q52,92 66,94 Q80,96 80,112 Q86,142 112,150 Z';
+const GG_MOUTH = 'M126,146 L194,146 Q194,184 160,184 Q126,184 126,146 Z';
+const GG_TONGUE = 'M146,181 Q146,166 160,166 Q174,166 174,181 Q160,186 146,181 Z';
+const GG_TEETH = ['M142,146 L156,146 L156,159 L142,159 Z', 'M164,146 L178,146 L178,159 L164,159 Z'];
+
+const FAVS = [
+  { id: 'patches_r', name: 'Patches the Rag Doll', ms: 'Patches si Patung Kain', pack: 'real', tint: '#ffeccf', lw: 3.6, steps: [
+    { n: 'head', sh: [S(PT_HEAD)] },
+    { n: 'braids', sh: pair(PT_BRAID, BEH) },
+    { n: 'braid lines', sh: pair('M33,196 Q50,206 70,196 M36,232 Q54,242 73,232', BLINE) },
+    { n: 'fringe', sh: [S(PT_FRINGE)] },
+    { n: 'hair strands', sh: [S('M120,92 Q116,104 122,116 M160,82 L160,110 M200,92 Q204,104 198,116', LINE)] },
+    { n: 'bow', sh: bow(214, 98, 26, 16, 8) },
+    { n: 'eyebrows', sh: [S('M108,148 Q126,140 144,148 M176,148 Q194,140 212,148', LINE)] },
+    { n: 'button eyes', sh: [S(C(126, 178, 19)), S(C(194, 178, 19))] },
+    { n: 'button holes', sh: [S(C(120, 178, 3.2), DOT), S(C(132, 178, 3.2), DOT), S(C(188, 178, 3.2), DOT), S(C(200, 178, 3.2), DOT)] },
+    { n: 'nose', sh: [S(PT_NOSE)] },
+    { n: 'smile', sh: [S('M122,224 Q160,258 198,224', LINE)] },
+    { n: 'rosy cheek', sh: [S(C(96, 212, 13))] },
+    { n: 'patch', sh: [S(PT_PATCH)] },
+    P('braids', '#e2552f', pair(PT_BRAID)),
+    P('face', '#ffd9b8', [S(PT_HEAD)]),
+    P('face shadow', '#f2bd97', [S('M252,196 C246,244 206,266 160,262 C204,254 236,230 244,186 Z')]),
+    P('fringe', '#e2552f', [S(PT_FRINGE)]),
+    P('hair shine', '#ff8f66', [S('M100,106 C116,92 138,86 152,88 C134,94 118,104 108,118 Z')]),
+    P('button eyes', '#3a86ff', [S(C(126, 178, 19)), S(C(194, 178, 19))]),
+    P('button shine', '#ffffff', [S(C(117, 167, 4.5)), S(C(185, 167, 4.5))]),
+    P('rosy cheek', '#ff9aa8', [S(C(96, 212, 13))]),
+    P('patch', '#8fd6a0', [S(PT_PATCH)]),
+    P('nose', '#e0409a', [S(PT_NOSE)]),
+    P('bow', '#b05cff', bow(214, 98, 26, 16, 8))
+  ]},
+
+  { id: 'bobo_r', name: 'Bobo the Clown', ms: 'Bobo si Badut', pack: 'real', tint: '#ffe3ec', lw: 3.6, steps: [
+    { n: 'head', sh: [S(BB_HEAD)] },
+    { n: 'curly hair', sh: [S(scallop(64, 172, 40, 8), BEH), S(scallop(256, 172, 40, 8), BEH)] },
+    { n: 'party hat', sh: [S(BB_HAT)] },
+    { n: 'hat zigzag', sh: [S('M126,86 L143,72 L160,86 L177,72 L194,86', LINE)] },
+    { n: 'pom pom', sh: [S(C(160, 18, 12))] },
+    { n: 'eyebrows', sh: [S('M112,140 Q128,126 144,140 M176,140 Q192,126 208,140', LINE)] },
+    { n: 'eyes', sh: [S(E(128, 166, 11, 15)), S(E(192, 166, 11, 15))] },
+    { n: 'pupils', sh: [S(C(129, 170, 5.5), DOT), S(C(191, 170, 5.5), DOT)] },
+    { n: 'round nose', sh: [S(C(160, 198, 17))] },
+    { n: 'big smile', sh: [S(BB_MOUTH)] },
+    { n: 'cheeks', sh: [S(C(102, 208, 12)), S(C(218, 208, 12))] },
+    { n: 'ruffle collar', sh: [S(BB_COLLAR, BEH)] },
+    P('curly hair', '#ff8a1c', [S(scallop(64, 172, 40, 8)), S(scallop(256, 172, 40, 8))]),
+    P('ruffle collar', '#5ac8fa', [S(BB_COLLAR)]),
+    P('face', '#ffe9d6', [S(BB_HEAD)]),
+    P('face shadow', '#f3ccb0', [S('M240,196 C236,238 204,262 160,258 C200,250 228,228 234,188 Z')]),
+    P('party hat', '#3a86ff', [S(BB_HAT)]),
+    P('hat shadow', '#2a62c9', [S('M160,22 L208,112 L178,112 Z')]),
+    P('pom pom', '#ffd23f', [S(C(160, 18, 12))]),
+    P('cheeks', '#ff9aa8', [S(C(102, 208, 12)), S(C(218, 208, 12))]),
+    P('big smile', '#c21f33', [S(BB_MOUTH)]),
+    P('round nose', '#e8343f', [S(C(160, 198, 17))]),
+    P('nose shine', '#ffffff', [S(E(153, 191, 5, 4))])
+  ]},
+
+  { id: 'gogo_r', name: 'Gogo', pack: 'real', tint: '#e6f8d6', lw: 3.6, steps: [
+    { n: 'tall body', sh: [S(GG_BODY)] },
+    { n: 'spiky hair', sh: [S(GG_HAIR, BEH)] },
+    { n: 'waving arms', sh: pair(GG_ARM, BEH) },
+    { n: 'eyebrows', sh: [S('M120,84 Q138,76 156,86 M164,86 Q182,76 200,84', LINE)] },
+    { n: 'eyes', sh: [S(C(138, 108, 18)), S(C(182, 108, 18))] },
+    { n: 'coloured ring', sh: [S(C(140, 110, 9)), S(C(180, 110, 9))] },
+    { n: 'pupils', sh: [S(C(141, 111, 4.2), DOT), S(C(179, 111, 4.2), DOT)] },
+    { n: 'mouth', sh: [S(GG_MOUTH)] },
+    { n: 'teeth', sh: GG_TEETH.map(d => S(d)) },
+    { n: 'tongue', sh: [S(GG_TONGUE)] },
+    { n: 'tummy', sh: [S(E(160, 226, 32, 24))] },
+    { n: 'tummy stripes', sh: [S('M133,220 Q160,228 187,220 M131,234 Q160,242 189,234', LINE)] },
+    { n: 'spots', sh: [S(C(122, 198, 7)), S(C(199, 194, 8)), S(C(120, 136, 5)), S(C(201, 140, 5))] },
+    { n: 'feet', sh: [S(E(134, 272, 24, 13), BEH), S(E(186, 272, 24, 13), BEH)] },
+    { n: 'toes', sh: [S('M122,271 L122,281 M134,273 L134,284 M146,271 L146,281 M174,271 L174,281 M186,273 L186,284 M198,271 L198,281', BLINE)] },
+    P('spiky hair', '#2f9e44', [S(GG_HAIR)]),
+    P('waving arms', '#7ed957', pair(GG_ARM)),
+    P('feet', '#5fbf45', [S(E(134, 272, 24, 13)), S(E(186, 272, 24, 13))]),
+    P('tall body', '#7ed957', [S(GG_BODY)]),
+    P('body shadow', '#5fbf45', [S('M212,96 L212,232 Q212,266 180,266 L172,266 Q194,262 194,232 L194,96 Q194,66 174,52 Q212,56 212,96 Z')]),
+    P('tummy', '#fff3b0', [S(E(160, 226, 32, 24))]),
+    P('spots', '#3fa34d', [S(C(122, 198, 7)), S(C(199, 194, 8)), S(C(120, 136, 5)), S(C(201, 140, 5))]),
+    P('eyes', '#ffffff', [S(C(138, 108, 18)), S(C(182, 108, 18))]),
+    P('coloured ring', '#ff9f1c', [S(C(140, 110, 9)), S(C(180, 110, 9))]),
+    P('eye shine', '#ffffff', [S(C(135.5, 105, 2.8)), S(C(175.5, 105, 2.8))]),
+    P('mouth', '#8b1e3f', [S(GG_MOUTH)]),
+    P('tongue', '#ff7a9a', [S(GG_TONGUE)]),
+    P('teeth', '#ffffff', GG_TEETH.map(d => S(d)))
+  ]}
+];
+CHARS.unshift.apply(CHARS, FAVS);
+Object.assign(PART_MS, {
+  'braid lines': 'garisan tocang', 'hair strands': 'helaian rambut', 'rosy cheek': 'pipi merah', 'face shadow': 'bayang muka', 'hair shine': 'kilau rambut',
+  'button shine': 'kilau butang', 'hat zigzag': 'zigzag topi', 'pom pom': 'pom-pom', 'hat shadow': 'bayang topi', 'nose shine': 'kilau hidung',
+  'body shadow': 'bayang badan', 'tongue': 'lidah', 'pupils': 'anak mata'
+});
+
 (function () {
 'use strict';
 
