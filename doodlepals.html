@@ -53,6 +53,7 @@ button{font-family:inherit;color:inherit;border:0;background:none;padding:0;touc
 .pack{margin:22px 4px 10px;font-size:21px;display:flex;align-items:center;gap:8px;}
 .lvl{margin-left:auto;font-size:12px;padding:3px 9px;border-radius:999px;background:#e6f6ee;color:#0f8c80;}
 .lvl.hard{background:#ffe3ec;color:#c2185b;}
+.lvl.vhard{background:#2b2440;color:#ffd23f;}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .card{background:var(--card);border-radius:22px;padding:10px 10px 12px;box-shadow:0 5px 0 rgba(43,36,64,.14);text-align:center;}
 .card:active,.big3:active{transform:translateY(3px);}
@@ -1673,6 +1674,126 @@ Object.assign(PART_MS, {
   'head stripes': 'jalur kepala', 'cheek star and diamond': 'bintang dan berlian di pipi', 'hair ties': 'pengikat rambut', 'happy mouth': 'mulut gembira', 'hair tuft': 'jambul', 'little fangs': 'taring kecil'
 });
 
+/* ------------------------------------------------------------------
+   SCARY MONSTERS (4 stars, the hardest): more parts, smaller details,
+   sharp teeth, claws and more colour layers.
+------------------------------------------------------------------- */
+const GN_HEAD = 'M70,150 C70,84 110,56 160,56 C210,56 250,84 250,150 C250,214 214,250 160,250 C106,250 70,214 70,150 Z';
+const GN_HORN = 'M92,100 C60,84 40,50 52,18 C70,44 96,60 122,70 Z';
+const GN_EAR = 'M74,140 L34,120 L52,150 L30,168 L74,176 Z';
+const GN_SPIKES = 'M132,60 L140,34 L150,56 L160,26 L170,56 L180,34 L188,60 Z';
+const GN_BROW = 'M96,112 L150,128 L148,138 L94,124 Z';
+const GN_EYE = 'M100,138 Q124,128 148,146 Q124,162 100,138 Z';
+const GN_MOUTH = 'M92,190 Q160,176 228,190 Q224,244 160,246 Q96,244 92,190 Z';
+const GN_TOP_TEETH = 'M100,189 L110,210 L120,188 L132,212 L144,186 L156,212 L168,186 L180,212 L192,188 L204,210 L220,189 Q160,177 100,189 Z';
+const GN_LOW_TEETH = 'M108,237 L118,219 L128,239 L140,221 L152,242 L160,223 L168,242 L180,221 L192,239 L202,219 L212,237 Q160,247 108,237 Z';
+const GN_TONGUE = 'M138,240 Q140,224 160,224 Q180,224 182,240 Q160,246 138,240 Z';
+const GN_BODY = 'M84,232 C50,250 40,290 40,318 L280,318 C280,290 270,250 236,232 Z';
+const GN_PAW = E(70, 290, 34, 24);
+const GN_CLAWS = ['M44,274 L38,248 L58,268 Z', 'M62,266 L64,240 L78,264 Z', 'M82,268 L92,246 L98,274 Z'];
+const CR_BODY = 'M160,60 C226,60 262,108 258,166 C256,214 222,244 160,244 C98,244 64,214 62,166 C58,108 94,60 160,60 Z';
+const CR_T1 = 'M92,214 C50,226 30,262 44,296 C50,310 70,306 66,290 C60,262 84,246 112,236 Z';
+const CR_T2 = 'M128,240 C112,268 110,296 124,314 C134,322 148,312 140,300 C132,282 138,262 150,244 Z';
+const CR_ARM = 'M76,130 C40,120 22,88 30,56 C34,44 50,48 48,62 C46,86 62,100 88,106 Z';
+const CR_SLIME = 'M96,96 C110,70 136,60 160,60 C184,60 210,70 224,96 C218,106 208,102 206,90 C200,98 192,98 190,86 C182,98 170,98 168,84 C160,98 150,98 148,84 C140,98 130,98 128,88 C122,100 112,102 110,92 C106,104 98,106 96,96 Z';
+const CR_MOUTH = 'M88,186 Q160,168 232,186 Q214,232 160,234 Q106,232 88,186 Z';
+const CR_TEETH = 'M96,186 L104,202 L112,184 L122,203 L132,181 L142,203 L152,179 L160,203 L168,179 L178,203 L188,181 L198,203 L208,184 L216,202 L224,186 Q160,170 96,186 Z';
+const CR_FANGS = ['M124,227 L132,207 L140,230 Z', 'M180,230 L188,207 L196,227 Z'];
+const CR_TONGUE = 'M146,232 Q148,215 160,215 Q172,215 174,232 Q160,238 146,232 Z';
+const CR_SUCK = [[50, 274, 5], [57, 255, 4], [72, 240, 3.4], [270, 274, 5], [263, 255, 4], [248, 240, 3.4], [124, 292, 5], [126, 273, 4], [196, 292, 5], [194, 273, 4]];
+const CR_WARTS = [S(C(86, 162, 6)), S(C(236, 160, 7)), S(C(226, 208, 5)), S(C(96, 204, 4))];
+const sucks = () => CR_SUCK.map(q => S(C(q[0], q[1], q[2])));
+
+const SCARY = [
+  RA('gnash', 'Gnash the Horned Beast', 'Gnash si Raksasa Bertanduk', 'scary', '#e8dcff', [
+    { n: 'head', sh: [S(GN_HEAD)] },
+    { n: 'horns', sh: pair(GN_HORN, BEH) },
+    { n: 'horn rings', sh: pair('M56,48 Q68,44 78,54 M68,70 Q82,64 94,74', BLINE) },
+    { n: 'spiky ears', sh: pair(GN_EAR, BEH) },
+    { n: 'head spikes', sh: [S(GN_SPIKES, BEH)] },
+    { n: 'angry eyebrows', sh: pair(GN_BROW) },
+    { n: 'glowing eyes', sh: pair(GN_EYE) },
+    { n: 'slit pupils', sh: [S(E(126, 145, 3.4, 7.5), DOT), S(E(194, 145, 3.4, 7.5), DOT)] },
+    { n: 'nose slits', sh: [S('M151,166 Q155,172 151,178 M169,166 Q165,172 169,178', LINE)] },
+    { n: 'cheek scratches', sh: [S('M80,178 L90,196 M88,174 L98,192 M232,174 L222,192 M240,178 L230,196', LINE)] },
+    { n: 'huge mouth', sh: [S(GN_MOUTH)] },
+    { n: 'tongue', sh: [S(GN_TONGUE)] },
+    { n: 'top teeth', sh: [S(GN_TOP_TEETH)] },
+    { n: 'bottom teeth', sh: [S(GN_LOW_TEETH)] },
+    { n: 'shoulders', sh: [S(GN_BODY, BEH)] },
+    { n: 'claws', sh: GN_CLAWS.map(d => S(d)).concat(GN_CLAWS.map(d => S(mir(d)))) },
+    { n: 'paws', sh: [S(GN_PAW), S(E(250, 290, 34, 24))] },
+    { n: 'paw lines', sh: [S('M58,276 L58,292 M72,274 L72,292 M86,278 L86,292 M234,278 L234,292 M248,274 L248,292 M262,276 L262,292', LINE)] },
+    P('horns', '#e6dec9', pair(GN_HORN)),
+    P('horn shadows', '#bfb497', pair('M52,18 C70,44 96,60 122,70 L112,80 C88,66 66,46 52,18 Z')),
+    P('spiky ears', '#5b2d8e', pair(GN_EAR)),
+    P('head spikes', '#3d1d66', [S(GN_SPIKES)]),
+    P('shoulders', '#5b2d8e', [S(GN_BODY)]),
+    P('head', '#7b3fc4', [S(GN_HEAD)]),
+    P('head shadow', '#5b2d8e', [S('M248,160 C246,214 212,248 160,248 C206,238 236,208 238,150 Z')]),
+    P('head shine', '#9a63e0', [S('M88,128 C92,98 112,76 140,68 C118,82 104,104 100,132 Z')]),
+    P('angry eyebrows', '#2b1648', pair(GN_BROW)),
+    P('glowing eyes', '#ffe94a', pair(GN_EYE)),
+    P('huge mouth', '#3a0d1e', [S(GN_MOUTH)]),
+    P('tongue', '#ff4d6d', [S(GN_TONGUE)]),
+    P('top teeth', '#fff8e6', [S(GN_TOP_TEETH)]),
+    P('bottom teeth', '#fff8e6', [S(GN_LOW_TEETH)]),
+    P('claws', '#fff8e6', GN_CLAWS.map(d => S(d)).concat(GN_CLAWS.map(d => S(mir(d))))),
+    P('paws', '#7b3fc4', [S(GN_PAW), S(E(250, 290, 34, 24))])
+  ]),
+
+  RA('creep', 'Creep the Slime Monster', 'Creep si Raksasa Lendir', 'scary', '#dff7e6', [
+    { n: 'body', sh: [S(CR_BODY)] },
+    { n: 'slime', sh: [S(CR_SLIME)] },
+    { n: 'waving tentacles', sh: pair(CR_ARM, BEH) },
+    { n: 'side tentacles', sh: pair(CR_T1, BEH) },
+    { n: 'middle tentacles', sh: pair(CR_T2, BEH) },
+    { n: 'suckers', sh: sucks() },
+    { n: 'eyebrow', sh: [S('M124,102 Q160,90 196,102', LINE)] },
+    { n: 'big middle eye', sh: [S(C(160, 134, 28))] },
+    { n: 'red ring', sh: [S(C(160, 137, 15))] },
+    { n: 'slit pupil', sh: [S(E(160, 138, 4.2, 11), DOT)] },
+    { n: 'side eyes', sh: [S(C(104, 128, 15)), S(C(216, 128, 15))] },
+    { n: 'side eye rings', sh: [S(C(105, 130, 7.5)), S(C(215, 130, 7.5))] },
+    { n: 'side pupils', sh: [S(C(105, 131, 3.2), DOT), S(C(215, 131, 3.2), DOT)] },
+    { n: 'wide mouth', sh: [S(CR_MOUTH)] },
+    { n: 'tongue', sh: [S(CR_TONGUE)] },
+    { n: 'sharp teeth', sh: [S(CR_TEETH)] },
+    { n: 'bottom fangs', sh: CR_FANGS.map(d => S(d)) },
+    { n: 'warts', sh: CR_WARTS },
+    P('waving tentacles', '#2f8f6f', pair(CR_ARM)),
+    P('side tentacles', '#2f8f6f', pair(CR_T1)),
+    P('middle tentacles', '#2f8f6f', pair(CR_T2)),
+    P('suckers', '#ffb8c8', sucks()),
+    P('body', '#3fb58a', [S(CR_BODY)]),
+    P('body shadow', '#2f8f6f', [S('M256,170 C254,214 220,242 160,242 C210,234 242,208 246,160 Z')]),
+    P('warts', '#2f8f6f', [S(C(86, 162, 6)), S(C(236, 160, 7)), S(C(226, 208, 5)), S(C(96, 204, 4))]),
+    P('slime', '#b6f04a', [S(CR_SLIME)]),
+    P('slime shine', '#ffffff', [S('M120,80 C132,70 146,66 158,66 C146,70 134,76 126,84 Z')]),
+    P('big middle eye', '#ffffff', [S(C(160, 134, 28))]),
+    P('red ring', '#e8343f', [S(C(160, 137, 15))]),
+    P('side eyes', '#ffffff', [S(C(104, 128, 15)), S(C(216, 128, 15))]),
+    P('side eye rings', '#ff9f1c', [S(C(105, 130, 7.5)), S(C(215, 130, 7.5))]),
+    P('eye shine', '#ffffff', [S(C(151, 130, 3.4)), S(C(100.5, 126.5, 1.8)), S(C(210.5, 126.5, 1.8))]),
+    P('wide mouth', '#2a0f2e', [S(CR_MOUTH)]),
+    P('tongue', '#b05cff', [S(CR_TONGUE)]),
+    P('sharp teeth', '#fff8e6', [S(CR_TEETH)]),
+    P('bottom fangs', '#fff8e6', CR_FANGS.map(d => S(d)))
+  ])
+];
+// insert the scary pack right after the Toy Monsters: Real Art group
+CHARS.splice(RA_ALL.length, 0, SCARY[0], SCARY[1]);
+PACKS.splice(2, 0, { id: 'scary', name: 'Scary Monsters', ms: 'Raksasa Seram', icon: '👾', hard: true, level: 4 });
+Object.assign(PART_MS, {
+  'horn rings': 'gelang tanduk', 'spiky ears': 'telinga berduri', 'angry eyebrows': 'kening marah', 'glowing eyes': 'mata bercahaya',
+  'slit pupils': 'anak mata tirus', 'nose slits': 'lubang hidung', 'cheek scratches': 'calar di pipi', 'huge mouth': 'mulut besar',
+  'top teeth': 'gigi atas', 'bottom teeth': 'gigi bawah', 'shoulders': 'bahu', 'paw lines': 'garisan tapak tangan', 'horn shadows': 'bayang tanduk',
+  'slime': 'lendir', 'waving tentacles': 'sesungut melambai', 'side tentacles': 'sesungut tepi', 'middle tentacles': 'sesungut tengah',
+  'suckers': 'penyedut', 'big middle eye': 'mata besar di tengah', 'red ring': 'gelang merah', 'slit pupil': 'anak mata tirus',
+  'side eyes': 'mata tepi', 'side eye rings': 'gelang mata tepi', 'side pupils': 'anak mata tepi', 'wide mouth': 'mulut lebar',
+  'sharp teeth': 'gigi tajam', 'bottom fangs': 'taring bawah', 'warts': 'ketuat', 'slime shine': 'kilau lendir', 'claws': 'kuku tajam', 'paws': 'tapak tangan'
+});
+
 (function () {
 'use strict';
 
@@ -1733,7 +1854,7 @@ const STR = {
     leave: 'Leave this drawing?', delAsk: 'Delete this picture?', locked: 'Collect {0} stars to open this',
     unlocked: 'New gift', nextGift: 'Next gift at {0} stars: {1}', allGifts: 'You opened every gift!',
     pickSticker: 'Tap the picture to add a sticker', pickScene: 'Pick a scene',
-    zoomHint: 'Tap the part you want to zoom in on', hard: 'Hard', easy: 'Easy',
+    zoomHint: 'Tap the part you want to zoom in on', hard: 'Hard', vhard: 'Very hard', easy: 'Easy',
     k_sticker: 'sticker', k_scene: 'scene', k_brush: 'brush'
   },
   ms: {
@@ -1750,7 +1871,7 @@ const STR = {
     leave: 'Keluar dari lukisan ini?', delAsk: 'Buang lukisan ini?', locked: 'Kumpul {0} bintang untuk buka',
     unlocked: 'Hadiah baru', nextGift: 'Hadiah seterusnya pada {0} bintang: {1}', allGifts: 'Semua hadiah sudah dibuka!',
     pickSticker: 'Sentuh lukisan untuk letak pelekat', pickScene: 'Pilih latar',
-    zoomHint: 'Sentuh bahagian yang hendak dibesarkan', hard: 'Susah', easy: 'Senang',
+    zoomHint: 'Sentuh bahagian yang hendak dibesarkan', hard: 'Susah', vhard: 'Sangat susah', easy: 'Senang',
     k_sticker: 'pelekat', k_scene: 'latar', k_brush: 'berus'
   }
 };
@@ -2020,7 +2141,7 @@ function showHome() {
   g.appendChild(gift);
   for (const pk of PACKS) {
     const h = document.createElement('div'); h.className = 'pack'; h.textContent = pk.icon + ' ' + packName(pk);
-    const lv = document.createElement('span'); lv.className = 'lvl' + (pk.hard ? ' hard' : ''); lv.textContent = pk.hard ? '\u2605\u2605\u2605 ' + t('hard') : '\u2605 ' + t('easy'); h.appendChild(lv);
+    const lv = document.createElement('span'); lv.className = 'lvl' + (pk.hard ? ' hard' : '') + (pk.level === 4 ? ' vhard' : ''); lv.textContent = pk.level === 4 ? '\u2605\u2605\u2605\u2605 ' + t('vhard') : pk.hard ? '\u2605\u2605\u2605 ' + t('hard') : '\u2605 ' + t('easy'); h.appendChild(lv);
     g.appendChild(h);
     const grid = document.createElement('div'); grid.className = 'grid'; g.appendChild(grid);
     CHARS.filter(c => c.pack === pk.id).forEach(ch => {
