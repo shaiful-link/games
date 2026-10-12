@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Blocky Land</title>
+<style>
+  :root{
+    --ui-bg: rgba(20,24,40,.72);
+    --ui-border: rgba(255,255,255,.35);
+    --accent:#ffd166;
+    --danger:#ef476f;
+    --ok:#06d6a0;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;touch-action:none}
+  #c{position:fixed;inset:0;width:100%;height:100%;display:block}
+
+  /* ---------- HUD ---------- */
+  #hud{position:fixed;inset:0;pointer-events:none;display:none}
+  #hud.on{display:block}
+  .hudtop{position:absolute;top:calc(8px + env(safe-area-inset-top));left:0;right:0;display:flex;justify-content:center;align-items:center;gap:10px;pointer-events:none}
+  #hearts{display:flex;gap:3px;font-size:22px;filter:drop-shadow(0 2px 2px rgba(0,0,0,.6))}
+  #hearts span{transition:transform .15s}
+  #hearts span.lost{filter:grayscale(1) brightness(.5)}
+  #clock{position:absolute;top:calc(8px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));background:var(--ui-bg);border:2px solid var(--ui-border);border-radius:14px;padding:4px 10px;color:#fff;font-weight:700;font-size:14px;display:flex;align-items:center;gap:6px}
+  #modeTag{position:absolute;top:calc(8px + env(safe-area-inset-top));left:calc(60px + env(safe-area-inset-left));background:var(--ui-bg);border:2px solid var(--ui-border);border-radius:14px;padding:4px 10px;color:#fff;font-weight:700;font-size:14px}
+  #crosshair{position:absolute;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;pointer-events:none}
+  #crosshair:before,#crosshair:after{content:"";position:absolute;background:#fff;opacity:.85;box-shadow:0 0 3px #000}
+  #crosshair:before{left:10px;top:0;width:2px;height:22px}
+  #crosshair:after{top:10px;left:0;width:22px;height:2px}
+  #banner{position:absolute;top:22%;left:50%;transform:translateX(-50%);background:var(--ui-bg);border:3px solid var(--accent);color:#fff;font-weight:800;font-size:clamp(16px,4vw,26px);padding:10px 18px;border-radius:16px;opacity:0;transition:opacity .4s;text-align:center;max-width:90vw}
+  #banner.show{opacity:1}
+  #hurt{position:fixed;inset:0;background:radial-gradient(ellipse at center, rgba(255,0,0,0) 40%, rgba(255,0,0,.55) 100%);opacity:0;pointer-events:none;transition:opacity .25s}
+
+  .btn{position:absolute;pointer-events:auto;background:var(--ui-bg);border:2px solid var(--ui-border);color:#fff;border-radius:50%;width:64px;height:64px;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;box-shadow:0 3px 8px rgba(0,0,0,.5)}
+  .btn:active,.btn.down{background:rgba(255,209,102,.85);color:#222;transform:scale(.95)}
+  .btn.small{width:46px;height:46px;font-size:18px}
+  #btnPause{top:calc(8px + env(safe-area-inset-top));left:calc(10px + env(safe-area-inset-left));width:42px;height:42px;font-size:18px;border-radius:12px}
+
+  /* right-hand cluster, kept off the middle of the screen */
+  #btnJump{right:calc(16px + env(safe-area-inset-right));bottom:calc(120px + env(safe-area-inset-bottom))}
+  #btnBreak{right:calc(96px + env(safe-area-inset-right));bottom:calc(150px + env(safe-area-inset-bottom));font-size:30px}
+  #btnPlace{right:calc(96px + env(safe-area-inset-right));bottom:calc(76px + env(safe-area-inset-bottom));font-size:30px}
+  #btnFly{right:calc(16px + env(safe-area-inset-right));bottom:calc(196px + env(safe-area-inset-bottom));display:none}
+  #btnDown{right:calc(16px + env(safe-area-inset-right));bottom:calc(60px + env(safe-area-inset-bottom));display:none}
+  .creative #btnFly,.creative #btnDown{display:flex}
+  .creative #btnJump{bottom:calc(128px + env(safe-area-inset-bottom))}
+  .nomobile .btn,.nomobile #joy,.nomobile #blockbar{display:none !important}
+  .nomobile #btnPause{display:flex !important}
+
+  #joy{position:absolute;left:calc(26px + env(safe-area-inset-left));bottom:calc(90px + env(safe-area-inset-bottom));width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.10);border:2px solid var(--ui-border);pointer-events:none}
+  #knob{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:rgba(255,255,255,.55);border:2px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.4)}
+
+  #blockbar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(10px + env(safe-area-inset-bottom));display:flex;gap:6px;padding:6px;background:var(--ui-bg);border:2px solid var(--ui-border);border-radius:14px;pointer-events:auto;max-width:calc(100vw - 20px);overflow-x:auto}
+  .slot{width:42px;height:42px;border-radius:9px;border:3px solid transparent;flex:0 0 auto;position:relative;image-rendering:pixelated;background-size:cover}
+  .slot.sel{border-color:var(--accent);box-shadow:0 0 0 2px #222 inset}
+  .slot i{position:absolute;right:2px;bottom:0;font-size:10px;color:#fff;text-shadow:0 1px 2px #000;font-style:normal;font-weight:700}
+
+  /* ---------- Screens ---------- */
+  .screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:10px;color:#fff;text-align:center;padding:max(16px,env(safe-area-inset-top)) 20px 30px;overflow-y:auto;touch-action:pan-y}
+  .screen > :first-child{margin-top:auto}
+  .screen > :last-child{margin-bottom:auto}
+  .menuBtn{padding:11px}
+  #title{background:linear-gradient(#7fd3ff 0%,#bfe9ff 55%,#79c06a 55%,#4e8f3f 100%)}
+  #title h1{font-size:clamp(40px,10vw,74px);margin:0;letter-spacing:2px;color:#fff;text-shadow:0 4px 0 #2a6f2a,0 8px 14px rgba(0,0,0,.4);transform:rotate(-3deg)}
+  #title p{margin:0;font-size:clamp(14px,3.6vw,20px);color:#1e3a1e;font-weight:700;background:rgba(255,255,255,.55);padding:6px 14px;border-radius:12px}
+  .modeBtn{width:min(86vw,360px);padding:16px 18px;border-radius:18px;border:4px solid #fff;font-size:22px;font-weight:900;color:#fff;box-shadow:0 6px 0 rgba(0,0,0,.25);cursor:pointer;text-align:left;display:flex;align-items:center;gap:14px}
+  .modeBtn small{display:block;font-size:13px;font-weight:600;opacity:.95}
+  .modeBtn span.ic{font-size:34px}
+  .modeBtn:active{transform:translateY(4px);box-shadow:0 2px 0 rgba(0,0,0,.25)}
+  #bCreative{background:linear-gradient(135deg,#8e6cff,#5aa9ff)}
+  #bSurvival{background:linear-gradient(135deg,#ff8c42,#ef476f)}
+  #continueRow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .mini{padding:10px 16px;border-radius:12px;border:3px solid #fff;background:rgba(0,0,0,.35);color:#fff;font-weight:800;font-size:15px;cursor:pointer}
+  #pause,#dead{background:rgba(10,12,30,.82);display:none}
+  #pause.on,#dead.on{display:flex}
+  #pause h2,#dead h2{margin:0 0 6px;font-size:34px}
+  #dead h2{color:#ff7b9c}
+  .menuBtn{width:min(80vw,300px);padding:14px;border-radius:14px;border:3px solid #fff;background:rgba(255,255,255,.12);color:#fff;font-size:18px;font-weight:800;cursor:pointer}
+  .menuBtn:active{background:rgba(255,255,255,.3)}
+  .menuBtn.warn{border-color:var(--danger);color:#ffb3c6}
+  #help{font-size:13px;opacity:.9;max-width:360px;line-height:1.5;background:rgba(255,255,255,.1);padding:10px 14px;border-radius:12px}
+  .wormpic{font-size:70px;filter:drop-shadow(0 6px 6px rgba(0,0,0,.5))}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<!-- ================= HUD ================= -->
+<div id="hud">
+  <div class="hudtop"><div id="hearts"></div></div>
+  <div id="modeTag">Creative</div>
+  <div id="clock"><span id="clockIcon">☀️</span><span id="clockText">Day</span></div>
+  <div id="crosshair"></div>
+  <div id="banner"></div>
+
+  <div class="btn" id="btnPause">☰</div>
+  <div class="btn" id="btnFly">🪽</div>
+  <div class="btn" id="btnJump">⬆</div>
+  <div class="btn" id="btnDown">⬇</div>
+  <div class="btn" id="btnBreak">⛏️</div>
+  <div class="btn" id="btnPlace">🧱</div>
+
+  <div id="joy"><div id="knob"></div></div>
+  <div id="blockbar"></div>
+</div>
+<div id="hurt"></div>
+
+<!-- ================= Title ================= -->
+<div class="screen" id="title">
+  <h1>BLOCKY LAND</h1>
+  <p>Build anything. Watch out for the night worms! 🐛</p>
+  <button class="modeBtn" id="bCreative"><span class="ic">✨</span><span>Creative<small>Fly around, build freely. You can never get hurt.</small></span></button>
+  <button class="modeBtn" id="bSurvival"><span class="ic">🌙</span><span>Survival<small>Worms come out at night. Build a shelter to stay safe!</small></span></button>
+  <div id="continueRow"></div>
+</div>
+
+<!-- ================= Pause ================= -->
+<div class="screen" id="pause">
+  <h2>Paused</h2>
+  <button class="menuBtn" id="pResume">▶ Keep Playing</button>
+  <button class="menuBtn" id="pMode">🔁 Switch to Survival</button>
+  <button class="menuBtn" id="pSound">🔊 Sound: On</button>
+  <button class="menuBtn warn" id="pNew">🌍 New World</button>
+  <button class="menuBtn" id="pTitle">🏠 Back to Title</button>
+  <div id="help">
+    <b>How to play</b><br>
+    Left stick = walk · Drag right side = look around<br>
+    ⬆ jump · ⛏️ break block (or hit a worm!) · 🧱 place block<br>
+    Pick blocks at the bottom. Creative: 🪽 fly, ⬆ up, ⬇ down.
+  </div>
+</div>
+
+<!-- ================= Game over ================= -->
+<div class="screen" id="dead">
+  <div class="wormpic">🐛</div>
+  <h2>Oh no! The worms got you!</h2>
+  <p>Your world is safe. Try building a wall around you next time!</p>
+  <button class="menuBtn" id="dRespawn">💚 Try Again</button>
+  <button class="menuBtn" id="dCreative">✨ Switch to Creative</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+'use strict';
+
+/* =========================================================
+   1. BASIC SETUP
+   ========================================================= */
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:false, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(72, 1, 0.1, 260);
+scene.fog = new THREE.Fog(0x87ceeb, 28, 80);
+
+const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+if (!isTouch) document.body.classList.add('nomobile');
+
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* =========================================================
+   2. SOUND (tiny synth, no files needed)
+   ========================================================= */
+let audioCtx = null, soundOn = true;
+function ensureAudio(){
+  if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+function beep(freq, dur, type, vol, slide){
+  if (!soundOn || !audioCtx) return;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = type || 'square';
+  o.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq * slide), audioCtx.currentTime + dur);
+  g.gain.setValueAtTime(vol || 0.08, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + dur);
+}
+const SFX = {
+  place(){ beep(520, .08, 'square', .06, 1.4); },
+  brk(){ beep(220, .12, 'sawtooth', .06, 0.5); },
+  jump(){ beep(330, .12, 'triangle', .05, 1.8); },
+  hurt(){ beep(140, .25, 'sawtooth', .09, 0.6); },
+  hit(){ beep(600, .08, 'square', .06, 0.7); },
+  pop(){ beep(880, .15, 'triangle', .07, 2.0); setTimeout(()=>beep(1320,.12,'triangle',.06,1.5),80); },
+  night(){ [392,330,262].forEach((f,i)=>setTimeout(()=>beep(f,.3,'triangle',.06),i*220)); },
+  day(){ [523,659,784].forEach((f,i)=>setTimeout(()=>beep(f,.25,'triangle',.06),i*160)); },
+  click(){ beep(700, .05, 'square', .04); }
+};
+
+/* =========================================================
+   3. BLOCK TYPES + PROCEDURAL PIXEL TEXTURES
+   ========================================================= */
+// Each texture is a 16x16 canvas so everything looks blocky and crisp.
+function makeTex(draw){
+  const cv = document.createElement('canvas'); cv.width = cv.height = 16;
+  const ctx = cv.getContext('2d');
+  draw(ctx);
+  const t = new THREE.CanvasTexture(cv);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter;
+  return t;
+}
+function rnd(seed){ let s = seed; return ()=>{ s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+function speckle(ctx, base, dots, seed, n){
+  ctx.fillStyle = base; ctx.fillRect(0,0,16,16);
+  const r = rnd(seed);
+  for (let i=0;i<n;i++){ ctx.fillStyle = dots[Math.floor(r()*dots.length)]; ctx.fillRect(Math.floor(r()*16), Math.floor(r()*16), 1, 1); }
+}
+const TEX = {
+  grassTop: makeTex(c=>speckle(c,'#5fbf3c',['#4ea832','#78d650','#3e8c27'],1,70)),
+  grassSide: makeTex(c=>{ speckle(c,'#8a5a2b',['#75491f','#9c6a37','#6b4119'],2,50); c.fillStyle='#5fbf3c'; c.fillRect(0,0,16,3); const r=rnd(9); for(let x=0;x<16;x++){ if(r()<.5) c.fillRect(x,3,1,1); if(r()<.2) c.fillRect(x,4,1,1);} }),
+  dirt: makeTex(c=>speckle(c,'#8a5a2b',['#75491f','#9c6a37','#6b4119'],3,60)),
+  stone: makeTex(c=>speckle(c,'#8d8f94',['#75777c','#a3a5aa','#66686d'],4,60)),
+  sand: makeTex(c=>speckle(c,'#e8d59a',['#dcc784','#f3e4ad','#cdb973'],5,50)),
+  woodSide: makeTex(c=>{ c.fillStyle='#6d4a24'; c.fillRect(0,0,16,16); c.fillStyle='#55371a'; for(let x=1;x<16;x+=4){ c.fillRect(x,0,1,16);} c.fillStyle='#8a6232'; for(let x=3;x<16;x+=4){ c.fillRect(x,0,1,16);} }),
+  woodTop: makeTex(c=>{ c.fillStyle='#b0824a'; c.fillRect(0,0,16,16); c.strokeStyle='#7a5529'; for(let r=2;r<8;r+=2){ c.beginPath(); c.arc(8,8,r,0,Math.PI*2); c.stroke(); } }),
+  planks: makeTex(c=>{ c.fillStyle='#c79a5b'; c.fillRect(0,0,16,16); c.fillStyle='#9a7138'; for(let y=3;y<16;y+=4){ c.fillRect(0,y,16,1);} c.fillRect(4,0,1,4); c.fillRect(12,4,1,4); c.fillRect(2,8,1,4); c.fillRect(10,12,1,4); }),
+  leaves: makeTex(c=>speckle(c,'#3f9a3a',['#2f7a2b','#56b84f','#246320','#6fd166'],6,90)),
+  brick: makeTex(c=>{ c.fillStyle='#d9d2c4'; c.fillRect(0,0,16,16); c.fillStyle='#b8473f'; for(let y=0;y<16;y+=4){ const off=(y/4)%2?4:0; for(let x=-4;x<16;x+=8){ c.fillRect(x+off,y,7,3);} } }),
+  glow: makeTex(c=>{ c.fillStyle='#ffd166'; c.fillRect(0,0,16,16); c.fillStyle='#fff3b0'; c.fillRect(4,4,8,8); c.fillStyle='#ffb703'; c.fillRect(0,0,16,1); c.fillRect(0,15,16,1); c.fillRect(0,0,1,16); c.fillRect(15,0,1,16); }),
+  pink: makeTex(c=>speckle(c,'#ff8fc8',['#ff6fb7','#ffb3dc','#f05aa5'],7,40)),
+  blue: makeTex(c=>speckle(c,'#5aa9ff',['#3f8fe8','#7fbfff','#2f78cc'],8,40)),
+};
+const lam = t => new THREE.MeshLambertMaterial({map:t});
+
+// name -> {mat (one material or array of 6), solid, icon css color}
+// Box face order in three.js: +x, -x, +y(top), -y(bottom), +z, -z
+const BLOCKS = {
+  grass:  {label:'Grass',  mat:[lam(TEX.grassSide),lam(TEX.grassSide),lam(TEX.grassTop),lam(TEX.dirt),lam(TEX.grassSide),lam(TEX.grassSide)], css:'linear-gradient(#5fbf3c 0 30%, #8a5a2b 30%)'},
+  dirt:   {label:'Dirt',   mat:lam(TEX.dirt),   css:'#8a5a2b'},
+  stone:  {label:'Stone',  mat:lam(TEX.stone),  css:'#8d8f94'},
+  sand:   {label:'Sand',   mat:lam(TEX.sand),   css:'#e8d59a'},
+  wood:   {label:'Wood',   mat:[lam(TEX.woodSide),lam(TEX.woodSide),lam(TEX.woodTop),lam(TEX.woodTop),lam(TEX.woodSide),lam(TEX.woodSide)], css:'repeating-linear-gradient(90deg,#6d4a24 0 4px,#55371a 4px 5px,#8a6232 5px 6px)'},
+  planks: {label:'Planks', mat:lam(TEX.planks), css:'repeating-linear-gradient(#c79a5b 0 8px,#9a7138 8px 10px)'},
+  leaves: {label:'Leaves', mat:lam(TEX.leaves), css:'#3f9a3a'},
+  brick:  {label:'Brick',  mat:lam(TEX.brick),  css:'repeating-linear-gradient(#b8473f 0 7px,#d9d2c4 7px 9px)'},
+  glow:   {label:'Glow',   mat:new THREE.MeshBasicMaterial({map:TEX.glow}), css:'#ffd166'},
+  pink:   {label:'Pink',   mat:lam(TEX.pink),   css:'#ff8fc8'},
+  blue:   {label:'Blue',   mat:lam(TEX.blue),   css:'#5aa9ff'},
+};
+const BLOCK_NAMES = Object.keys(BLOCKS);
+const PLACEABLE = ['grass','dirt','stone','sand','wood','planks','leaves','brick','glow','pink','blue'];
+
+/* =========================================================
+   4. WORLD GENERATION (seeded so it can be re-created from a save)
+   ========================================================= */
+const W = 48, D = 48;              // world size in blocks
+let seed = 1;
+const blocks = new Map();          // key "x,y,z" -> block name
+const edits  = new Map();          // player changes only: key -> name or '' (removed)
+const key = (x,y,z)=> x+','+y+','+z;
+const getB = (x,y,z)=> blocks.get(key(x,y,z));
+const isSolid = (x,y,z)=> blocks.has(key(x,y,z));
+
+function hash(x,z,s){
+  let h = (x*374761393 + z*668265263 + s*982451653) | 0;
+  h = Math.imul(h ^ (h>>>13), 1274126177);
+  return ((h ^ (h>>>16)) >>> 0) / 4294967296;
+}
+function vnoise(x,z,s){
+  const xi=Math.floor(x), zi=Math.floor(z), xf=x-xi, zf=z-zi;
+  const sm = t=>t*t*(3-2*t), u=sm(xf), v=sm(zf);
+  const a=hash(xi,zi,s), b=hash(xi+1,zi,s), c=hash(xi,zi+1,s), d=hash(xi+1,zi+1,s);
+  return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v;
+}
+function terrainHeight(x,z){
+  const n = vnoise(x/9,z/9,seed)*0.7 + vnoise(x/4,z/4,seed+7)*0.3;
+  return 3 + Math.floor(n*5.2);        // 3 .. 8
+}
+function generate(){
+  blocks.clear();
+  for (let x=0;x<W;x++) for (let z=0;z<D;z++){
+    const h = terrainHeight(x,z);
+    for (let y=0;y<h;y++){
+      let t = 'stone';
+      if (y === h-1) t = (h <= 3) ? 'sand' : 'grass';
+      else if (y >= h-3) t = 'dirt';
+      blocks.set(key(x,y,z), t);
+    }
+  }
+  // trees
+  for (let x=3;x<W-3;x++) for (let z=3;z<D-3;z++){
+    const h = terrainHeight(x,z);
+    if (h > 3 && hash(x,z,seed+99) < 0.035 && !(Math.abs(x-W/2)<4 && Math.abs(z-D/2)<4)){
+      const th = 3 + Math.floor(hash(x,z,seed+5)*2);
+      for (let y=h;y<h+th;y++) blocks.set(key(x,y,z),'wood');
+      for (let dx=-2;dx<=2;dx++) for (let dz=-2;dz<=2;dz++) for (let dy=0;dy<2;dy++){
+        if (Math.abs(dx)===2 && Math.abs(dz)===2) continue;
+        const k = key(x+dx,h+th-1+dy,z+dz);
+        if (!blocks.has(k)) blocks.set(k,'leaves');
+      }
+      for (let dx=-1;dx<=1;dx++) for (let dz=-1;dz<=1;dz++){
+        if (Math.abs(dx)+Math.abs(dz)===2) continue;
+        blocks.set(key(x+dx,h+th+1,z+dz),'leaves');
+      }
+      blocks.set(key(x,h+th+2,z),'leaves');
+    }
+  }
+  // re-apply player's edits
+  edits.forEach((v,k)=>{ if (v) blocks.set(k,v); else blocks.delete(k); });
+}
+function groundY(x,z){           // y of the first free block above ground at (x,z)
+  for (let y=40;y>=0;y--) if (isSolid(x,y,z)) return y+1;
+  return 0;
+}
+
+/* =========================================================
+   5. RENDERING THE BLOCKS (one InstancedMesh per block type)
+   ========================================================= */
+const cubeGeo = new THREE.BoxGeometry(1,1,1);
+const meshes = {};
+const dummy = new THREE.Object3D();
+function rebuildType(name){
+  if (meshes[name]) { scene.remove(meshes[name]); meshes[name].dispose(); meshes[name] = null; }
+  const list = [];
+  blocks.forEach((v,k)=>{ if (v===name) list.push(k); });
+  if (!list.length) return;
+  const m = new THREE.InstancedMesh(cubeGeo, BLOCKS[name].mat, list.length);
+  m.frustumCulled = false;
+  list.forEach((k,i)=>{
+    const p = k.split(',');
+    dummy.position.set(+p[0]+0.5, +p[1]+0.5, +p[2]+0.5);
+    dummy.updateMatrix();
+    m.setMatrixAt(i, dummy.matrix);
+  });
+  m.instanceMatrix.needsUpdate = true;
+  scene.add(m);
+  meshes[name] = m;
+}
+function rebuildAll(){ BLOCK_NAMES.forEach(rebuildType); }
+
+function setBlock(x,y,z,name){        // name = null to remove
+  const k = key(x,y,z);
+  const old = blocks.get(k);
+  if (name) blocks.set(k,name); else blocks.delete(k);
+  edits.set(k, name || '');
+  if (old) rebuildType(old);
+  if (name) rebuildType(name);
+  dirty = true;
+}
+
+/* =========================================================
+   6. SKY, SUN, MOON, STARS, CLOUDS
+   ========================================================= */
+const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+sun.position.set(30, 50, 20);
+scene.add(ambient, sun);
+
+const sunMesh  = new THREE.Mesh(new THREE.CircleGeometry(9, 24), new THREE.MeshBasicMaterial({color:0xffe066, fog:false}));
+const moonMesh = new THREE.Mesh(new THREE.CircleGeometry(6, 24), new THREE.MeshBasicMaterial({color:0xf0f4ff, fog:false}));
+scene.add(sunMesh, moonMesh);
+
+const starGeo = new THREE.BufferGeometry();
+{
+  const pts = []; const r = rnd(42);
+  for (let i=0;i<500;i++){
+    const a = r()*Math.PI*2, b = r()*Math.PI*0.5;
+    pts.push(Math.cos(a)*Math.cos(b)*200, Math.sin(b)*200 + 5, Math.sin(a)*Math.cos(b)*200);
+  }
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+}
+const starMat = new THREE.PointsMaterial({color:0xffffff, size:1.6, sizeAttenuation:false, transparent:true, opacity:0, fog:false});
+const stars = new THREE.Points(starGeo, starMat);
+scene.add(stars);
+
+const clouds = [];
+{
+  const cm = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:.85});
+  const r = rnd(7);
+  for (let i=0;i<14;i++){
+    const g = new THREE.Group();
+    const n = 2 + Math.floor(r()*3);
+    for (let j=0;j<n;j++){
+      const b = new THREE.Mesh(new THREE.BoxGeometry(3+r()*4, 1, 2+r()*3), cm);
+      b.position.set(j*3 - n*1.5, 0, r()*2-1);
+      g.add(b);
+    }
+    g.position.set(r()*W, 22 + r()*6, r()*D);
+    g.userData.speed = 0.3 + r()*0.4;
+    scene.add(g); clouds.push(g);
+  }
+}
+
+// Day/night: t runs 0..1.  0-0.5 day, 0.5-0.6 sunset, 0.6-0.9 night, 0.9-1 sunrise
+const DAY_LENGTH = 300;          // seconds for a full day+night
+let timeOfDay = 0.15;            // start in the morning
+const C_DAY = new THREE.Color(0x87ceeb), C_SET = new THREE.Color(0xff9a5c), C_NIGHT = new THREE.Color(0x0b1030);
+const skyColor = new THREE.Color();
+function isNight(){ return timeOfDay > 0.58 && timeOfDay < 0.92; }
+function updateSky(){
+  let light, t = timeOfDay;
+  if (t < 0.5) { skyColor.copy(C_DAY); light = 1; }
+  else if (t < 0.6) { const f=(t-0.5)/0.1; skyColor.copy(C_DAY).lerp(C_SET, Math.min(1,f*2)); if (f>0.5) skyColor.lerp(C_NIGHT,(f-0.5)*2); light = 1 - f*0.8; }
+  else if (t < 0.9) { skyColor.copy(C_NIGHT); light = 0.2; }
+  else { const f=(t-0.9)/0.1; skyColor.copy(C_NIGHT).lerp(C_SET, Math.min(1,f*2)); if (f>0.5) skyColor.lerp(C_DAY,(f-0.5)*2); light = 0.2 + f*0.8; }
+  renderer.setClearColor(skyColor);
+  scene.fog.color.copy(skyColor);
+  ambient.intensity = 0.25 + 0.35*light;
+  sun.intensity = 0.15 + 0.8*light;
+  starMat.opacity = Math.max(0, (0.2 - light) / 0.2) * 0.9 + (light < 0.6 ? (0.6-light)*0.5 : 0);
+  // sun & moon travel in an arc
+  const ang = t * Math.PI * 2 - Math.PI/2;          // sun up at t=0.25
+  const cx = camera.position.x, cz = camera.position.z;
+  sunMesh.position.set(cx + Math.cos(ang)*180, Math.sin(ang)*180 + 10, cz - 60);
+  moonMesh.position.set(cx - Math.cos(ang)*180, -Math.sin(ang)*180 + 10, cz - 60);
+  sunMesh.lookAt(camera.position); moonMesh.lookAt(camera.position);
+  sun.position.set(cx + Math.cos(ang)*50, Math.max(10, Math.sin(ang)*60), cz + 20);
+  stars.position.copy(camera.position);
+}
+
+/* =========================================================
+   7. PLAYER
+   ========================================================= */
+const player = {
+  pos: new THREE.Vector3(W/2+0.5, 10, D/2+0.5),
+  vel: new THREE.Vector3(),
+  yaw: 0, pitch: 0,
+  onGround: false, flying: false,
+  hp: 10, hurtCooldown: 0,
+  w: 0.3, h: 1.8, eye: 1.62
+};
+const GRAVITY = -24, JUMP = 8.2, WALK = 4.6, FLY = 8;
+
+function collides(px,py,pz){
+  const minX=Math.floor(px-player.w), maxX=Math.floor(px+player.w);
+  const minY=Math.floor(py), maxY=Math.floor(py+player.h-0.01);
+  const minZ=Math.floor(pz-player.w), maxZ=Math.floor(pz+player.w);
+  for (let x=minX;x<=maxX;x++) for (let y=minY;y<=maxY;y++) for (let z=minZ;z<=maxZ;z++) if (isSolid(x,y,z)) return true;
+  return false;
+}
+function movePlayer(dt){
+  const p = player;
+  // input direction relative to where we look
+  const f = new THREE.Vector3(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
+  const r = new THREE.Vector3(f.z, 0, -f.x);
+  const inX = input.mx, inZ = input.mz;
+  const speed = p.flying ? FLY : WALK;
+  const want = new THREE.Vector3().addScaledVector(f, inZ).addScaledVector(r, inX);
+  if (want.lengthSq() > 1) want.normalize();
+  want.multiplyScalar(speed);
+  p.vel.x += (want.x - p.vel.x) * Math.min(1, dt*12);
+  p.vel.z += (want.z - p.vel.z) * Math.min(1, dt*12);
+
+  if (p.flying){
+    const vy = (input.up ? 1 : 0) - (input.down ? 1 : 0);
+    p.vel.y += (vy*FLY - p.vel.y) * Math.min(1, dt*10);
+  } else {
+    p.vel.y += GRAVITY * dt;
+    if (input.up && p.onGround){ p.vel.y = JUMP; p.onGround = false; SFX.jump(); }
+    if (p.vel.y < -40) p.vel.y = -40;
+  }
+
+  // move one axis at a time and stop at walls
+  let nx = p.pos.x + p.vel.x*dt;
+  if (!collides(nx, p.pos.y, p.pos.z)) p.pos.x = nx; else p.vel.x = 0;
+  let nz = p.pos.z + p.vel.z*dt;
+  if (!collides(p.pos.x, p.pos.y, nz)) p.pos.z = nz; else p.vel.z = 0;
+  let ny = p.pos.y + p.vel.y*dt;
+  p.onGround = false;
+  if (!collides(p.pos.x, ny, p.pos.z)) p.pos.y = ny;
+  else { if (p.vel.y < 0) { p.onGround = true; p.pos.y = Math.floor(ny)+1; } p.vel.y = 0; }
+
+  // keep inside the world
+  p.pos.x = Math.min(W-0.31, Math.max(0.31, p.pos.x));
+  p.pos.z = Math.min(D-0.31, Math.max(0.31, p.pos.z));
+  if (p.pos.y < -10) respawn();
+
+  camera.position.set(p.pos.x, p.pos.y + p.eye, p.pos.z);
+  camera.rotation.set(0,0,0);
+  camera.rotateY(p.yaw);
+  camera.rotateX(p.pitch);
+}
+function respawn(){
+  player.pos.set(W/2+0.5, groundY(Math.floor(W/2), Math.floor(D/2)) + 0.1, D/2+0.5);
+  player.vel.set(0,0,0);
+}
+
+/* =========================================================
+   8. VOXEL RAYCAST (which block are we looking at?)
+   ========================================================= */
+function raycastBlocks(maxDist){
+  const o = camera.position, d = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+  let x=Math.floor(o.x), y=Math.floor(o.y), z=Math.floor(o.z);
+  const stepX=Math.sign(d.x), stepY=Math.sign(d.y), stepZ=Math.sign(d.z);
+  const tDx = d.x!==0 ? Math.abs(1/d.x) : 1e9, tDy = d.y!==0 ? Math.abs(1/d.y) : 1e9, tDz = d.z!==0 ? Math.abs(1/d.z) : 1e9;
+  let tMx = d.x>0 ? (x+1-o.x)*tDx : d.x<0 ? (o.x-x)*tDx : 1e9;
+  let tMy = d.y>0 ? (y+1-o.y)*tDy : d.y<0 ? (o.y-y)*tDy : 1e9;
+  let tMz = d.z>0 ? (z+1-o.z)*tDz : d.z<0 ? (o.z-z)*tDz : 1e9;
+  let px=x, py=y, pz=z, t=0;
+  for (let i=0;i<80;i++){
+    if (isSolid(x,y,z)) return {x,y,z, px,py,pz, dist:t};
+    px=x; py=y; pz=z;
+    if (tMx < tMy && tMx < tMz){ x+=stepX; t=tMx; tMx+=tDx; }
+    else if (tMy < tMz){ y+=stepY; t=tMy; tMy+=tDy; }
+    else { z+=stepZ; t=tMz; tMz+=tDz; }
+    if (t > maxDist) break;
+  }
+  return null;
+}
+
+/* =========================================================
+   9. WORMS (night monsters)
+   ========================================================= */
+const worms = [];
+const wormMats = {
+  head: new THREE.MeshLambertMaterial({color:0xff6fae}),
+  segA: new THREE.MeshLambertMaterial({color:0xd94f9b}),
+  segB: new THREE.MeshLambertMaterial({color:0x9b5de5}),
+  eye:  new THREE.MeshBasicMaterial({color:0xffffff}),
+  pupil:new THREE.MeshBasicMaterial({color:0x111111}),
+  hurt: new THREE.MeshLambertMaterial({color:0xffffff})
+};
+const wormHitMeshes = [];
+function makeWorm(x,z){
+  const g = new THREE.Group();
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.8,0.8), wormMats.head);
+  head.position.y = 0.4;
+  const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.22,0.22,0.1), wormMats.eye); eyeL.position.set(-0.2,0.55,0.41);
+  const eyeR = eyeL.clone(); eyeR.position.x = 0.2;
+  const pL = new THREE.Mesh(new THREE.BoxGeometry(0.1,0.1,0.06), wormMats.pupil); pL.position.set(-0.2,0.53,0.47);
+  const pR = pL.clone(); pR.position.x = 0.2;
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.36,0.08,0.06), wormMats.pupil); mouth.position.set(0,0.22,0.43);
+  const headG = new THREE.Group(); headG.add(head,eyeL,eyeR,pL,pR,mouth);
+  g.add(headG);
+  const segs = [];
+  for (let i=0;i<5;i++){
+    const s = new THREE.Mesh(new THREE.BoxGeometry(0.6-i*0.06,0.6-i*0.06,0.6-i*0.06), i%2 ? wormMats.segB : wormMats.segA);
+    s.position.set(0, 0.3, 0.6*(i+1));
+    g.add(s); segs.push(s);
+  }
+  g.position.set(x+0.5, groundY(Math.floor(x),Math.floor(z)), z+0.5);
+  g.scale.set(0.01,0.01,0.01);
+  scene.add(g);
+  const w = {g, headG, head, segs, hp:3, hurt:0, trail:[], state:'rise', t:0, wait:0, bob:Math.random()*6, speed: 2.0 + Math.random()*0.6, heading:0, headingT:0};
+  g.traverse(m=>{ if (m.isMesh){ m.userData.worm = w; wormHitMeshes.push(m);} });
+  worms.push(w);
+}
+function removeWorm(w){
+  scene.remove(w.g);
+  const i = worms.indexOf(w); if (i>=0) worms.splice(i,1);
+  for (let j=wormHitMeshes.length-1;j>=0;j--) if (wormHitMeshes[j].userData.worm===w) wormHitMeshes.splice(j,1);
+}
+let spawnTimer = 0;
+function updateWorms(dt){
+  // spawn only in survival, only at night
+  if (mode === 'survival' && isNight()){
+    spawnTimer -= dt;
+    if (spawnTimer <= 0 && worms.length < 5){
+      spawnTimer = 7;
+      for (let tries=0; tries<10; tries++){
+        const a = Math.random()*Math.PI*2, r = 12 + Math.random()*8;
+        const x = Math.floor(player.pos.x + Math.cos(a)*r), z = Math.floor(player.pos.z + Math.sin(a)*r);
+        if (x>1 && z>1 && x<W-2 && z<D-2){
+          const top = getB(x, groundY(x,z)-1, z);
+          if (top === 'leaves' || top === 'wood') continue;      // not on top of a tree
+          makeWorm(x,z); break;
+        }
+      }
+    }
+  }
+  const dawn = !isNight();
+  for (let i=worms.length-1;i>=0;i--){
+    const w = worms[i];
+    w.t += dt; w.bob += dt*6;
+    if (w.hurt > 0){ w.hurt -= dt; if (w.hurt <= 0){ w.head.material = wormMats.head; } }
+
+    if (w.state === 'rise'){ const s = Math.min(1, w.t/0.8); w.g.scale.set(s,s,s); if (s>=1) w.state='hunt'; continue; }
+    if (w.state === 'dead' || (dawn && w.state!=='sink')){ if (w.state!=='sink'){ w.state='sink'; w.t=0; } }
+    if (w.state === 'sink'){ const s = Math.max(0, 1 - w.t/0.8); w.g.scale.set(s,s,s); w.g.position.y -= dt*0.6; if (s<=0) removeWorm(w); continue; }
+
+    // ---- hunt: slither toward the player, climb at most 1 block ----
+    const toP = new THREE.Vector3().subVectors(player.pos, w.g.position); toP.y = 0;
+    const dist = toP.length();
+    if (dist > 0.01) toP.normalize();
+    w.headingT -= dt;
+    if (w.wait > 0){ w.wait -= dt; }
+    else {
+      // Try to go straight at the player; if a step is too high, try angles to the side.
+      // A worm can climb 1 block only, so a 2-block wall keeps the player safe.
+      const step = w.speed*dt;
+      const base = Math.atan2(toP.x, toP.z);
+      const curY = Math.round(w.g.position.y);
+      const angles = [0];
+      if (w.headingT > 0) angles.push(w.heading - base);          // keep the last detour for a bit
+      angles.push(0.6,-0.6,1.2,-1.2,1.8,-1.8,2.5,-2.5);
+      let moved = false;
+      for (const a of angles){
+        const ang = base + a;
+        const dx = Math.sin(ang), dz = Math.cos(ang);
+        const lx = w.g.position.x + dx*0.55, lz = w.g.position.z + dz*0.55;     // look a little ahead
+        if (lx<0.5 || lz<0.5 || lx>W-0.5 || lz>D-0.5) continue;
+        const gy = groundY(Math.floor(lx), Math.floor(lz));
+        if (gy > curY + 1) continue;
+        w.g.position.x += dx*step; w.g.position.z += dz*step;
+        const hereY = groundY(Math.floor(w.g.position.x), Math.floor(w.g.position.z));
+        w.g.position.y += (hereY - w.g.position.y) * Math.min(1, dt*8);
+        if (a !== 0 && w.headingT <= 0){ w.heading = ang; w.headingT = 0.8; }
+        moved = true; break;
+      }
+      if (!moved) w.wait = 0.4;
+    }
+    // face the player + wiggle
+    w.headG.rotation.y = Math.atan2(toP.x, toP.z);
+    w.headG.position.y = Math.abs(Math.sin(w.bob))*0.15;
+    // body follows the head along a trail
+    const last = w.trail[w.trail.length-1];
+    if (!last || last.distanceToSquared(w.g.position) > 0.04) { w.trail.push(w.g.position.clone()); if (w.trail.length > 60) w.trail.shift(); }
+    for (let s=0;s<w.segs.length;s++){
+      const idx = w.trail.length - 1 - (s+1)*3;
+      const tp = w.trail[Math.max(0, idx)];
+      if (tp){
+        const local = tp.clone().sub(w.g.position);
+        w.segs[s].position.set(local.x, 0.3 + Math.abs(Math.sin(w.bob - s*0.7))*0.12 + local.y, local.z);
+      }
+    }
+    // bite!
+    if (dist < 1.1 && Math.abs(player.pos.y - w.g.position.y) < 1.6 && player.hurtCooldown <= 0){
+      hurtPlayer(1, toP);
+    }
+  }
+}
+function hitWorm(w){
+  w.hp -= 1; w.hurt = 0.15; w.head.material = wormMats.hurt;
+  const away = new THREE.Vector3().subVectors(w.g.position, player.pos).setY(0).normalize();
+  w.g.position.addScaledVector(away, 1.2); w.wait = 0.4;
+  SFX.hit();
+  if (w.hp <= 0){ w.state = 'dead'; w.t = 0; SFX.pop(); burst(w.g.position, 0xff6fae); }
+}
+function raycastWorms(maxDist){
+  if (!wormHitMeshes.length) return null;
+  const rc = new THREE.Raycaster(camera.position, new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion), 0, maxDist);
+  const hits = rc.intersectObjects(wormHitMeshes, false);
+  for (const h of hits){ const w = h.object.userData.worm; if (w && w.state==='hunt') return {worm:w, dist:h.distance}; }
+  return null;
+}
+
+// little cube particles when a worm pops or a block breaks
+const particles = [];
+function burst(pos, color){
+  const mat = new THREE.MeshBasicMaterial({color});
+  for (let i=0;i<10;i++){
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.15,0.15,0.15), mat);
+    m.position.copy(pos).add(new THREE.Vector3(0,0.5,0));
+    m.userData.v = new THREE.Vector3((Math.random()-0.5)*6, Math.random()*6, (Math.random()-0.5)*6);
+    m.userData.life = 0.8;
+    scene.add(m); particles.push(m);
+  }
+}
+function updateParticles(dt){
+  for (let i=particles.length-1;i>=0;i--){
+    const m = particles[i];
+    m.userData.life -= dt;
+    m.userData.v.y += GRAVITY*0.6*dt;
+    m.position.addScaledVector(m.userData.v, dt);
+    m.rotation.x += dt*5; m.rotation.y += dt*7;
+    if (m.userData.life <= 0){ scene.remove(m); particles.splice(i,1); }
+  }
+}
+
+/* =========================================================
+   10. HEALTH, MODES, BANNERS
+   ========================================================= */
+let mode = 'creative';
+const heartsEl = document.getElementById('hearts');
+function drawHearts(){
+  if (mode !== 'survival'){ heartsEl.innerHTML=''; return; }
+  let s=''; for (let i=0;i<10;i++) s += `<span class="${i<player.hp?'':'lost'}">❤️</span>`;
+  heartsEl.innerHTML = s;
+}
+const hurtEl = document.getElementById('hurt');
+function hurtPlayer(n, dir){
+  if (mode !== 'survival') return;
+  player.hp -= n; player.hurtCooldown = 1.0;
+  player.vel.x += dir.x*6; player.vel.z += dir.z*6; player.vel.y = 5; player.onGround=false;
+  SFX.hurt();
+  hurtEl.style.opacity = 1; setTimeout(()=>hurtEl.style.opacity=0, 250);
+  drawHearts();
+  if (player.hp <= 0){ player.hp = 0; die(); }
+}
+function die(){
+  running = false;
+  document.getElementById('dead').classList.add('on');
+  document.getElementById('hud').classList.remove('on');
+  saveGame();
+}
+let bannerTimer = null;
+function banner(text, ms){
+  const b = document.getElementById('banner');
+  b.textContent = text; b.classList.add('show');
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(()=>b.classList.remove('show'), ms || 3000);
+}
+function setMode(m){
+  mode = m;
+  document.body.classList.toggle('creative', m==='creative');
+  document.getElementById('modeTag').textContent = m==='creative' ? '✨ Creative' : '🌙 Survival';
+  document.getElementById('pMode').textContent = m==='creative' ? '🔁 Switch to Survival' : '🔁 Switch to Creative';
+  if (m === 'creative'){ worms.slice().forEach(removeWorm); player.hp = 10; }
+  else { player.flying = false; }
+  drawHearts();
+}
+
+/* =========================================================
+   11. INPUT: joystick, look-drag, buttons, keyboard, mouse
+   ========================================================= */
+const input = {mx:0, mz:0, up:false, down:false};
+let selected = 'grass';
+const joyEl = document.getElementById('joy'), knob = document.getElementById('knob');
+let joyTouch = null, joyCenter = {x:0,y:0}, lookTouch = null, lookLast = {x:0,y:0};
+const JOY_R = 50;
+
+function placeJoy(){ const r = joyEl.getBoundingClientRect(); joyCenter = {x:r.left+r.width/2, y:r.top+r.height/2}; }
+function setKnob(dx,dy){ knob.style.transform = `translate(${dx}px,${dy}px)`; }
+
+document.addEventListener('touchstart', e=>{
+  ensureAudio();
+  if (!running) return;
+  for (const t of e.changedTouches){
+    const el = document.elementFromPoint(t.clientX, t.clientY);
+    if (el && el.closest && el.closest('.btn, #blockbar')) continue;   // buttons handle themselves
+    if (joyTouch === null && t.clientX < window.innerWidth*0.42){
+      joyTouch = t.identifier; placeJoy();
+      // allow the stick to start wherever the thumb lands on the left side
+      joyCenter = {x:t.clientX, y:t.clientY};
+      joyEl.style.left = (t.clientX - 65) + 'px'; joyEl.style.bottom = 'auto'; joyEl.style.top = (t.clientY - 65) + 'px';
+      setKnob(0,0);
+    } else if (lookTouch === null){
+      lookTouch = t.identifier; lookLast = {x:t.clientX, y:t.clientY};
+    }
+  }
+  e.preventDefault();
+}, {passive:false});
+document.addEventListener('touchmove', e=>{
+  if (!running) return;                     // let menus scroll
+  for (const t of e.changedTouches){
+    if (t.identifier === joyTouch){
+      let dx = t.clientX - joyCenter.x, dy = t.clientY - joyCenter.y;
+      const len = Math.hypot(dx,dy); if (len > JOY_R){ dx = dx/len*JOY_R; dy = dy/len*JOY_R; }
+      setKnob(dx,dy);
+      const dead = 6;
+      input.mx = Math.abs(dx)>dead ? dx/JOY_R : 0;
+      input.mz = Math.abs(dy)>dead ? -dy/JOY_R : 0;
+    } else if (t.identifier === lookTouch){
+      const dx = t.clientX - lookLast.x, dy = t.clientY - lookLast.y;
+      lookLast = {x:t.clientX, y:t.clientY};
+      player.yaw   -= dx * 0.0045;
+      player.pitch -= dy * 0.0045;
+      player.pitch = Math.max(-1.5, Math.min(1.5, player.pitch));
+    }
+  }
+  e.preventDefault();
+}, {passive:false});
+function endTouch(e){
+  for (const t of e.changedTouches){
+    if (t.identifier === joyTouch){ joyTouch = null; input.mx = input.mz = 0; setKnob(0,0); joyEl.style.left=''; joyEl.style.top=''; joyEl.style.bottom=''; }
+    if (t.identifier === lookTouch) lookTouch = null;
+  }
+}
+document.addEventListener('touchend', endTouch); document.addEventListener('touchcancel', endTouch);
+
+// hold-able buttons
+function holdBtn(id, on, off){
+  const el = document.getElementById(id);
+  const start = e=>{ e.preventDefault(); e.stopPropagation(); ensureAudio(); el.classList.add('down'); on(); };
+  const stop  = e=>{ e.preventDefault(); el.classList.remove('down'); if (off) off(); };
+  el.addEventListener('touchstart', start, {passive:false});
+  el.addEventListener('touchend', stop); el.addEventListener('touchcancel', stop);
+  el.addEventListener('mousedown', start); el.addEventListener('mouseup', stop); el.addEventListener('mouseleave', stop);
+}
+holdBtn('btnJump', ()=>{ input.up = true; }, ()=>{ input.up = false; });
+holdBtn('btnDown', ()=>{ input.down = true; }, ()=>{ input.down = false; });
+holdBtn('btnFly', ()=>{ toggleFly(); });
+holdBtn('btnBreak', ()=>{ doBreak(); });
+holdBtn('btnPlace', ()=>{ doPlace(); });
+document.getElementById('btnPause').addEventListener('click', e=>{ e.stopPropagation(); pauseGame(); });
+document.getElementById('btnPause').addEventListener('touchstart', e=>{ e.stopPropagation(); e.preventDefault(); pauseGame(); }, {passive:false});
+
+function toggleFly(){
+  if (mode !== 'creative') return;
+  player.flying = !player.flying; player.vel.y = 0;
+  banner(player.flying ? '🪽 Flying on' : '🪽 Flying off', 1200);
+}
+function doBreak(){
+  const wh = raycastWorms(4.5), bh = raycastBlocks(6);
+  if (wh && (!bh || wh.dist < bh.dist)){ hitWorm(wh.worm); return; }
+  if (!bh) return;
+  if (bh.y === 0 && getB(bh.x,0,bh.z)==='stone') { banner('That is the bottom of the world!', 1200); return; }
+  const name = getB(bh.x,bh.y,bh.z);
+  setBlock(bh.x,bh.y,bh.z,null);
+  SFX.brk();
+  const col = {grass:0x5fbf3c,dirt:0x8a5a2b,stone:0x8d8f94,sand:0xe8d59a,wood:0x6d4a24,planks:0xc79a5b,leaves:0x3f9a3a,brick:0xb8473f,glow:0xffd166,pink:0xff8fc8,blue:0x5aa9ff}[name]||0xffffff;
+  burst(new THREE.Vector3(bh.x+0.5,bh.y,bh.z+0.5), col);
+}
+function doPlace(){
+  const bh = raycastBlocks(6);
+  if (!bh) return;
+  const x=bh.px, y=bh.py, z=bh.pz;
+  if (y < 0 || y > 40 || x<0 || z<0 || x>=W || z>=D) return;
+  // don't place a block inside ourselves
+  const p = player.pos;
+  const overlap = x+1 > p.x-p.w && x < p.x+p.w && z+1 > p.z-p.w && z < p.z+p.w && y+1 > p.y && y < p.y+p.h;
+  if (overlap) return;
+  setBlock(x,y,z,selected);
+  SFX.place();
+}
+
+// block picker
+const barEl = document.getElementById('blockbar');
+function buildBar(){
+  barEl.innerHTML = '';
+  PLACEABLE.forEach((n,i)=>{
+    const s = document.createElement('div');
+    s.className = 'slot' + (n===selected?' sel':'');
+    s.style.background = BLOCKS[n].css;
+    s.innerHTML = `<i>${i+1 <= 9 ? i+1 : ''}</i>`;
+    s.title = BLOCKS[n].label;
+    const pick = e=>{ e.preventDefault(); e.stopPropagation(); ensureAudio(); selected = n; SFX.click(); buildBar(); banner(BLOCKS[n].label, 700); };
+    s.addEventListener('touchstart', pick, {passive:false});
+    s.addEventListener('click', pick);
+    barEl.appendChild(s);
+  });
+}
+buildBar();
+
+// keyboard + mouse for laptop play
+const keys = {};
+window.addEventListener('keydown', e=>{
+  keys[e.code] = true;
+  if (!running) return;
+  if (e.code === 'Space'){ input.up = true; e.preventDefault(); }
+  if (e.code === 'ShiftLeft') input.down = true;
+  if (e.code === 'KeyF') toggleFly();
+  if (e.code === 'Escape') pauseGame();
+  const n = parseInt(e.key); if (n>=1 && n<=9 && PLACEABLE[n-1]){ selected = PLACEABLE[n-1]; buildBar(); }
+  if (e.code === 'Digit0' && PLACEABLE[9]){ selected = PLACEABLE[9]; buildBar(); }
+  if (e.code === 'Minus' && PLACEABLE[10]){ selected = PLACEABLE[10]; buildBar(); }
+  updateKeyMove();
+});
+window.addEventListener('keyup', e=>{
+  keys[e.code] = false;
+  if (e.code === 'Space') input.up = false;
+  if (e.code === 'ShiftLeft') input.down = false;
+  updateKeyMove();
+});
+function updateKeyMove(){
+  if (isTouch && joyTouch !== null) return;
+  input.mx = (keys.KeyD||keys.ArrowRight ? 1:0) - (keys.KeyA||keys.ArrowLeft ? 1:0);
+  input.mz = (keys.KeyW||keys.ArrowUp ? 1:0) - (keys.KeyS||keys.ArrowDown ? 1:0);
+}
+canvas.addEventListener('click', ()=>{ ensureAudio(); if (running && !isTouch && document.pointerLockElement !== canvas) canvas.requestPointerLock(); });
+canvas.addEventListener('mousedown', e=>{
+  if (!running || document.pointerLockElement !== canvas) return;
+  if (e.button === 0) doBreak(); else if (e.button === 2) doPlace();
+});
+canvas.addEventListener('contextmenu', e=>e.preventDefault());
+document.addEventListener('mousemove', e=>{
+  if (document.pointerLockElement !== canvas) return;
+  player.yaw -= e.movementX*0.0025; player.pitch -= e.movementY*0.0025;
+  player.pitch = Math.max(-1.5, Math.min(1.5, player.pitch));
+});
+window.addEventListener('wheel', e=>{
+  if (!running) return;
+  let i = PLACEABLE.indexOf(selected) + (e.deltaY>0?1:-1);
+  i = (i + PLACEABLE.length) % PLACEABLE.length; selected = PLACEABLE[i]; buildBar();
+});
+
+/* =========================================================
+   12. SAVE / LOAD (lives on this phone only)
+   ========================================================= */
+const SAVE_KEY = 'blockyland_save_v1';
+let dirty = false;
+function saveGame(){
+  try {
+    const data = { seed, mode, time: timeOfDay, hp: player.hp, pos:[player.pos.x,player.pos.y,player.pos.z], yaw:player.yaw, pitch:player.pitch,
+                   flying: player.flying, sound: soundOn, edits: Array.from(edits.entries()) };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    dirty = false;
+  } catch(e){}
+}
+function loadSave(){
+  try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s) : null; } catch(e){ return null; }
+}
+function clearSave(){ try { localStorage.removeItem(SAVE_KEY); } catch(e){} }
+
+/* =========================================================
+   13. GAME FLOW: title, start, pause, loop
+   ========================================================= */
+let running = false, started = false, lastT = 0, nightAnnounced = false, dayAnnounced = true;
+const titleEl = document.getElementById('title'), hudEl = document.getElementById('hud'), pauseEl = document.getElementById('pause'), deadEl = document.getElementById('dead');
+
+function newWorld(m){
+  seed = Math.floor(Math.random()*100000) + 1;
+  edits.clear();
+  worms.slice().forEach(removeWorm);
+  generate(); rebuildAll();
+  timeOfDay = 0.15; nightAnnounced = false; dayAnnounced = true;
+  player.hp = 10; player.flying = false; player.yaw = 0; player.pitch = -0.1;
+  respawn();
+  setMode(m);
+  beginPlay();
+  banner(m==='creative' ? '✨ Creative! Build anything you like.' : '🌙 Survival! Build a shelter before dark.', 3500);
+  saveGame();
+}
+function continueWorld(data){
+  seed = data.seed; edits.clear();
+  (data.edits||[]).forEach(([k,v])=>edits.set(k,v));
+  worms.slice().forEach(removeWorm);
+  generate(); rebuildAll();
+  timeOfDay = data.time ?? 0.15;
+  nightAnnounced = isNight(); dayAnnounced = !isNight();
+  player.hp = data.hp ?? 10; player.flying = !!data.flying;
+  if (data.pos) player.pos.set(data.pos[0], data.pos[1], data.pos[2]); else respawn();
+  if (collides(player.pos.x, player.pos.y, player.pos.z)) respawn();
+  player.yaw = data.yaw||0; player.pitch = data.pitch||0;
+  soundOn = data.sound !== false; document.getElementById('pSound').textContent = soundOn ? '🔊 Sound: On' : '🔇 Sound: Off';
+  setMode(data.mode || 'creative');
+  if (player.hp <= 0) player.hp = 10;
+  beginPlay();
+  banner('Welcome back! 👋', 2000);
+}
+function beginPlay(){
+  titleEl.style.display = 'none'; pauseEl.classList.remove('on'); deadEl.classList.remove('on');
+  hudEl.classList.add('on');
+  running = true; started = true; lastT = performance.now();
+  drawHearts();
+}
+function pauseGame(){
+  if (!running) return;
+  running = false; hudEl.classList.remove('on'); pauseEl.classList.add('on');
+  input.mx = input.mz = 0; input.up = input.down = false;
+  if (document.pointerLockElement === canvas) document.exitPointerLock();
+  saveGame();
+}
+function resumeGame(){ pauseEl.classList.remove('on'); hudEl.classList.add('on'); running = true; lastT = performance.now(); }
+function showTitle(){
+  running = false; hudEl.classList.remove('on'); pauseEl.classList.remove('on'); deadEl.classList.remove('on');
+  titleEl.style.display = 'flex';
+  const row = document.getElementById('continueRow'); row.innerHTML = '';
+  const s = loadSave();
+  if (s){
+    const b = document.createElement('button'); b.className='mini'; b.textContent = '▶ Continue my world (' + (s.mode==='creative'?'Creative':'Survival') + ')';
+    b.onclick = ()=>{ ensureAudio(); continueWorld(s); };
+    row.appendChild(b);
+  }
+}
+
+document.getElementById('bCreative').onclick = ()=>{ ensureAudio(); if (loadSave() && !confirmNew()) return; newWorld('creative'); };
+document.getElementById('bSurvival').onclick = ()=>{ ensureAudio(); if (loadSave() && !confirmNew()) return; newWorld('survival'); };
+function confirmNew(){ return window.confirm('Start a NEW world? Your old world will be replaced.'); }
+document.getElementById('pResume').onclick = resumeGame;
+document.getElementById('pMode').onclick = ()=>{ setMode(mode==='creative'?'survival':'creative'); banner(mode==='creative'?'✨ Creative mode':'🌙 Survival mode', 1500); resumeGame(); };
+document.getElementById('pSound').onclick = e=>{ soundOn = !soundOn; e.target.textContent = soundOn ? '🔊 Sound: On' : '🔇 Sound: Off'; if (soundOn) SFX.click(); };
+document.getElementById('pNew').onclick = ()=>{ if (confirmNew()){ clearSave(); newWorld(mode); } };
+document.getElementById('pTitle').onclick = ()=>{ saveGame(); showTitle(); };
+document.getElementById('dRespawn').onclick = ()=>{ player.hp = 10; respawn(); worms.slice().forEach(removeWorm); beginPlay(); banner('💚 Back again! Quick, build a wall!', 2500); };
+document.getElementById('dCreative').onclick = ()=>{ setMode('creative'); player.hp = 10; respawn(); beginPlay(); };
+
+let saveTick = 0;
+function loop(now){
+  requestAnimationFrame(loop);
+  if (!started) return;
+  let dt = Math.min(0.05, (now - lastT)/1000); lastT = now;
+  if (!running) { renderer.render(scene, camera); return; }
+
+  // time of day
+  timeOfDay = (timeOfDay + dt/DAY_LENGTH) % 1;
+  if (isNight() && !nightAnnounced){ nightAnnounced = true; dayAnnounced = false; SFX.night();
+    banner(mode==='survival' ? '🌙 Night time! The worms are coming… build walls or climb high!' : '🌙 Night time. Nice and quiet in Creative.', 4000); }
+  if (!isNight() && !dayAnnounced){ dayAnnounced = true; nightAnnounced = false; SFX.day(); banner('☀️ Good morning! The worms are gone.', 3000); }
+  document.getElementById('clockIcon').textContent = isNight() ? '🌙' : (timeOfDay>0.5||timeOfDay<0.08 ? '🌅' : '☀️');
+  document.getElementById('clockText').textContent = isNight() ? 'Night' : (timeOfDay>0.5 ? 'Evening' : timeOfDay<0.2 ? 'Morning' : 'Day');
+
+  if (player.hurtCooldown > 0) player.hurtCooldown -= dt;
+  movePlayer(dt);
+  updateWorms(dt);
+  updateParticles(dt);
+  clouds.forEach(c=>{ c.position.x += c.userData.speed*dt; if (c.position.x > W+20) c.position.x = -20; });
+  updateSky();
+  renderer.render(scene, camera);
+
+  saveTick += dt; if (saveTick > 15){ saveTick = 0; if (dirty) saveGame(); else saveGame(); }
+}
+requestAnimationFrame(loop);
+window.BL = { setTime:t=>{ timeOfDay=t; }, worms, player, get mode(){ return mode; } };   // small debug hook
+document.addEventListener('visibilitychange', ()=>{ if (document.hidden && started) { saveGame(); if (running) pauseGame(); } });
+window.addEventListener('blur', ()=>{ if (started && running) pauseGame(); });
+
+// first paint: a pretty empty world behind the title
+generate(); rebuildAll(); respawn(); camera.position.set(player.pos.x, player.pos.y+1.6, player.pos.z); updateSky(); renderer.render(scene, camera);
+showTitle();
+})();
+</script>
+</body>
+</html>
