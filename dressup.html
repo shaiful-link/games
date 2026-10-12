@@ -83,7 +83,10 @@ const S = {
   shadow: null,                   // eyeshadow colour (null = none)
   acc: {},                        // accessories on/off
   bg: 'room',
-  eyes: '#5b3b8c'
+  eyes: '#5b3b8c',
+  nails: null,                    // nail polish colour (null = none)
+  pet: 'none',                    // little friend standing next to Mimi
+  stickers: []                    // [{e:'⭐', x, y}] placed by tapping
 };
 const DEFAULTS = JSON.parse(JSON.stringify(S));
 
@@ -117,7 +120,10 @@ const SFX = {
   comb(){ tone(300+Math.random()*100,.05,'triangle',.02); },
   tada(){ [523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,.3,'triangle',.06),i*120)); },
   camera(){ tone(900,.05,'square',.06); setTimeout(()=>tone(600,.12,'square',.05),70); },
-  wash(){ tone(400,.3,'sine',.05,0.5); }
+  wash(){ tone(400,.3,'sine',.05,0.5); },
+  giggle(){ [880,1047,988,1175].forEach((f,i)=>setTimeout(()=>tone(f,.09,'sine',.05),i*70)); },
+  pop(){ tone(500,.08,'square',.04,2); },
+  note(f){ tone(f,.18,'triangle',.05); }
 };
 
 /* =====================================================
@@ -129,6 +135,11 @@ const SHADOW_COLORS= [null,'#c77dff','#4cc9f0','#ff8fab','#ffd166','#06d6a0','#9
 const HAIR_COLORS  = ['#1d1210','#5a3a1e','#a0622d','#e3b94c','#d64f2a','#ff7bc0','#9b5de5','#4cc9f0','#06d6a0','#f5f0e1'];
 const DRESS_COLORS = ['#ff6fb0','#ff4d6d','#ffd166','#06d6a0','#4cc9f0','#c77dff','#ff9e00','#90e0ef','#ffffff','#9b5de5','rainbow'];
 const SHOE_COLORS  = ['#ff5fae','#ffffff','#ffd166','#4cc9f0','#c77dff','#ff4d6d','#1d1210','#06d6a0'];
+const SKIN_COLORS  = ['#ffe0c4','#ffd9b8','#f1c27d','#d9a06b','#b57a4a','#8d5a3a','#5c3a21'];
+const EYE_COLORS   = ['#5b3b8c','#3a7bd5','#2e8b57','#8b5a2b','#1a1a2e','#c77dff','#ff6fb0'];
+const NAIL_COLORS  = [null,'#ff4d6d','#ff8cc6','#ffd166','#06d6a0','#4cc9f0','#c77dff','#ffffff','#1d1210','glitter'];
+const STICKERS     = ['⭐','💖','🦋','🌈','🍭','🎈','🌸','🍦','🐞','🌟','🍓','🎵'];
+const PETS         = [['none','🚫'],['cat','🐱'],['bunny','🐰'],['unicorn','🦄'],['bird','🐦']];
 const HAIRS   = ['long','pigtails','bun','curly','bob','braids'];
 const DRESSES = ['party','princess','skirt','sporty','sunny'];
 const PATTERNS= ['none','dots','hearts','stars','stripes'];
@@ -251,6 +262,7 @@ function drawBody(c, s){
   c.beginPath(); c.moveTo(225,430); c.quadraticCurveTo(170,500,185,585); c.stroke();
   c.beginPath(); c.moveTo(375,430); c.quadraticCurveTo(430,500,415,585); c.stroke();
   circ(c,185,590,20,s.skin); circ(c,415,590,20,s.skin);
+  if (s.nails){ [185,415].forEach(hx=>{ for(let i=0;i<4;i++){ const nx=hx-15+i*10, ny=604; if (s.nails==='glitter'){ ell(c,nx,ny,4,5,['#ffd166','#ff8cc6','#4cc9f0','#c77dff'][i]); } else ell(c,nx,ny,4,5,s.nails); circ(c,nx-1,ny-2,1.3,'rgba(255,255,255,.7)'); } }); }
   // neck + torso base
   rr(c,278,360,44,60,12,s.skin);
   drawDress(c, s);
@@ -324,6 +336,10 @@ function drawFace(c, s, t){
   // eyeshadow
   if (s.shadow){ c.fillStyle=s.shadow; c.globalAlpha=.75; [258,342].forEach(x=>{ c.beginPath(); c.ellipse(x,252,30,20,0,Math.PI,0); c.fill(); }); c.globalAlpha=1; }
   // eyes (blink now and then)
+  if (s.happy){   // closed happy eyes ^ ^
+    [258,342].forEach(x=>{ c.strokeStyle='#3b2a2a'; c.lineWidth=6; c.lineCap='round'; c.beginPath(); c.arc(x,278,20,Math.PI*1.15,Math.PI*1.85); c.stroke();
+      c.strokeStyle='#5a3a2a'; c.lineWidth=5; c.beginPath(); c.moveTo(x-22,226); c.quadraticCurveTo(x,214,x+22,226); c.stroke(); });
+  } else {
   const blink = (Math.sin(t*1.3) > 0.985) ? 0.1 : 1;
   [258,342].forEach((x,i)=>{
     ell(c,x,264,22,27*blink,'#fff');
@@ -332,6 +348,7 @@ function drawFace(c, s, t){
     c.beginPath(); c.moveTo(x+(i?18:-18),244); c.lineTo(x+(i?26:-26),236); c.stroke();  // lash
     c.strokeStyle='#5a3a2a'; c.lineWidth=5; c.beginPath(); c.moveTo(x-22,228); c.quadraticCurveTo(x,218,x+22,228); c.stroke();   // brow
   });
+  }
   // nose + lips
   c.strokeStyle=shade(s.skin,-0.25); c.lineWidth=3; c.beginPath(); c.moveTo(296,300); c.quadraticCurveTo(300,312,306,304); c.stroke();
   c.fillStyle = s.lip;
@@ -352,6 +369,51 @@ function drawAcc(c, s){
   if (a.earrings){ [196,404].forEach(x=>{ c.strokeStyle='#ffd166'; c.lineWidth=3; c.beginPath(); c.moveTo(x,285); c.lineTo(x,300); c.stroke(); star(c,x,310,11,'#4cc9f0'); }); }
   if (a.necklace){ c.strokeStyle='#ffd166'; c.lineWidth=4; c.beginPath(); c.moveTo(262,400); c.quadraticCurveTo(300,450,338,400); c.stroke(); heart(c,300,418,12,'#ff4d6d'); }
   if (a.wand){ c.strokeStyle='#c77dff'; c.lineWidth=8; c.lineCap='round'; c.beginPath(); c.moveTo(415,580); c.lineTo(470,470); c.stroke(); star(c,476,458,22,'#ffd166'); star(c,500,440,7,'#fff'); star(c,455,440,5,'#fff'); }
+}
+
+function drawPet(c, s, t){
+  if (!s.pet || s.pet==='none') return;
+  const hop = Math.abs(Math.sin(t*4))*14;
+  const x = 95, y = 720 - hop;
+  if (s.pet==='cat'){
+    ell(c,x,y-20,38,28,'#f4a261'); circ(c,x+28,y-48,26,'#f4a261');
+    c.fillStyle='#f4a261'; [[x+12,y-66],[x+44,y-66]].forEach(e=>{ c.beginPath(); c.moveTo(e[0]-10,e[1]+4); c.lineTo(e[0],e[1]-18); c.lineTo(e[0]+10,e[1]+4); c.fill(); });
+    c.strokeStyle='#f4a261'; c.lineWidth=9; c.lineCap='round'; c.beginPath(); c.moveTo(x-34,y-24); c.quadraticCurveTo(x-60,y-50,x-50,y-80); c.stroke();
+    circ(c,x+20,y-50,4,'#222'); circ(c,x+38,y-50,4,'#222'); circ(c,x+29,y-40,3,'#ff8fab');
+    c.strokeStyle='#444'; c.lineWidth=1.5; [[-1,0],[-1,5],[1,0],[1,5]].forEach(w=>{ c.beginPath(); c.moveTo(x+29+w[0]*6,y-38+w[1]); c.lineTo(x+29+w[0]*22,y-40+w[1]*2); c.stroke(); });
+    c.fillStyle='#e07a3a'; for(let i=0;i<3;i++) c.fillRect(x-20+i*14,y-40,6,14);
+  } else if (s.pet==='bunny'){
+    ell(c,x,y-22,34,28,'#fff'); circ(c,x+22,y-52,24,'#fff');
+    [[x+10,y-96],[x+32,y-96]].forEach(e=>{ ell(c,e[0],e[1],9,26,'#fff'); ell(c,e[0],e[1],4,18,'#ffb3c6'); });
+    circ(c,x+14,y-54,3.5,'#222'); circ(c,x+30,y-54,3.5,'#222'); circ(c,x+22,y-45,3,'#ff6f91');
+    circ(c,x+8,y-44,5,'rgba(255,143,171,.5)'); circ(c,x+36,y-44,5,'rgba(255,143,171,.5)');
+    circ(c,x-30,y-28,9,'#fff'); c.strokeStyle='#ddd'; c.lineWidth=1.5; c.beginPath(); c.moveTo(x+22,y-45); c.lineTo(x+22,y-38); c.stroke();
+  } else if (s.pet==='unicorn'){
+    ell(c,x,y-22,38,26,'#f3e8ff'); circ(c,x+30,y-56,24,'#f3e8ff');
+    c.fillStyle='#ffd166'; c.beginPath(); c.moveTo(x+22,y-74); c.lineTo(x+34,y-108); c.lineTo(x+42,y-72); c.fill();
+    ['#ff6b6b','#ffd166','#06d6a0','#4cc9f0','#c77dff'].forEach((col,i)=>circ(c,x+10-i*9,y-66+i*6,8,col));
+    ['#ff6b6b','#ffd166','#06d6a0','#4cc9f0'].forEach((col,i)=>circ(c,x-36-i*2,y-40+i*9,7,col));
+    circ(c,x+38,y-56,4,'#222'); circ(c,x+39.5,y-57.5,1.5,'#fff'); circ(c,x+28,y-46,4,'rgba(255,143,171,.6)');
+    c.fillStyle='#e0cff5'; for(let i=0;i<3;i++) c.fillRect(x-24+i*16,y-6,8,12);
+  } else if (s.pet==='bird'){
+    circ(c,x,y-30,28,'#4cc9f0'); ell(c,x-8,y-26,16,10,'#3aa8d8');
+    circ(c,x+10,y-38,4,'#222'); circ(c,x+11.5,y-39.5,1.5,'#fff');
+    c.fillStyle='#ff9e00'; c.beginPath(); c.moveTo(x+24,y-34); c.lineTo(x+40,y-28); c.lineTo(x+24,y-24); c.fill();
+    c.fillStyle='#4cc9f0'; c.beginPath(); c.moveTo(x-6,y-58); c.lineTo(x+2,y-74); c.lineTo(x+8,y-56); c.fill();
+    c.strokeStyle='#ff9e00'; c.lineWidth=3; [[x-8],[x+8]].forEach(f=>{ c.beginPath(); c.moveTo(f[0],y-4); c.lineTo(f[0],y+8); c.moveTo(f[0]-5,y+8); c.lineTo(f[0]+5,y+8); c.stroke(); });
+  }
+}
+function drawStickers(c, s){
+  c.font='56px "Segoe UI Emoji","Apple Color Emoji",sans-serif'; c.textAlign='center'; c.textBaseline='middle';
+  (s.stickers||[]).forEach(st=>c.fillText(st.e, st.x, st.y));
+}
+function drawBubble(c, text){
+  c.font='bold 26px "Segoe UI",system-ui,sans-serif'; c.textAlign='center'; c.textBaseline='middle';
+  const w = c.measureText(text).width + 40, x = 430, y = 110;
+  rr(c, x-w/2, y-24, w, 48, 20, '#fff', '#ff8cc6', 4);
+  c.fillStyle='#fff'; c.beginPath(); c.moveTo(x-30,y+22); c.lineTo(x-50,y+50); c.lineTo(x-8,y+22); c.fill();
+  c.strokeStyle='#ff8cc6'; c.lineWidth=4; c.beginPath(); c.moveTo(x-30,y+22); c.lineTo(x-50,y+50); c.lineTo(x-8,y+22); c.stroke();
+  c.fillStyle='#d63f8c'; c.fillText(text, x, y);
 }
 
 /* =====================================================
@@ -406,19 +468,38 @@ function drawParts(c, dt){
    9. MAIN RENDER
    ===================================================== */
 let lastT = performance.now(), T = 0;
+const react = {t:0, text:''};
+const PHRASES = ['Hee hee! 🤭','I love it! 💖','So pretty! ✨','Tickles! 😆','Yay! 🎉','Thank you! 🥰','Ooh la la! 💃'];
+function giggle(){ react.t = 1.6; react.text = PHRASES[Math.floor(Math.random()*PHRASES.length)]; SFX.giggle(); sparkles(300,200,6); }
+let dancing = false, musicTimer = null, musicStep = 0;
+const TUNE = [523,587,659,523,659,698,784,0,784,880,784,698,659,523,0,587,523,494,523,0];
+function setDance(on){
+  dancing = on;
+  clearInterval(musicTimer); musicTimer = null;
+  if (on){ musicStep = 0; musicTimer = setInterval(()=>{ const f = TUNE[musicStep++ % TUNE.length]; if (f) SFX.note(f); }, 190); hint('Mimi is dancing! Tap 💃 to stop'); }
+  else hint('Tap a button, then touch Mimi! 💖');
+}
 let pointer = {x:0,y:0,down:false};
 function render(now){
   requestAnimationFrame(render);
   const dt = Math.min(0.05,(now-lastT)/1000); lastT = now; T += dt;
-  const bob = Math.sin(T*2)*3;
+  if (react.t > 0) react.t -= dt;
+  S.happy = react.t > 0 || dancing;
+  const bob = dancing ? -Math.abs(Math.sin(T*6))*22 : Math.sin(T*2)*3;
   drawBg(ctx, S.bg, T);
+  drawPet(ctx, S, T);
   ctx.save(); ctx.translate(0,bob);
+  if (dancing){ ctx.translate(300,560); ctx.rotate(Math.sin(T*6)*0.08); ctx.translate(-300,-560); if (Math.random()<0.15) sparkles(100+Math.random()*400, 100+Math.random()*500, 2); }
+  else if (react.t > 0){ ctx.translate(300,380); ctx.rotate(Math.sin(react.t*12)*0.05); ctx.translate(-300,-380); }
   drawHairBack(ctx, S);
   drawBody(ctx, S);
   drawFace(ctx, S, T);
   drawHairFront(ctx, S);
   drawAcc(ctx, S);
   ctx.restore();
+  drawStickers(ctx, S);
+  if (react.t > 0) drawBubble(ctx, react.text);
+  else if (dancing) drawBubble(ctx, '♪ La la la! ♪');
   drawParts(ctx, dt);
   // tool cursor following the finger
   if (pointer.down){
@@ -438,15 +519,16 @@ const TOOLS = [
   ['lip','💄','Lipstick! Touch the lips'], ['paint','🎨','Face paint! Draw on the face'], ['shadow','👁️','Eyeshadow! Pick a colour'],
   ['comb','🪮','Comb! Rub the messy hair'], ['hair','💇','Pick a hairstyle'], ['haircolor','🌈','Hair colour!'],
   ['dress','👗','Pick a dress'], ['dresscolor','🎀','Dress colour & pattern'], ['shoes','👟','Pick shoes'],
-  ['acc','👑','Add sparkly things'], ['bg','🏰','Where is Mimi?'],
-  ['wash','🧽','Wash the face clean'], ['random','🎲','Surprise outfit!'], ['photo','📸','Take a photo!']
+  ['nails','💅','Nail polish! Pick a colour'], ['face','🙂','Skin and eye colour'],
+  ['acc','👑','Add sparkly things'], ['sticker','🦋','Stickers! Tap anywhere'], ['pet','🐰','Pick a little friend'], ['bg','🏰','Where is Mimi?'],
+  ['dance','💃','Dance party!'], ['wash','🧽','Wash the face clean'], ['random','🎲','Surprise outfit!'], ['save','💝','Save your favourite looks'], ['photo','📸','Take a photo!']
 ];
 const toolsEl = document.getElementById('tools'), optsEl = document.getElementById('opts'), hintEl = document.getElementById('hint');
 function hint(t){ hintEl.textContent = t; }
 function buildTools(){
   toolsEl.innerHTML='';
   TOOLS.forEach(([id,ic,h])=>{
-    const b = document.createElement('div'); b.className='tool'+(id===tool?' sel':''); b.textContent=ic; b.dataset.id=id;
+    const b = document.createElement('div'); b.className='tool'+(id===tool || (id==='dance'&&dancing)?' sel':''); b.textContent=ic; b.dataset.id=id;
     b.addEventListener('pointerdown', e=>{ e.preventDefault(); audio(); SFX.tap(); selectTool(id,h); });
     toolsEl.appendChild(b);
   });
@@ -455,6 +537,7 @@ function selectTool(id, h){
   if (id==='wash'){ mctx.clearRect(0,0,Wc,Hc); S.lip = DEFAULTS.lip; S.shadow=null; SFX.wash(); hint('All clean! 🫧'); sparkles(300,280,20,'#9be7ff'); return; }
   if (id==='random'){ randomLook(); return; }
   if (id==='photo'){ takePhoto(); return; }
+  if (id==='dance'){ setDance(!dancing); buildTools(); return; }
   tool = id; hint(h);
   buildTools(); buildOpts();
 }
@@ -496,12 +579,49 @@ function buildOpts(){
   if (tool==='shoes'){ SHOES.forEach(sh=>add(optBtn(thumb({shoes:sh},{x:220,y:680,w:160}), S.shoes===sh, ()=>{ S.shoes=sh; }))); SHOE_COLORS.forEach(col=>add(swatch(col, S.shoeColor===col, ()=>{ S.shoeColor=col; }))); }
   if (tool==='acc')   ACCS.forEach(([id,ic])=>{ const b=optBtn(ic, false, ()=>{ S.acc[id]=!S.acc[id]; if (S.acc[id]) sparkles(300,200,12); }); if (S.acc[id]) b.classList.add('on'); add(b); });
   if (tool==='bg')    BGS.forEach(([id,ic])=>add(optBtn(ic, S.bg===id, ()=>{ S.bg=id; })));
+  if (tool==='nails') NAIL_COLORS.forEach(col=>add(swatch(col, S.nails===col, ()=>{ S.nails=col; if (col) { sparkles(185,600,6); sparkles(415,600,6); } })));
+  if (tool==='face'){
+    SKIN_COLORS.forEach(col=>add(optBtn(thumb({skin:col, happy:false},{x:180,y:150,w:240}), S.skin===col, ()=>{ S.skin=col; })));
+    EYE_COLORS.forEach(col=>add(optBtn(thumb({eyes:col, happy:false},{x:215,y:215,w:170}), S.eyes===col, ()=>{ S.eyes=col; })));
+  }
+  if (tool==='sticker'){
+    STICKERS.forEach(e=>add(optBtn(e, stickerPick===e, ()=>{ stickerPick=e; })));
+    add(optBtn('↩️', false, ()=>{ S.stickers.pop(); }));
+    add(optBtn('🗑️', false, ()=>{ S.stickers = []; }));
+  }
+  if (tool==='pet')   PETS.forEach(([id,ic])=>add(optBtn(ic, S.pet===id, ()=>{ S.pet=id; if (id!=='none'){ sparkles(95,680,10); SFX.pop(); } })));
+  if (tool==='save'){
+    add(optBtn('💾', false, ()=>{ saveLook(); }));
+    loadLooks().forEach((lk,i)=>add(optBtn(thumb(Object.assign({}, lk.state, {happy:false}),{x:60,y:40,w:480}), false, ()=>{ applyLook(lk); })));
+    if (loadLooks().length) add(optBtn('🗑️', false, ()=>{ if (confirm('Delete all saved looks?')){ try{ localStorage.removeItem(LOOKS_KEY); }catch(e){} } }));
+  }
+}
+let stickerPick = '⭐';
+
+/* ---------- WARDROBE: saved looks live on this phone ---------- */
+const LOOKS_KEY = 'mimi_looks_v1';
+function loadLooks(){ try { return JSON.parse(localStorage.getItem(LOOKS_KEY)) || []; } catch(e){ return []; } }
+function saveLook(){
+  const looks = loadLooks();
+  const state = JSON.parse(JSON.stringify(S)); delete state.happy; delete state.combedShine;
+  looks.unshift({ state, makeup: makeup.toDataURL('image/png') });
+  while (looks.length > 6) looks.pop();
+  try { localStorage.setItem(LOOKS_KEY, JSON.stringify(looks)); celebrate('Saved! 💝'); }
+  catch(e){ hint('Could not save on this phone 😢'); }
+}
+function applyLook(lk){
+  Object.assign(S, lk.state); S.stickers = lk.state.stickers || []; S.acc = lk.state.acc || {};
+  mctx.clearRect(0,0,Wc,Hc);
+  if (lk.makeup){ const im = new Image(); im.onload = ()=>mctx.drawImage(im,0,0); im.src = lk.makeup; }
+  makeStrands(); strands.forEach(s=>s.combed=true); S.combedShine=true;
+  giggle();
 }
 function randomLook(){
   const pick = a=>a[Math.floor(Math.random()*a.length)];
   S.hair=pick(HAIRS); S.hairColor=pick(HAIR_COLORS); S.dress=pick(DRESSES); S.dressColor=pick(DRESS_COLORS); S.pattern=pick(PATTERNS);
   S.shoes=pick(SHOES); S.shoeColor=pick(SHOE_COLORS); S.lip=pick(LIP_COLORS); S.shadow=pick(SHADOW_COLORS); S.bg=pick(BGS)[0];
   S.acc={}; ACCS.forEach(([id])=>{ if (Math.random()<0.3) S.acc[id]=true; });
+  S.nails=pick(NAIL_COLORS); S.eyes=pick(EYE_COLORS); S.pet=pick(PETS)[0];
   makeStrands(); strands.forEach(s=>s.combed=true); S.combedShine=true;
   celebrate('Ta-daa! 🎲'); buildOpts();
 }
@@ -540,7 +660,9 @@ function touchMimi(x,y){
   if (tool==='comb') combAt(x,y);
   else if (tool==='lip' || tool==='paint'){ if (inFace(x,y)) paintStroke(x,y); }
   else if (tool==='shadow'){ if (inFace(x,y) && y<290) { sparkles(x,y,2); } }
-  else if (tool==='acc' || tool==='hair' || tool==='haircolor' || tool==='dress' || tool==='dresscolor' || tool==='shoes' || tool==='bg'){ if (!last) sparkles(x,y,4); }
+  else if (tool==='sticker'){ if (!last){ S.stickers.push({e:stickerPick, x, y}); if (S.stickers.length > 40) S.stickers.shift(); sparkles(x,y,5); SFX.pop(); } }
+  else if (tool==='nails'){ if (!last && (Math.hypot(x-185,y-590)<50 || Math.hypot(x-415,y-590)<50)) sparkles(x,y,8); }
+  else { if (!last){ if (inFace(x,y)) giggle(); else sparkles(x,y,4); } }
   last = {x,y};
 }
 
