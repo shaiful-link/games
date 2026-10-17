@@ -27,8 +27,11 @@
     gap: 8px;
   }
   #top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .side { font-size: 15px; font-weight: 700; min-width: 70px; }
+  .side { font-size: 15px; font-weight: 700; min-width: 84px; line-height: 1.15; }
   .side.right { text-align: right; }
+  .side b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .side small { display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0; }
+  .side.leading small { opacity: 1; }
   .side.red { color: #ff6b6b; }
   .side.green { color: #4dd4ac; }
   #status { font-size: 15px; color: rgba(255,255,255,0.85); text-align: center; flex: 1; }
@@ -62,9 +65,9 @@
 <body>
 <div id="app">
   <div id="top">
-    <div class="side red" id="nameTop">Computer</div>
+    <div class="side red" id="sideTop"><span id="nameTop">Computer</span><b id="seedsTop">0</b><small>leading</small></div>
     <div id="status">Congkak</div>
-    <div class="side green right" id="nameBottom">You</div>
+    <div class="side green right" id="sideBottom"><span id="nameBottom">You</span><b id="seedsBottom">0</b><small>leading</small></div>
     <button id="sound" aria-label="Sound on or off"></button>
   </div>
   <div id="stage"><canvas id="game"></canvas></div>
@@ -410,6 +413,17 @@ const msgLine  = document.getElementById('msgLine');
 const elStatus = document.getElementById('status');
 const elTop = document.getElementById('nameTop');
 const elBottom = document.getElementById('nameBottom');
+const sideTop = document.getElementById('sideTop'), sideBottom = document.getElementById('sideBottom');
+const seedsTop = document.getElementById('seedsTop'), seedsBottom = document.getElementById('seedsBottom');
+
+// Seeds in each storehouse, and who is ahead
+function updateScores() {
+  const g = shown[BOTTOM_STORE], r = shown[TOP_STORE];
+  seedsBottom.textContent = g;
+  seedsTop.textContent = r;
+  sideBottom.classList.toggle('leading', g > r);
+  sideTop.classList.toggle('leading', r > g);
+}
 
 // ---------- Game state ----------
 let mode = 'easy';
@@ -534,6 +548,7 @@ function endGame() {
 }
 
 function updateHud() {
+  updateScores();
   if (!playing) return;
   let text;
   if (animating) text = 'Sowing...';
@@ -551,6 +566,7 @@ function update(dt) {
       if (steps.length === 0) { afterMove(); return; }
       const s = steps.shift();
       shown = s.board;
+      updateScores();
       lastDrop = s.drop !== undefined ? s.drop : (s.pickup !== undefined ? s.pickup : -1);
       if (s.capture) sfx.capture();
       else if (s.pickup !== undefined) sfx.pickup();
