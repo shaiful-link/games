@@ -46,6 +46,8 @@
 <div class="section">Insya-Allah lain kali (as the games say it)</div>
 <p class="sub">Arabic voice says B3, then the Malay voice says "lain kali".</p>
 <div class="card"><div class="name">Combined, exactly like in the games</div><div class="btns"><button id="playCombo" class="main">Play</button></div></div>
+<label>Arabic voice for "Insya-Allah" (used by the Combined button)</label>
+<select id="voiceAr"></select>
 <label>Malay voice for "lain kali"</label>
 <select id="voiceMs"></select>
 <div class="card"><div class="name">Just "lain kali" with the chosen Malay voice</div><div class="btns"><button id="playTail">Play</button></div></div>
@@ -92,6 +94,9 @@ function loadVoices() {
   voices.sort((a, b) => score(a) - score(b) || a.lang.localeCompare(b.lang));
   sel.innerHTML = voices.map((v, i) => '<option value="' + i + '">' + v.lang + ' — ' + v.name + '</option>').join('');
   const n = voices.filter(v => /^ar/i.test(v.lang)).length, m = voices.filter(v => /^ms/i.test(v.lang)).length;
+  const selAr = document.getElementById('voiceAr');
+  const ar = voices.map((v, i) => [v, i]).filter(x => /^ar/i.test(x[0].lang));
+  selAr.innerHTML = (ar.length ? ar : voices.map((v, i) => [v, i])).map(x => '<option value="' + x[1] + '">' + x[0].lang + ' — ' + x[0].name + '</option>').join('');
   const selMs = document.getElementById('voiceMs');
   const ms = voices.map((v, i) => [v, i]).filter(x => /^(ms|id)/i.test(x[0].lang));
   selMs.innerHTML = (ms.length ? ms : voices.map((v, i) => [v, i])).map(x => '<option value="' + x[1] + '">' + x[0].lang + ' — ' + x[0].name + '</option>').join('');
@@ -132,7 +137,7 @@ function speakWith(text, v, rateVal) {
 document.getElementById('playCombo').addEventListener('click', () => {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
-  speakWith('إِنْشَاءَ اللّٰهُ', voices[Number(sel.value)], Number(rate.value));
+  speakWith('إِنْشَاءَ اللّٰهُ', voices[Number(document.getElementById('voiceAr').value)], Number(rate.value));
   speakWith('lain kali', voices[Number(document.getElementById('voiceMs').value)], 0.9);
 });
 document.getElementById('playTail').addEventListener('click', () => {
