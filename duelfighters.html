@@ -1628,8 +1628,8 @@ function draw() {
   let text = null, titleColor = '#f4d35e';
   if (screen === 'title')      text = ['Duel Fighters', 'Win 2 rounds to beat each of the 10 opponents', 'Tap to start'];
   else if (screen === 'clear') { text = ['You beat ' + LEVELS[level - 1].name + '!', 'Next: ' + LEVELS[level].name, 'Tap to continue']; titleColor = '#4dd4ac'; }
-  else if (screen === 'won')   text = ['You are the champion!', 'Score ' + score, 'Tap to play again'];
-  else if (screen === 'over')  { text = [LEVELS[level - 1].name + ' wins', 'Tap to try again']; titleColor = '#ff8a8a'; }
+  else if (screen === 'won')   text = ['Alhamdulillah', 'You are the champion', 'Score ' + score, 'Tap to play again'];
+  else if (screen === 'over')  { text = ['Insya-Allah lain kali', LEVELS[level - 1].name + ' wins', 'Tap to try again']; titleColor = '#ff8a8a'; }
   if (text) {
     // Dim the arena, then show a card that pops in
     ctx.fillStyle = 'rgba(11,18,32,0.62)';

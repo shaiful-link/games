@@ -1052,9 +1052,9 @@ function drawMessages(w, h) {
   if (screen === 'title')       text = ['Maze Muncher', 'Eat every dot. Avoid the chasers.', 'Tap to start'];
   else if (screen === 'ready')  text = ['Level ' + level];
   else if (screen === 'paused') text = ['Paused', 'Tap to resume'];
-  else if (screen === 'clear')  text = ['Level ' + level + ' clear!', 'Bonus +' + LEVEL_BONUS * level, 'Tap for level ' + (level + 1)];
-  else if (screen === 'won')    text = ['You win!', 'Score ' + score, 'Tap to play again'];
-  else if (screen === 'over')   text = ['Game over', 'Tap to retry level ' + level];
+  else if (screen === 'clear')  text = ['Alhamdulillah', 'Level ' + level + ' clear', 'Bonus +' + LEVEL_BONUS * level, 'Tap for level ' + (level + 1)];
+  else if (screen === 'won')    text = ['Alhamdulillah', 'Score ' + score, 'Tap to play again'];
+  else if (screen === 'over')   text = ['Insya-Allah lain kali', 'Tap to retry level ' + level];
   if (!text) return;
 
   // How solid the message is (0 to 1). After a level is finished it waits for the wall

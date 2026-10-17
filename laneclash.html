@@ -845,7 +845,7 @@ function updateVisuals(dt) {
   // End screen: count the time, and keep confetti falling after a victory
   if (state === 'over') {
     overTime += dt;
-    if (resultText === 'Victory!' && overTime > 0.5 && particles.length < 110) spawnConfetti(-10);
+    if (resultText === 'Alhamdulillah' && overTime > 0.5 && particles.length < 110) spawnConfetti(-10);
   }
 }
 
@@ -920,8 +920,8 @@ function update(dt) {
   units = units.filter(u => u.alive || u.kind !== 'minion');
 
   // Win or lose
-  if (!towers[1].alive) { state = 'over'; resultText = 'Victory!'; endGame(true); }
-  else if (!towers[0].alive) { state = 'over'; resultText = 'Defeat'; endGame(false); }
+  if (!towers[1].alive) { state = 'over'; resultText = 'Alhamdulillah'; endGame(true); }
+  else if (!towers[0].alive) { state = 'over'; resultText = 'Insya-Allah lain kali'; endGame(false); }
 }
 
 // Looks and sound for the end of the game
@@ -1500,7 +1500,7 @@ function draw() {
   } else if (state === 'over') {
     // The end screen fades in after a short moment, so the explosion can be seen first
     const fade = Math.max(0, Math.min(1, (overTime - 0.45) / 0.4));
-    const won = resultText === 'Victory!';
+    const won = resultText === 'Alhamdulillah';
     shade(0.75 * fade);
     ctx.globalAlpha = fade;
     drawPanel(42, 250, 276, 140, won ? 'rgba(244,211,94,0.6)' : 'rgba(255,107,107,0.5)');

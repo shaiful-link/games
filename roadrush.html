@@ -1133,9 +1133,9 @@ function draw() {
   let text = null;
   let accent = '#4dd4ac';                        // colour of the big first line and the card's edge
   if (screen === 'title')      { text = ['Road Rush', 'Slide in the bottom strip to steer', 'Pass the traffic, do not crash', 'Tap to start']; }
-  else if (screen === 'clear') { text = ['Level ' + level + ' clear!', 'Tap for level ' + (level + 1)]; }
-  else if (screen === 'won')   { text = ['You win!', 'Score ' + Math.floor(score), 'Tap to play again']; accent = '#f4d35e'; }
-  else if (screen === 'over')  { text = ['Game over', 'Tap to retry level ' + level]; accent = '#ff6b6b'; }
+  else if (screen === 'clear') { text = ['Alhamdulillah', 'Level ' + level + ' clear', 'Tap for level ' + (level + 1)]; }
+  else if (screen === 'won')   { text = ['Alhamdulillah', 'Score ' + Math.floor(score), 'Tap to play again']; accent = '#f4d35e'; }
+  else if (screen === 'over')  { text = ['Insya-Allah lain kali', 'Tap to retry level ' + level]; accent = '#ff6b6b'; }
   if (text) drawMessage(text, accent);
 
   // Confetti falls in front of the message

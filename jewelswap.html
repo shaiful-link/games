@@ -842,9 +842,9 @@ function draw() {
   titleButtons = [];
   if (choose)                  { text = ['Jewel Swap', 'Swap two jewels to line up 3 or more']; accent = '#b47cff'; }
   else if (screen === 'title') { text = ['Jewel Swap', 'Swap two jewels to line up 3 or more', LEVELS.length + ' levels', 'Tap to start']; accent = '#b47cff'; }
-  else if (screen === 'clear') { text = ['Level ' + level + ' clear!', movesLeft + ' moves to spare', 'Tap for level ' + (level + 1)]; accent = '#2fd6a3'; }
-  else if (screen === 'won')   { text = ['You win!', 'All ' + LEVELS.length + ' levels complete', 'Total score ' + score, 'Tap to play again']; accent = '#ffd23f'; }
-  else if (screen === 'over')  { text = ['Out of moves', 'You needed ' + (LEVELS[level - 1].goal - levelScore()) + ' more', 'Tap to retry level ' + level]; accent = '#ff5d6c'; }
+  else if (screen === 'clear') { text = ['Alhamdulillah', 'Level ' + level + ' clear', movesLeft + ' moves to spare', 'Tap for level ' + (level + 1)]; accent = '#2fd6a3'; }
+  else if (screen === 'won')   { text = ['Alhamdulillah', 'All ' + LEVELS.length + ' levels complete', 'Total score ' + score, 'Tap to play again']; accent = '#ffd23f'; }
+  else if (screen === 'over')  { text = ['Insya-Allah lain kali', 'Out of moves', 'You needed ' + (LEVELS[level - 1].goal - levelScore()) + ' more', 'Tap to retry level ' + level]; accent = '#ff5d6c'; }
   if (text) {
     ctx.fillStyle = 'rgba(11,18,32,0.82)';
     ctx.fillRect(0, 0, w, h);

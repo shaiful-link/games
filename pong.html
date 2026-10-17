@@ -416,13 +416,13 @@ function pointScored(nextDirection) {
   resetBall();
   if (player.score >= WIN_SCORE) {
     state = 'over';
-    title = 'You win!';
+    title = 'Alhamdulillah';
     message = 'Tap to play again';
     sfx.win();
     addConfetti();
   } else if (ai.score >= WIN_SCORE) {
     state = 'over';
-    title = 'Computer wins';
+    title = 'Insya-Allah lain kali';
     message = 'Tap to play again';
     sfx.lose();
   } else {
@@ -851,7 +851,7 @@ function draw(time) {
     ctx.textBaseline = 'middle';
     let messageY = fieldH / 2 + 150;
     if (title) {
-      ctx.fillStyle = (title === 'You win!') ? '#8ff0d2' : '#ffa7a7';
+      ctx.fillStyle = (title === 'Alhamdulillah') ? '#8ff0d2' : '#ffa7a7';
       ctx.font = '800 28px system-ui, sans-serif';
       ctx.fillText(title, W / 2, fieldH / 2 + 124);
       messageY = fieldH / 2 + 156;

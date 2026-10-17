@@ -1793,8 +1793,8 @@ function draw() {
       ctx.globalAlpha = 1;
     }
     const lines = screen === 'won'
-      ? ['All puzzles complete!', 'Time ' + formatTime(levelTime), 'Tap to play again']
-      : ['Level ' + level + ' complete!', 'Time ' + formatTime(levelTime), 'Tap for level ' + (level + 1)];
+      ? ['Alhamdulillah', 'All puzzles complete \u00B7 Time ' + formatTime(levelTime), 'Tap to play again']
+      : ['Alhamdulillah', 'Level ' + level + ' complete \u00B7 Time ' + formatTime(levelTime), 'Tap for level ' + (level + 1)];
     drawMessage(lines, tray.y + tray.h / 2);
   }
   drawEffects();

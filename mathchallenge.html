@@ -884,7 +884,7 @@ function answer(index) {
 function afterAnswer() {
   if (lives <= 0) {
     screen = 'over';
-    showMessage('Game over', 'You reached question ' + questionNo + ' of ' + QUESTIONS_PER_LEVEL, 'Tap to retry level ' + level);
+    showMessage('Insya-Allah lain kali', 'You reached question ' + questionNo + ' of ' + QUESTIONS_PER_LEVEL, 'Tap to retry level ' + level);
     decorateMessage('none', 'Good try! Have another go');
     sfx.gameOver();
   } else if (questionNo >= QUESTIONS_PER_LEVEL) {
@@ -892,13 +892,13 @@ function afterAnswer() {
     updateHud();
     if (level === LEVELS.length) {
       screen = 'won';
-      showMessage('You win!', 'Score ' + score, 'Tap to play again');
+      showMessage('Alhamdulillah', 'Score ' + score, 'Tap to play again');
       decorateMessage('stars', cheerText());
       confetti(CONFETTI_WIN);
       sfx.win();
     } else {
       screen = 'clear';
-      showMessage('Level ' + level + ' clear!', 'Next: ' + LEVELS[level].name, 'Tap for level ' + (level + 1));
+      showMessage('Alhamdulillah', 'Level ' + level + ' clear \u00B7 Next: ' + LEVELS[level].name, 'Tap for level ' + (level + 1));
       decorateMessage('stars', cheerText());
       confetti(CONFETTI_CLEAR);
       sfx.levelUp();

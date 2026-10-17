@@ -1241,9 +1241,9 @@ function draw() {
     drawCard('Level clear!', '#7ee0a1',
       lastBonus > 0 ? ['Spare shots bonus +' + lastBonus] : [], 'Tap for the next level', false);
   } else if (screen === 'lost') {
-    drawCard('Out of shots', '#ff9a9a', [], 'Tap to try again', false);
+    drawCard('Insya-Allah lain kali', '#ff9a9a', [], 'Tap to try again', false);
   } else if (screen === 'done') {
-    drawCard('All levels complete!', '#ffd166', ['Final score ' + score], 'Tap to play again', false);
+    drawCard('Alhamdulillah', '#ffd166', ['Final score ' + score], 'Tap to play again', false);
   }
 
   drawParticles(true);                // confetti falls in front of the end screens

@@ -1431,9 +1431,9 @@ function drawParticles() {
 function drawMessage() {
   let text = null, titleColor = '#ffd166';
   if (screen === 'title')      text = ['Fruit Catch', 'Slide in the bottom strip to move', 'Catch the fruit, avoid the bombs', 'Tap to start'];
-  else if (screen === 'clear') { text = ['Level ' + level + ' clear!', 'Level bonus +' + LEVEL_BONUS * level, 'Tap for level ' + (level + 1)]; titleColor = '#7be495'; }
-  else if (screen === 'won')   text = ['You win!', 'Score ' + score, 'Tap to play again'];
-  else if (screen === 'over')  { text = ['Game over', 'Tap to retry level ' + level]; titleColor = '#ff6b6b'; }
+  else if (screen === 'clear') { text = ['Alhamdulillah', 'Level ' + level + ' clear', 'Level bonus +' + LEVEL_BONUS * level, 'Tap for level ' + (level + 1)]; titleColor = '#7be495'; }
+  else if (screen === 'won')   text = ['Alhamdulillah', 'Score ' + score, 'Tap to play again'];
+  else if (screen === 'over')  { text = ['Insya-Allah lain kali', 'Tap to retry level ' + level]; titleColor = '#ff6b6b'; }
   if (!text) return;
 
   // Dim the field a little so the card stands out

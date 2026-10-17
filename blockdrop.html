@@ -989,13 +989,13 @@ function drawMessage(w, h) {
     title = 'Paused';                             titleColor = '#ffffff';
     lines = ['Tap to resume'];
   } else if (state === 'clear') {
-    title = 'Level ' + level + ' clear!';         titleColor = '#6fe3c1';
+    title = 'Alhamdulillah';         titleColor = '#6fe3c1';
     lines = ['Bonus +' + LEVEL_BONUS * level, 'Tap for level ' + (level + 1)];
   } else if (state === 'won') {
-    title = 'You win!';                           titleColor = '#f4d35e';
+    title = 'Alhamdulillah';                             titleColor = '#f4d35e';
     lines = ['Score ' + score, 'Tap to play again'];
   } else {
-    title = 'Game over';                          titleColor = '#ff6b6b';
+    title = 'Insya-Allah lain kali';                        titleColor = '#ff6b6b';
     lines = ['Score ' + score, 'Tap to retry level ' + level];
   }
 

@@ -740,9 +740,9 @@ function finishGame() {
   if (points.W !== points.B) winner = points.W > points.B ? 'W' : 'B';
   else winner = countOnBoard('W') === 0 ? 'W' : 'B';
 
-  if (mode === 'two') msgTitle.textContent = (winner === 'W' ? 'White' : 'Black') + ' wins!';
-  else msgTitle.textContent = winner === 'W' ? 'You win!' : 'Computer wins';
-  msgLine.textContent = 'White ' + points.W + '  ·  Black ' + points.B + '.  Play again?';
+  if (mode === 'two') msgTitle.textContent = 'Alhamdulillah';
+  else msgTitle.textContent = winner === 'W' ? 'Alhamdulillah' : 'Insya-Allah lain kali';
+  msgLine.textContent = (mode === 'two' ? (winner === 'W' ? 'White' : 'Black') + ' wins' : (winner === 'W' ? 'Tahniah, anda menang' : 'Cuba lagi \u00B7 computer wins')) + '. White ' + points.W + '  \u00B7  Black ' + points.B + '.';
   elW.textContent = points.W;
   elB.textContent = points.B;
   elStatus.textContent = 'Game over';

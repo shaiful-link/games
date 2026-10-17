@@ -697,11 +697,11 @@ function play(m) {
 function endGame(winner) {
   playing = false;
   let title;
-  if (winner === 0) title = 'Draw';
-  else if (mode === 'two') title = (winner === GREEN ? 'Green' : 'Red') + ' wins!';
-  else title = winner === GREEN ? 'You win!' : 'Computer wins';
+  if (winner === 0) title = 'Seri \u00B7 Alhamdulillah';
+  else if (mode === 'two') title = 'Alhamdulillah';
+  else title = winner === GREEN ? 'Alhamdulillah' : 'Insya-Allah lain kali';
   msgTitle.textContent = title;
-  msgLine.textContent = 'Play again?';
+  msgLine.textContent = (winner === 0 ? 'Draw' : (mode === 'two' ? (winner === GREEN ? 'Green' : 'Red') + ' wins' : (winner === GREEN ? 'Tahniah, anda menang' : 'Cuba lagi \u00B7 computer wins'))) + '. Play again?';
   updateHud();
   elStatus.textContent = title;                // the top bar shows the result too
   elSideRed.classList.remove('turn');

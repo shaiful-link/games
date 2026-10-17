@@ -785,17 +785,17 @@ function checkEnd() {
     if (level === LEVELS.length) {
       screen = 'won';
       sfx.win();
-      showMessageSoon('🏆', 'You win!', 'Score ' + score, 'Tap to play again', CONFETTI_WIN);
+      showMessageSoon('🏆', 'Alhamdulillah', 'Score ' + score, 'Tap to play again', CONFETTI_WIN);
     } else {
       screen = 'clear';
       sfx.clear();
-      showMessageSoon('⭐', 'Level ' + level + ' clear!', movesLeft + ' moves to spare', 'Tap for level ' + (level + 1), CONFETTI_CLEAR);
+      showMessageSoon('⭐', 'Alhamdulillah', 'Level ' + level + ' clear \u00B7 ' + movesLeft + ' moves to spare', 'Tap for level ' + (level + 1), CONFETTI_CLEAR);
     }
   } else if (movesLeft <= 0) {
     screen = 'over';
     sfx.lose();
     boardEl.classList.add('shake');
-    showMessageSoon('😮', 'Out of moves', pairsLeft + (pairsLeft === 1 ? ' pair' : ' pairs') + ' left', 'Tap to retry level ' + level, 0);
+    showMessageSoon('😮', 'Insya-Allah lain kali', 'Out of moves \u00B7 ' + pairsLeft + (pairsLeft === 1 ? ' pair' : ' pairs') + ' left', 'Tap to retry level ' + level, 0);
   }
 }
 
