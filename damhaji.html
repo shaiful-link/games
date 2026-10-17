@@ -506,12 +506,20 @@ function speakOnce(text) {
     // iPhone: cancel() right before speak() can swallow the phrase when the game ends
     // on its own (not on a tap). Only clear if something is still talking, wake the
     // engine up, and say it again if it did not start within a second.
-    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) window.speechSynthesis.cancel();
-    window.speechSynthesis.resume();
+    // Also step out of the game's drawing loop (setTimeout 0): iPhone can ignore speak()
+    // from inside an animation frame. If it still has not started, say it on the next
+    // finger lift or tap, which iPhone always allows.
     let started = false;
-    u.onstart = () => { started = true; };
-    window.speechSynthesis.speak(u);
-    setTimeout(() => { if (!started) { try { window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch (e) {} } }, 1000);
+    u.onstart = () => { started = true; pendingSpeech = null; };
+    pendingSpeech = u;
+    setTimeout(() => {
+      try {
+        if (window.speechSynthesis.speaking || window.speechSynthesis.pending) window.speechSynthesis.cancel();
+        window.speechSynthesis.resume();
+        window.speechSynthesis.speak(u);
+      } catch (e) {}
+      setTimeout(() => { if (!started) { try { window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch (e) {} } }, 1000);
+    }, 0);
   } catch (e) { /* no voice on this phone: the game still works */ }
 }
 function speakReset() { lastSpoken = ''; }
@@ -525,6 +533,13 @@ function unlockSpeech() {
   try { window.speechSynthesis.resume(); const u = new SpeechSynthesisUtterance(' '); window.speechSynthesis.speak(u); } catch (e) {}
 }
 for (const type of ['pointerdown', 'touchend', 'click', 'keydown']) window.addEventListener(type, unlockSpeech, true);
+let pendingSpeech = null;   // a zikir the phone has not said yet
+function retryPendingSpeech() {
+  if (!pendingSpeech) return;
+  const u = pendingSpeech; pendingSpeech = null;
+  try { window.speechSynthesis.cancel(); window.speechSynthesis.resume(); window.speechSynthesis.speak(u); } catch (e) {}
+}
+for (const type of ['pointerup', 'touchend', 'click']) window.addEventListener(type, retryPendingSpeech, true);
 
 function showSoundButton() {
   btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
