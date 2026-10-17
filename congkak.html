@@ -384,9 +384,9 @@ function speak(text, delay = 0) {
   try {
     // Arabic spelling for the Arabic voice, so the pronunciation is right
     const ARABIC = {
-      'Alhamdulillah': '\u0627\u0644\u062D\u0645\u062F \u0644\u0644\u0647',                                   // الحمد لله
-      'Insya-Allah lain kali': '\u0625\u0646 \u0634\u0627\u0621 \u0627\u0644\u0644\u0647',                  // إن شاء الله
-      'Seri \u00B7 Alhamdulillah': '\u0627\u0644\u062D\u0645\u062F \u0644\u0644\u0647'
+      'Alhamdulillah': '\u0627\u064E\u0644\u0652\u062D\u064E\u0645\u0652\u062F\u064F \u0644\u0650\u0644\u0651\u064E\u0647\u0650',   // اَلْحَمْدُ لِلّٰهِ with vowel marks
+      'Insya-Allah lain kali': '\u0625\u0650\u0646\u0652 \u0634\u064E\u0627\u0621\u064E \u0627\u0644\u0644\u0651\u064E\u0647\u064F',   // إِنْ شَاءَ اللّٰهُ
+      'Seri \u00B7 Alhamdulillah': '\u0627\u064E\u0644\u0652\u062D\u064E\u0645\u0652\u062F\u064F \u0644\u0650\u0644\u0651\u064E\u0647\u0650'
     };
     const voices = window.speechSynthesis.getVoices();
     const arabic = voices.find(v => /^ar/i.test(v.lang));
@@ -396,7 +396,7 @@ function speak(text, delay = 0) {
       const malay = voices.find(v => /^ms/i.test(v.lang)) || voices.find(v => /^id/i.test(v.lang));
       if (malay) { u.voice = malay; u.lang = malay.lang; } else u.lang = 'ar-SA';
     }
-    u.rate = 0.9;
+    u.rate = 0.8;
     u.volume = 1;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(u);
