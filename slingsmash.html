@@ -1302,8 +1302,9 @@ function draw() {
       'A hard hit breaks the light planks'
     ], 'Tap to start', true);
   } else if (screen === 'clear') {
-    drawCard('Level clear!', '#7ee0a1',
-      lastBonus > 0 ? ['Spare shots bonus +' + lastBonus] : [], 'Tap for the next level', false);
+    speakOnce('Alhamdulillah');   // zikir on every level clear, not only the final one
+    drawCard('Alhamdulillah', '#7ee0a1',
+      ['Level ' + level + ' clear'].concat(lastBonus > 0 ? ['Spare shots bonus +' + lastBonus] : []), 'Tap for the next level', false);
   } else if (screen === 'lost') {
     speakOnce('Insya-Allah lain kali'); drawCard('Insya-Allah lain kali', '#ff9a9a', [], 'Tap to try again', false);
   } else if (screen === 'done') {
