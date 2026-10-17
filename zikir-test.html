@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zikir voice test</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b1220; color: #fff; font-family: system-ui, sans-serif; padding: 16px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: rgba(255,255,255,0.6); font-size: 14px; margin: 0 0 16px; }
+  label { display: block; font-size: 13px; color: rgba(255,255,255,0.6); margin: 14px 0 6px; }
+  select, input { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #2c3a60; background: #111a2e; color: #fff; font-size: 16px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row input { flex: 1; }
+  button { padding: 12px 14px; border: 0; border-radius: 12px; background: #1c2742; color: #fff; font-size: 15px; font-weight: 600; font-family: inherit; }
+  button:active { background: #2c3a60; }
+  button.main { background: #2a6f5c; }
+  .card { background: #111a2e; border-radius: 14px; padding: 12px 14px; margin: 10px 0; }
+  .card .ar { font-size: 26px; direction: rtl; text-align: right; margin-bottom: 4px; }
+  .card .name { font-size: 13px; color: rgba(255,255,255,0.6); }
+  .card .btns { display: flex; gap: 8px; margin-top: 8px; }
+  .card .btns button { flex: 1; }
+  #rate { width: 100%; }
+  .section { margin-top: 22px; font-size: 16px; font-weight: 700; }
+  #voiceInfo { font-size: 13px; color: rgba(255,255,255,0.6); margin-top: 6px; }
+</style>
+</head>
+<body>
+<h1>Zikir voice test</h1>
+<p class="sub">Tap Play on each spelling. Tell me the number of the one that sounds right.</p>
+
+<label>Voice</label>
+<select id="voice"></select>
+<div id="voiceInfo">Loading voices...</div>
+
+<label>Speed: <span id="rateVal">0.8</span></label>
+<input id="rate" type="range" min="0.5" max="1.2" step="0.05" value="0.8">
+
+<div class="section">Alhamdulillah</div>
+<div id="listA"></div>
+
+<div class="section">Insya-Allah</div>
+<div id="listB"></div>
+
+<div class="section">Try your own spelling</div>
+<label>Type or paste Arabic (or Latin) text</label>
+<div class="row"><input id="custom" value=""><button class="main" id="playCustom">Play</button></div>
+
+<script>
+// Spellings to try. Each gives the voice slightly different hints.
+const A = [
+  ['الحمد لله', 'plain, no marks'],
+  ['اَلْحَمْدُ لِلّٰهِ', 'marks + dagger alif'],
+  ['اَلْحَمْدُ لِلَّهِ', 'marks, no dagger'],
+  ['اَلْحَمْدُ لِلَّاهِ', 'long alif written out'],
+  ['الحمدُ لله', 'one mark only'],
+  ['الحمد لِله', 'kasra under first lam'],
+  ['Alhamdulillah', 'Latin letters (Malay voice)'],
+  ['Alhamdu lillah', 'Latin, two words'],
+];
+const B = [
+  ['إن شاء الله', 'plain, no marks'],
+  ['إِنْ شَاءَ اللّٰهُ', 'marks + dagger alif'],
+  ['إِنْشَاءَ اللّٰهُ', 'insha as one word'],
+  ['إِنْ شَاءَ اللَّهُ', 'marks, no dagger'],
+  ['إِنْ شَاءَ اللَّاهُ', 'long alif written out'],
+  ['إن شاء ٱلله', 'wasla alif'],
+  ['Insya-Allah', 'Latin letters (Malay voice)'],
+  ['Insha Allah', 'Latin, English style'],
+];
+
+const sel = document.getElementById('voice');
+const info = document.getElementById('voiceInfo');
+const rate = document.getElementById('rate');
+const rateVal = document.getElementById('rateVal');
+rate.addEventListener('input', () => rateVal.textContent = rate.value);
+
+let voices = [];
+function loadVoices() {
+  voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+  if (!voices.length) return;
+  // Arabic and Malay voices first, then the rest
+  const score = v => /^ar/i.test(v.lang) ? 0 : /^ms/i.test(v.lang) ? 1 : /^id/i.test(v.lang) ? 2 : 3;
+  voices.sort((a, b) => score(a) - score(b) || a.lang.localeCompare(b.lang));
+  sel.innerHTML = voices.map((v, i) => '<option value="' + i + '">' + v.lang + ' — ' + v.name + '</option>').join('');
+  const n = voices.filter(v => /^ar/i.test(v.lang)).length, m = voices.filter(v => /^ms/i.test(v.lang)).length;
+  info.textContent = voices.length + ' voices on this phone: ' + n + ' Arabic, ' + m + ' Malay. Arabic ones are listed first.';
+}
+if (window.speechSynthesis) {
+  loadVoices();
+  window.speechSynthesis.onvoiceschanged = loadVoices;
+  setTimeout(loadVoices, 500);
+} else {
+  info.textContent = 'This browser has no speech voice.';
+}
+
+function speak(text) {
+  if (!window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(text);
+  const v = voices[Number(sel.value)];
+  if (v) { u.voice = v; u.lang = v.lang; }
+  u.rate = Number(rate.value);
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(u);
+}
+
+function build(list, el, prefix) {
+  el.innerHTML = list.map((x, i) =>
+    '<div class="card"><div class="ar">' + x[0] + '</div><div class="name">' + prefix + (i + 1) + ' · ' + x[1] + '</div>' +
+    '<div class="btns"><button data-t="' + encodeURIComponent(x[0]) + '">Play</button></div></div>').join('');
+  el.querySelectorAll('button').forEach(b => b.addEventListener('click', () => speak(decodeURIComponent(b.dataset.t))));
+}
+build(A, document.getElementById('listA'), 'A');
+build(B, document.getElementById('listB'), 'B');
+document.getElementById('playCustom').addEventListener('click', () => speak(document.getElementById('custom').value));
+</script>
+</body>
+</html>
