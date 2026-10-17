@@ -82,6 +82,7 @@ const BALL_KILL_SPEED = 1;            // the ball pops targets more easily
 const PANEL_MAX_THICK = 16;           // a flat block this thin (or thinner) is a breakable panel
 const BREAK_SPEED = 5;                // the ball breaks a panel when it hits faster than this
 const BREAK_KEEP = 0.75;              // share of its speed the ball keeps after breaking a panel
+const SMASH_ALL_LEVELS = 3;           // on levels 1 to this, EVERY block (pillars, boxes too) smashes when the ball hits it hard
 const TARGET_POINTS = 500;
 const SPARE_SHOT_POINTS = 1000;       // bonus for each unused shot
 const SOUND_VOLUME = 0.25;            // 0 = silent, 1 = very loud
@@ -484,6 +485,7 @@ function buildLevel(n) {
   for (const [x, y, w, h] of def.blocks) {
     const block = Bodies.rectangle(x, y, w, h, { label: 'block', friction: 0.6, density: 0.0012 });
     block.panel = w > h && h <= PANEL_MAX_THICK;    // flat and thin = breakable panel
+    block.smashable = block.panel || n < SMASH_ALL_LEVELS;   // easy levels: everything smashes
     block.w = w;
     block.h = h;
     bodies.push(block);
@@ -539,7 +541,7 @@ function onCollision(event) {
 // is still its incoming velocity. We keep it and give it back after the step,
 // so the ball carries on through the gap instead of bouncing off.
 function checkPanelBreak(panel, other) {
-  if (!panel.panel || panel.broken || other.label !== 'ball') return;
+  if (!panel.smashable || panel.broken || other.label !== 'ball') return;
   const impact = Math.hypot(other.velocity.x - panel.velocity.x, other.velocity.y - panel.velocity.y);
   if (impact < BREAK_SPEED) return;
   panel.broken = true;                // removed after the physics step
@@ -549,20 +551,23 @@ function checkPanelBreak(panel, other) {
 
 // Replace a broken panel with a few loose pieces that fly off and fade
 function breakPanel(panel) {
-  const pieces = Math.max(4, Math.round(panel.w / 18));
+  // Pieces are cut along the block's longer side (a pillar splits top to bottom)
+  const tall = panel.h > panel.w;
+  const length = tall ? panel.h : panel.w;
+  const pieces = Math.max(4, Math.round(length / 18));
   const cos = Math.cos(panel.angle), sin = Math.sin(panel.angle);
   const push = ballKeep || { x: 0, y: 0 };
   for (let i = 0; i < pieces; i++) {
-    const along = (i + 0.5) / pieces * panel.w - panel.w / 2;     // position along the panel
+    const along = (i + 0.5) / pieces * length - length / 2;       // position along the block
     debris.push({
-      x: panel.position.x + along * cos,
-      y: panel.position.y + along * sin,
+      x: panel.position.x + (tall ? -along * sin : along * cos),
+      y: panel.position.y + (tall ?  along * cos : along * sin),
       vx: push.x * 0.25 + (Math.random() - 0.5) * 3,
       vy: push.y * 0.25 - Math.random() * 3,
       angle: panel.angle,
       spin: (Math.random() - 0.5) * 0.4,
-      w: panel.w / pieces * 0.9,
-      h: panel.h,
+      w: tall ? panel.w : panel.w / pieces * 0.9,
+      h: tall ? panel.h / pieces * 0.9 : panel.h,
       t: 0,
       life: 0.9
     });
@@ -1299,7 +1304,7 @@ function draw() {
     drawCard('Sling Smash', '#ffd166', [
       'Drag the red ball back and release',
       'Knock out every green target',
-      'A hard hit breaks the light planks'
+      'Levels 1-3: a hard hit smashes any block'
     ], 'Tap to start', true);
   } else if (screen === 'clear') {
     speakOnce('Alhamdulillah');   // zikir on every level clear, not only the final one
