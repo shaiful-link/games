@@ -110,6 +110,7 @@ const HOUSES = 7;                  // houses per side
 const SEEDS_PER_HOUSE = 7;         // seeds in each house at the start
 const CAPTURE_NEEDS_SEEDS = true;  // true = capturing only happens if the opposite house has seeds
 const MULTI_ROUND = true;          // true = play rounds with burnt houses; false = one round, most seeds wins
+const EASY_ONE_ROUND = true;       // Easy mode is a single quick round, most seeds wins (about 2-3 minutes)
 const MAX_ROUNDS = 20;             // if nobody is wiped out by then, most seeds wins
 // Messages shown at the end (change the words here if you like)
 const MSG_WIN  = 'Alhamdulillah';
@@ -483,7 +484,7 @@ function endGame() {
   shown = board.slice();
   const g = board[BOTTOM_STORE], r = board[TOP_STORE];
 
-  if (MULTI_ROUND) {
+  if (MULTI_ROUND && !(mode === 'easy' && EASY_ONE_ROUND)) {
     // Try to set up the next round. If both can still fill a house, carry on.
     const next = refillBoard(board);
     const gOk = canPlayRound(next, GREEN), rOk = canPlayRound(next, RED);
@@ -557,6 +558,7 @@ function update(dt) {
       dropsThisMove++;
       let speed = dropsThisMove > FAST_AFTER ? FAST_SPEED : 1;   // long chains run faster
       if (mode !== 'two' && turn === RED) speed *= AI_SPEED;      // and the computer sows quickly
+      if (mode === 'easy') speed *= 1.5;                          // Easy is a quick game
       speed *= squeeze;
       stepTimer += (s.capture ? SOW_DELAY * 2.5 : (s.pickup !== undefined ? SOW_DELAY * 1.5 : SOW_DELAY)) / speed;
     }
@@ -646,7 +648,7 @@ function draw() {
   ctx.fillText(mode === 'two' ? 'RED' : 'COMPUTER', pits.bx + pits.bw / 2, pits.by - 12);
   ctx.fillStyle = '#4dd4ac';
   ctx.fillText(mode === 'two' ? 'GREEN' : 'YOU', pits.bx + pits.bw / 2, pits.by + pits.bh + 12);
-  if (MULTI_ROUND) {
+  if (MULTI_ROUND && !(mode === 'easy' && EASY_ONE_ROUND)) {
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
     ctx.textAlign = 'right';
     ctx.fillText('Round ' + round, pits.bx + pits.bw, pits.by - 12);
