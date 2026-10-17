@@ -88,6 +88,7 @@
   <div id="overlay">
     <h1 id="msgTitle">Congkak</h1>
     <p id="msgLine">Tap one of your houses to sow its seeds. Collect the most seeds to win.</p>
+    <button id="btnSpeak" style="display:none; height:46px; padding:0 18px; border:0; border-radius:12px; background:#1c2742; color:#fff; font-size:15px; font-weight:600; font-family:inherit;">🔊 Speak</button>
     <div id="modes">
       <button data-mode="easy" class="main">Computer: Easy</button>
       <button data-mode="medium">Computer: Medium</button>
@@ -363,6 +364,9 @@ function buzz(ms) {
   if (VIBRATE && !muted && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
 }
 
+const btnSpeak = document.getElementById('btnSpeak');
+btnSpeak.addEventListener('click', () => { startAudio(); speak(lastSpoken); });
+
 btnSound.addEventListener('click', () => {
   muted = !muted;
   try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {}
@@ -374,6 +378,7 @@ btnSound.addEventListener('click', () => {
 // Speak a short phrase with the phone's built-in voice (nothing to download).
 // Uses a Malay voice if the phone has one, otherwise the phone's default voice.
 const SPEAK = true;                // false = never speak
+let lastSpoken = '';
 function speak(text, delay = 0) {
   if (!SPEAK || muted || !('speechSynthesis' in window)) return;
   try {
@@ -383,7 +388,9 @@ function speak(text, delay = 0) {
     if (malay) { u.voice = malay; u.lang = malay.lang; } else u.lang = 'ms-MY';
     u.rate = 0.9;
     u.volume = 1;
-    setTimeout(() => { window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); }, delay);
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+    lastSpoken = text;
   } catch (e) { /* no voice on this phone: the game still works */ }
 }
 // Some phones only list their voices after a moment; ask once so they are ready later
@@ -568,6 +575,7 @@ function endGame() {
     else { title = MSG_LOSE; sub = MSG_SUB_LOSE + ' \u00B7 computer wins'; }
     if (winner === GREEN || (mode === 'two' && winner !== null)) sfx.win(); else sfx.lose();
     speak(title, 700);
+    btnSpeak.style.display = 'block';
     msgTitle.textContent = title;
     msgLine.textContent = sub + '. After ' + round + ' round' + (round > 1 ? 's' : '') + ': Green ' + g + '  \u00B7  Red ' + r + '.';
     elStatus.textContent = 'Match over';
@@ -584,6 +592,7 @@ function endGame() {
   else { title = MSG_LOSE; sub = MSG_SUB_LOSE + ' \u00B7 computer wins'; }
   if (g > r || (mode === 'two' && g !== r)) sfx.win(); else sfx.lose();
   speak(title, 700);
+  btnSpeak.style.display = 'block';
   msgTitle.textContent = title;
   msgLine.textContent = sub + '. Green ' + g + '  \u00B7  Red ' + r + '.';
   elStatus.textContent = 'Game over';
@@ -768,6 +777,7 @@ canvas.addEventListener('click', (e) => {
 document.getElementById('btnNew').addEventListener('click', () => startGame());
 document.getElementById('btnMode').addEventListener('click', () => {
   playing = false;
+  btnSpeak.style.display = 'none';
   msgTitle.textContent = 'Congkak';
   msgLine.textContent = 'Tap one of your houses to sow its seeds. Collect the most seeds to win.';
   overlay.classList.remove('hidden');
