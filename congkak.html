@@ -371,6 +371,24 @@ btnSound.addEventListener('click', () => {
   if (!muted) setTimeout(() => beep(740, 0.05, 'sine', 0, 0, 0.6), 60);
 });
 
+// Speak a short phrase with the phone's built-in voice (nothing to download).
+// Uses a Malay voice if the phone has one, otherwise the phone's default voice.
+const SPEAK = true;                // false = never speak
+function speak(text, delay = 0) {
+  if (!SPEAK || muted || !('speechSynthesis' in window)) return;
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices();
+    const malay = voices.find(v => /^ms/i.test(v.lang)) || voices.find(v => /^id/i.test(v.lang)) || voices.find(v => /^ar/i.test(v.lang));
+    if (malay) { u.voice = malay; u.lang = malay.lang; } else u.lang = 'ms-MY';
+    u.rate = 0.9;
+    u.volume = 1;
+    setTimeout(() => { window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); }, delay);
+  } catch (e) { /* no voice on this phone: the game still works */ }
+}
+// Some phones only list their voices after a moment; ask once so they are ready later
+if ('speechSynthesis' in window) { window.speechSynthesis.getVoices(); window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices(); }
+
 // The game's own sounds: one small function for each thing that happens
 const sfx = {
   // A seed dropping into a house: a small wooden tick (slightly different pitch each time)
@@ -549,6 +567,7 @@ function endGame() {
     else if (winner === GREEN) { title = MSG_WIN; sub = MSG_SUB_WIN; }
     else { title = MSG_LOSE; sub = MSG_SUB_LOSE + ' \u00B7 computer wins'; }
     if (winner === GREEN || (mode === 'two' && winner !== null)) sfx.win(); else sfx.lose();
+    speak(title, 700);
     msgTitle.textContent = title;
     msgLine.textContent = sub + '. After ' + round + ' round' + (round > 1 ? 's' : '') + ': Green ' + g + '  \u00B7  Red ' + r + '.';
     elStatus.textContent = 'Match over';
@@ -564,6 +583,7 @@ function endGame() {
   else if (g > r) { title = MSG_WIN; sub = MSG_SUB_WIN; }
   else { title = MSG_LOSE; sub = MSG_SUB_LOSE + ' \u00B7 computer wins'; }
   if (g > r || (mode === 'two' && g !== r)) sfx.win(); else sfx.lose();
+  speak(title, 700);
   msgTitle.textContent = title;
   msgLine.textContent = sub + '. Green ' + g + '  \u00B7  Red ' + r + '.';
   elStatus.textContent = 'Game over';
