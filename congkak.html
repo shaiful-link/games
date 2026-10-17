@@ -401,6 +401,14 @@ function speak(text, delay = 0) {
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(u);
     lastSpoken = text;
+    // "lain kali" is Malay, so say it after the Arabic part with a Malay voice
+    if (text === 'Insya-Allah lain kali' && arabic) {
+      const tail = new SpeechSynthesisUtterance('lain kali');
+      const malay = voices.find(v => /^ms/i.test(v.lang)) || voices.find(v => /^id/i.test(v.lang));
+      if (malay) { tail.voice = malay; tail.lang = malay.lang; } else tail.lang = 'ms-MY';
+      tail.rate = 0.9;
+      window.speechSynthesis.speak(tail);          // queued: plays when the Arabic part finishes
+    }
   } catch (e) { /* no voice on this phone: the game still works */ }
 }
 // Some phones only list their voices after a moment; ask once so they are ready later
