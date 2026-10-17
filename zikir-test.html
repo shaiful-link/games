@@ -45,7 +45,8 @@
 
 <div class="section">Insya-Allah lain kali (as the games say it)</div>
 <p class="sub">Arabic voice says B3, then the Malay voice says "lain kali".</p>
-<div class="card"><div class="name">Combined, exactly like in the games</div><div class="btns"><button id="playCombo" class="main">Play</button></div></div>
+<div class="card"><div class="name">Exactly as the games say it now: Arabic voice, then "lain kali" with Rizal</div><div class="btns"><button id="playGames" class="main">Play</button></div></div>
+<div class="card"><div class="name">Combined with the two voices chosen below</div><div class="btns"><button id="playCombo">Play</button></div></div>
 <label>Arabic voice for "Insya-Allah" (used by the Combined button)</label>
 <select id="voiceAr"></select>
 <label>Malay voice for "lain kali"</label>
@@ -139,6 +140,14 @@ document.getElementById('playCombo').addEventListener('click', () => {
   window.speechSynthesis.cancel();
   speakWith('إِنْشَاءَ اللّٰهُ', voices[Number(document.getElementById('voiceAr').value)], Number(rate.value));
   speakWith('lain kali', voices[Number(document.getElementById('voiceMs').value)], 0.9);
+});
+document.getElementById('playGames').addEventListener('click', () => {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const arabic = voices.find(v => /^ar/i.test(v.lang));
+  const rizal = voices.find(v => /rizal/i.test(v.name)) || voices.find(v => /^ms/i.test(v.lang));
+  speakWith('إِنْشَاءَ اللّٰهُ', arabic, 0.8);
+  speakWith('lain kali', rizal, 0.9);
 });
 document.getElementById('playTail').addEventListener('click', () => {
   if (!window.speechSynthesis) return;
