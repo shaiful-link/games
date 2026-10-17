@@ -306,7 +306,8 @@ function speakOnce(text) {
     // "lain kali" is Malay, so say it after the Arabic part with a Malay voice
     if (text === 'Insya-Allah lain kali' && arabic) {
       const tail = new SpeechSynthesisUtterance('lain kali');
-      const malay = voices.find(v => /^ms/i.test(v.lang)) || voices.find(v => /^id/i.test(v.lang));
+      // Prefer the male Malay voice (Rizal on iPhone), then any Malay or Indonesian voice
+      const malay = voices.find(v => /rizal/i.test(v.name)) || voices.find(v => /^ms/i.test(v.lang)) || voices.find(v => /^id/i.test(v.lang));
       if (malay) { tail.voice = malay; tail.lang = malay.lang; } else tail.lang = 'ms-MY';
       tail.rate = 0.9;
       window.speechSynthesis.speak(tail);          // queued: plays when the Arabic part finishes
