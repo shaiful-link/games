@@ -138,8 +138,8 @@ const AI_SPEED = 2;                // the computer's sowing always runs this man
 const MAX_MOVE_SECONDS = 12;       // no single move's animation takes longer than this
 const AI_DEPTH = { easy: 1, medium: 3, hard: 5 };   // how many turns ahead the computer thinks
 const EASY_RANDOM = 0.35;          // on Easy, chance the computer plays a random move
-const SOUND_VOLUME = 0.12;         // 0 = silent, 1 = very loud
-const VIBRATE = false;             // true = short buzz on Android for captures and wins
+const SOUND_VOLUME = 0.08;         // 0 = silent, 1 = very loud
+const VIBRATE = true;              // true = short buzz on Android for captures and wins
 
 // ---------- Board layout in memory ----------
 // Pits are numbered going anti-clockwise, as the seeds travel:
@@ -375,13 +375,12 @@ btnSound.addEventListener('click', () => {
 const sfx = {
   // A seed dropping into a house: a small wooden tick (slightly different pitch each time)
   drop(intoStore) {
-    noise(0.04, intoStore ? 900 : 2200, 0, 0.35);
-    beep(intoStore ? 330 : 480 + Math.random() * 120, 0.05, 'triangle', 0, 0, 0.5);
+    // a soft round tick, no hiss (the hiss made a long chain sound like "rrrrr")
+    beep(intoStore ? 330 : 520 + Math.random() * 100, 0.045, 'sine', 0, 0, 0.45);
   },
   // Scooping up a house: a soft rising rustle
   pickup() {
-    noise(0.12, 1400, 0, 0.3);
-    beep(260, 0.12, 'sine', 0, 420, 0.4);
+    beep(260, 0.12, 'sine', 0, 420, 0.35);
   },
   // Capturing the opposite house: a satisfying double knock
   capture() {
