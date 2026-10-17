@@ -53,6 +53,10 @@
 <select id="voiceMs"></select>
 <div class="card"><div class="name">Just "next time" with the chosen voice</div><div class="btns"><button id="playTail">Play</button></div></div>
 
+<div class="section">Pong test: speak by itself after 5 seconds</div>
+<p class="sub">Tap the button, then do not touch the phone. The Arabic voice should say Alhamdulillah on its own after 5 seconds. The log below shows what the phone did.</p>
+<div class="card"><div class="btns"><button id="playDelayed" class="main">Start 5-second test</button></div><div id="log" class="name" style="margin-top:8px;white-space:pre-line;">Log: (empty)</div></div>
+
 <div class="section">Try your own spelling</div>
 <label>Type or paste Arabic (or Latin) text</label>
 <div class="row"><input id="custom" value=""><button class="main" id="playCustom">Play</button></div>
@@ -150,6 +154,32 @@ document.getElementById('playTail').addEventListener('click', () => {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   speakWith('next time', voices[Number(document.getElementById('voiceMs').value)], 0.9);
+});
+const logEl = document.getElementById('log');
+function log(line) { logEl.textContent += '\n' + new Date().toLocaleTimeString() + ' ' + line; }
+document.getElementById('playDelayed').addEventListener('click', () => {
+  logEl.textContent = 'Log:';
+  if (!window.speechSynthesis) { log('no speechSynthesis'); return; }
+  const ss = window.speechSynthesis;
+  // Same unlock as the games: a silent phrase spoken inside the tap
+  try { ss.resume(); const u0 = new SpeechSynthesisUtterance(' '); u0.onend = () => log('unlock phrase ended'); u0.onerror = e => log('unlock error ' + e.error); ss.speak(u0); log('unlock phrase sent'); } catch (e) { log('unlock failed ' + e); }
+  log('voices: ' + ss.getVoices().length + ', arabic: ' + (ss.getVoices().find(v => /^ar/i.test(v.lang)) || {}).name);
+  setTimeout(() => {
+    log('5 s passed. speaking=' + ss.speaking + ' pending=' + ss.pending + ' paused=' + ss.paused);
+    const u = new SpeechSynthesisUtterance('\u0627\u064E\u0644\u0652\u062D\u064E\u0645\u0652\u062F\u064F \u0644\u0650\u0644\u064E\u0651\u0647\u0650');
+    const ar = ss.getVoices().find(v => /^ar/i.test(v.lang));
+    if (ar) { u.voice = ar; u.lang = ar.lang; } else u.lang = 'ar-SA';
+    u.rate = 0.8;
+    u.onstart = () => log('zikir started');
+    u.onend = () => log('zikir ended');
+    u.onerror = e => log('zikir error: ' + e.error);
+    if (ss.speaking || ss.pending) { ss.cancel(); log('cancelled old speech'); }
+    ss.resume();
+    ss.speak(u);
+    window.__keep = u;
+    log('zikir sent');
+    setTimeout(() => log('after 2 s: speaking=' + ss.speaking + ' pending=' + ss.pending), 2000);
+  }, 5000);
 });
 document.getElementById('playCustom').addEventListener('click', () => speak(document.getElementById('custom').value));
 </script>
