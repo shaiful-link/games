@@ -509,6 +509,15 @@ function speakOnce(text) {
 }
 function speakReset() { lastSpoken = ''; }
 if ('speechSynthesis' in window) { window.speechSynthesis.getVoices(); window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices(); }
+// iPhone only allows speech soon after a touch. Saying an empty phrase on the first touch
+// unlocks the voice, so the zikir can still be spoken later when the game ends on its own.
+let speechUnlocked = false;
+function unlockSpeech() {
+  if (speechUnlocked || !('speechSynthesis' in window)) return;
+  speechUnlocked = true;
+  try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; window.speechSynthesis.speak(u); } catch (e) {}
+}
+for (const type of ['pointerdown', 'touchend', 'click', 'keydown']) window.addEventListener(type, unlockSpeech, true);
 
 function showSoundButton() {
   btnSound.textContent = muted ? '\u{1F507}' : '\u{1F50A}';      // speaker off / speaker on
