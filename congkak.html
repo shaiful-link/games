@@ -42,7 +42,17 @@
     font-family: inherit; touch-action: manipulation;
   }
   #sound.off { opacity: .45; }
-  #stage { flex: 1; min-height: 0; }
+  #stage { flex: 1; min-height: 0; position: relative; }
+  /* Call-out banner that pops over the board for big moments (capture, go again, burnt house) */
+  #callout {
+    position: absolute; left: 50%; top: 18%; transform: translate(-50%, 0) scale(0.8);
+    padding: 10px 22px; border-radius: 14px; background: rgba(11,18,32,0.9); border: 2px solid #f4d35e;
+    color: #f4d35e; font-size: 26px; font-weight: 800; letter-spacing: 0.02em; white-space: nowrap;
+    opacity: 0; pointer-events: none; transition: opacity 0.18s, transform 0.18s;
+  }
+  #callout.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  #callout.red { border-color: #ff6b6b; color: #ff6b6b; }
+  #callout.green { border-color: #4dd4ac; color: #4dd4ac; }
   #game { display: block; width: 100%; height: 100%; }
   #controls { display: flex; gap: 10px; }
   #controls button, #modes button {
@@ -70,7 +80,7 @@
     <div class="side green right" id="sideBottom"><span id="nameBottom">You</span><b id="seedsBottom">0</b><small>leading</small></div>
     <button id="sound" aria-label="Sound on or off"></button>
   </div>
-  <div id="stage"><canvas id="game"></canvas></div>
+  <div id="stage"><canvas id="game"></canvas><div id="callout"></div></div>
   <div id="controls">
     <button id="btnNew">New game</button>
     <button id="btnMode">Change mode</button>
@@ -416,6 +426,17 @@ const elBottom = document.getElementById('nameBottom');
 const sideTop = document.getElementById('sideTop'), sideBottom = document.getElementById('sideBottom');
 const seedsTop = document.getElementById('seedsTop'), seedsBottom = document.getElementById('seedsBottom');
 
+// Pop a short message over the board. color: 'gold' | 'red' | 'green'
+const calloutEl = document.getElementById('callout');
+let calloutTimer = null;
+function callout(text, color = 'gold', ms = 1300) {
+  calloutEl.textContent = text;
+  calloutEl.className = 'show' + (color === 'red' ? ' red' : color === 'green' ? ' green' : '');
+  clearTimeout(calloutTimer);
+  calloutTimer = setTimeout(() => calloutEl.classList.remove('show'), ms);
+}
+function whoIs(side) { return mode === 'two' ? (side === GREEN ? 'Green' : 'Red') : (side === GREEN ? 'You' : 'Computer'); }
+
 // Seeds in each storehouse, and who is ahead
 function updateScores() {
   const g = shown[BOTTOM_STORE], r = shown[TOP_STORE];
@@ -488,7 +509,7 @@ function afterMove() {
   animating = false;
   lastDrop = -1;
   shown = board.slice();
-  if (pendingAgain) { note = (mode === 'two' ? (turn === GREEN ? 'Green' : 'Red') : (turn === GREEN ? 'You' : 'Computer')) + ' go again'; sfx.again(); }
+  if (pendingAgain) { note = (mode === 'two' ? (turn === GREEN ? 'Green' : 'Red') : (turn === GREEN ? 'You' : 'Computer')) + ' go again'; sfx.again(); callout('Main lagi!', turn === GREEN ? 'green' : 'red'); }
   else turn = 1 - turn;
   beginTurn();
 }
@@ -509,6 +530,8 @@ function endGame() {
       shown = board.slice();
       const burntG = housesOf(GREEN).filter(p => burnt[p]).length, burntR = housesOf(RED).filter(p => burnt[p]).length;
       sfx.round();
+      const burntNow = housesOf(GREEN).filter(p => burnt[p]).length + housesOf(RED).filter(p => burnt[p]).length;
+      callout(burntNow ? 'Rumah terbakar! \u00B7 Round ' + round : 'Round ' + round, 'gold', 2200);
       note = 'Round ' + round + ' \u00B7 burnt: ' + (mode === 'two' ? 'Green ' + burntG + ', Red ' + burntR : 'you ' + burntG + ', computer ' + burntR);
       beginTurn();
       return;
@@ -568,7 +591,7 @@ function update(dt) {
       shown = s.board;
       updateScores();
       lastDrop = s.drop !== undefined ? s.drop : (s.pickup !== undefined ? s.pickup : -1);
-      if (s.capture) sfx.capture();
+      if (s.capture) { sfx.capture(); callout('Makan! +' + s.capture[2], turn === GREEN ? 'green' : 'red'); }
       else if (s.pickup !== undefined) sfx.pickup();
       else if (s.drop !== undefined) sfx.drop(s.drop === BOTTOM_STORE || s.drop === TOP_STORE);
       dropsThisMove++;
