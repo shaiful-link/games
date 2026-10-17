@@ -227,8 +227,15 @@ function speakOnce(text) {
       if (malay) { u.voice = malay; u.lang = malay.lang; } else u.lang = 'ar-SA';
     }
     u.rate = 0.8;
-    window.speechSynthesis.cancel();
+    // iPhone: cancel() right before speak() can swallow the phrase when the game ends
+    // on its own (not on a tap). Only clear if something is still talking, wake the
+    // engine up, and say it again if it did not start within a second.
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
+    let started = false;
+    u.onstart = () => { started = true; };
     window.speechSynthesis.speak(u);
+    setTimeout(() => { if (!started) { try { window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch (e) {} } }, 1000);
   } catch (e) { /* no voice on this phone: the game still works */ }
 }
 function speakReset() { lastSpoken = ''; }
@@ -239,7 +246,7 @@ let speechUnlocked = false;
 function unlockSpeech() {
   if (speechUnlocked || !('speechSynthesis' in window)) return;
   speechUnlocked = true;
-  try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; window.speechSynthesis.speak(u); } catch (e) {}
+  try { window.speechSynthesis.resume(); const u = new SpeechSynthesisUtterance(' '); window.speechSynthesis.speak(u); } catch (e) {}
 }
 for (const type of ['pointerdown', 'touchend', 'click', 'keydown']) window.addEventListener(type, unlockSpeech, true);
 
