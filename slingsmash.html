@@ -82,7 +82,12 @@ const BALL_KILL_SPEED = 1;            // the ball pops targets more easily
 const PANEL_MAX_THICK = 16;           // a flat block this thin (or thinner) is a breakable panel
 const BREAK_SPEED = 5;                // the ball breaks a panel when it hits faster than this
 const BREAK_KEEP = 0.75;              // share of its speed the ball keeps after breaking a panel
-const SMASH_ALL_LEVELS = 3;           // on levels 1 to this, EVERY block (pillars, boxes too) smashes when the ball hits it hard
+const EASY_LEVELS = 3;                // levels 1 to this are "easy": every block smashes when the ball hits it hard,
+                                      // the ball keeps its speed through smashed blocks and keeps rolling to hit more
+const EASY_BALL_FRICTION = 0.05;      // easy levels: the ball hardly slows down on the ground (normal 0.5)
+const EASY_BALL_AIR = 0.001;          // easy levels: less air drag (normal BALL_AIR below)
+const EASY_BALL_BOUNCE = 0.5;         // easy levels: the ball bounces more (normal 0.3)
+const EASY_MAX_FLY = 15;              // easy levels: a shot may roll for this many seconds (normal 7)
 const TARGET_POINTS = 500;
 const SPARE_SHOT_POINTS = 1000;       // bonus for each unused shot
 const SOUND_VOLUME = 0.25;            // 0 = silent, 1 = very loud
@@ -434,6 +439,7 @@ const GRAVITY_PER_STEP = 0.001 * STEP * STEP;   // used for the aiming dots
 const BALL_AIR = 0.005;               // air drag on the ball
 
 let screen = 'title';                 // 'title' | 'play' | 'clear' | 'lost' | 'done'
+function isEasy() { return level < EASY_LEVELS; }   // level is counted from 0
 let phase = 'aim';                    // while playing: 'aim' | 'flying' | 'settle'
 let engine = null;
 let level = 0;
@@ -485,7 +491,7 @@ function buildLevel(n) {
   for (const [x, y, w, h] of def.blocks) {
     const block = Bodies.rectangle(x, y, w, h, { label: 'block', friction: 0.6, density: 0.0012 });
     block.panel = w > h && h <= PANEL_MAX_THICK;    // flat and thin = breakable panel
-    block.smashable = block.panel || n < SMASH_ALL_LEVELS;   // easy levels: everything smashes
+    block.smashable = block.panel || isEasy();   // easy levels: everything smashes
     block.w = w;
     block.h = h;
     bodies.push(block);
@@ -546,7 +552,8 @@ function checkPanelBreak(panel, other) {
   if (impact < BREAK_SPEED) return;
   panel.broken = true;                // removed after the physics step
   const base = ballKeep || other.velocity;        // two panels in one step: slow down twice
-  ballKeep = { x: base.x * BREAK_KEEP, y: base.y * BREAK_KEEP };
+  const keep = isEasy() ? 1 : BREAK_KEEP;        // easy levels: no slow-down, the ball ploughs on
+  ballKeep = { x: base.x * keep, y: base.y * keep };
 }
 
 // Replace a broken panel with a few loose pieces that fly off and fade
@@ -676,7 +683,10 @@ function addConfetti(count) {
 function launch() {
   const { Bodies, Body, Composite } = Matter;
   ball = Bodies.circle(ANCHOR.x + pull.x, ANCHOR.y + pull.y, BALL_R,
-    { label: 'ball', density: 0.004, restitution: 0.3, friction: 0.5, frictionAir: BALL_AIR });
+    { label: 'ball', density: 0.004,
+      restitution: isEasy() ? EASY_BALL_BOUNCE : 0.3,
+      friction: isEasy() ? EASY_BALL_FRICTION : 0.5,
+      frictionAir: isEasy() ? EASY_BALL_AIR : BALL_AIR });
   Body.setVelocity(ball, { x: -pull.x * POWER, y: -pull.y * POWER });
   Composite.add(engine.world, ball);
 
@@ -767,7 +777,7 @@ function update(dt) {
 
     const outside = p.x > WORLD_W + 60 || p.x < -60 || p.y > WORLD_H + 60;
     // The shot ends when the ball leaves the screen, stops, or takes too long
-    if (outside || slowTime > 0.8 || flyTime > 7) {
+    if (outside || slowTime > 0.8 || flyTime > (isEasy() ? EASY_MAX_FLY : 7)) {
       Matter.Composite.remove(engine.world, ball);
       ball = null;
       phase = 'settle';
@@ -1304,7 +1314,7 @@ function draw() {
     drawCard('Sling Smash', '#ffd166', [
       'Drag the red ball back and release',
       'Knock out every green target',
-      'Levels 1-3: a hard hit smashes any block'
+      'Levels 1-3: the ball smashes any block and keeps rolling'
     ], 'Tap to start', true);
   } else if (screen === 'clear') {
     speakOnce('Alhamdulillah');   // zikir on every level clear, not only the final one
