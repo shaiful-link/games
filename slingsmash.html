@@ -232,16 +232,6 @@ function speakOnce(text) {
     u.rate = 0.8;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(u);
-    // "lain kali" is Malay, so say it after the Arabic part with a Malay voice
-    if (text === 'Insya-Allah lain kali' && arabic) {
-      const tail = new SpeechSynthesisUtterance('next time');
-      // A male English voice (these are the usual male names on iPhone and Android), else any English voice
-      const male = voices.find(v => /^en/i.test(v.lang) && /daniel|aaron|arthur|fred|alex|gordon|rishi|james|oliver/i.test(v.name))
-                || voices.find(v => /^en/i.test(v.lang));
-      if (male) { tail.voice = male; tail.lang = male.lang; } else tail.lang = 'en-GB';
-      tail.rate = 0.9;
-      window.speechSynthesis.speak(tail);          // queued: plays when the Arabic part finishes
-    }
   } catch (e) { /* no voice on this phone: the game still works */ }
 }
 function speakReset() { lastSpoken = ''; }
