@@ -43,6 +43,13 @@
 <div class="section">Insya-Allah</div>
 <div id="listB"></div>
 
+<div class="section">Insya-Allah lain kali (as the games say it)</div>
+<p class="sub">Arabic voice says B3, then the Malay voice says "lain kali".</p>
+<div class="card"><div class="name">Combined, exactly like in the games</div><div class="btns"><button id="playCombo" class="main">Play</button></div></div>
+<label>Malay voice for "lain kali"</label>
+<select id="voiceMs"></select>
+<div class="card"><div class="name">Just "lain kali" with the chosen Malay voice</div><div class="btns"><button id="playTail">Play</button></div></div>
+
 <div class="section">Try your own spelling</div>
 <label>Type or paste Arabic (or Latin) text</label>
 <div class="row"><input id="custom" value=""><button class="main" id="playCustom">Play</button></div>
@@ -85,6 +92,9 @@ function loadVoices() {
   voices.sort((a, b) => score(a) - score(b) || a.lang.localeCompare(b.lang));
   sel.innerHTML = voices.map((v, i) => '<option value="' + i + '">' + v.lang + ' — ' + v.name + '</option>').join('');
   const n = voices.filter(v => /^ar/i.test(v.lang)).length, m = voices.filter(v => /^ms/i.test(v.lang)).length;
+  const selMs = document.getElementById('voiceMs');
+  const ms = voices.map((v, i) => [v, i]).filter(x => /^(ms|id)/i.test(x[0].lang));
+  selMs.innerHTML = (ms.length ? ms : voices.map((v, i) => [v, i])).map(x => '<option value="' + x[1] + '">' + x[0].lang + ' — ' + x[0].name + '</option>').join('');
   info.textContent = voices.length + ' voices on this phone: ' + n + ' Arabic, ' + m + ' Malay. Arabic ones are listed first.';
 }
 if (window.speechSynthesis) {
@@ -113,6 +123,23 @@ function build(list, el, prefix) {
 }
 build(A, document.getElementById('listA'), 'A');
 build(B, document.getElementById('listB'), 'B');
+function speakWith(text, v, rateVal) {
+  const u = new SpeechSynthesisUtterance(text);
+  if (v) { u.voice = v; u.lang = v.lang; }
+  u.rate = rateVal;
+  window.speechSynthesis.speak(u);
+}
+document.getElementById('playCombo').addEventListener('click', () => {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  speakWith('إِنْشَاءَ اللّٰهُ', voices[Number(sel.value)], Number(rate.value));
+  speakWith('lain kali', voices[Number(document.getElementById('voiceMs').value)], 0.9);
+});
+document.getElementById('playTail').addEventListener('click', () => {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  speakWith('lain kali', voices[Number(document.getElementById('voiceMs').value)], 0.9);
+});
 document.getElementById('playCustom').addEventListener('click', () => speak(document.getElementById('custom').value));
 </script>
 </body>
