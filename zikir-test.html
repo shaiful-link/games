@@ -44,14 +44,14 @@
 <div id="listB"></div>
 
 <div class="section">Insya-Allah lain kali (as the games say it)</div>
-<p class="sub">Arabic voice says B3, then the Malay voice says "lain kali".</p>
-<div class="card"><div class="name">Exactly as the games say it now: Arabic voice, then "lain kali" with Rizal</div><div class="btns"><button id="playGames" class="main">Play</button></div></div>
+<p class="sub">Arabic voice says B3, then an English voice says "next time".</p>
+<div class="card"><div class="name">Exactly as the games say it now: Arabic voice, then "next time" with a male English voice</div><div class="btns"><button id="playGames" class="main">Play</button></div></div>
 <div class="card"><div class="name">Combined with the two voices chosen below</div><div class="btns"><button id="playCombo">Play</button></div></div>
 <label>Arabic voice for "Insya-Allah" (used by the Combined button)</label>
 <select id="voiceAr"></select>
-<label>Malay voice for "lain kali"</label>
+<label>Voice for "next time" (English voices listed first)</label>
 <select id="voiceMs"></select>
-<div class="card"><div class="name">Just "lain kali" with the chosen Malay voice</div><div class="btns"><button id="playTail">Play</button></div></div>
+<div class="card"><div class="name">Just "next time" with the chosen voice</div><div class="btns"><button id="playTail">Play</button></div></div>
 
 <div class="section">Try your own spelling</div>
 <label>Type or paste Arabic (or Latin) text</label>
@@ -99,7 +99,7 @@ function loadVoices() {
   const ar = voices.map((v, i) => [v, i]).filter(x => /^ar/i.test(x[0].lang));
   selAr.innerHTML = (ar.length ? ar : voices.map((v, i) => [v, i])).map(x => '<option value="' + x[1] + '">' + x[0].lang + ' — ' + x[0].name + '</option>').join('');
   const selMs = document.getElementById('voiceMs');
-  const ms = voices.map((v, i) => [v, i]).filter(x => /^(ms|id)/i.test(x[0].lang));
+  const ms = voices.map((v, i) => [v, i]).filter(x => /^en/i.test(x[0].lang));
   selMs.innerHTML = (ms.length ? ms : voices.map((v, i) => [v, i])).map(x => '<option value="' + x[1] + '">' + x[0].lang + ' — ' + x[0].name + '</option>').join('');
   info.textContent = voices.length + ' voices on this phone: ' + n + ' Arabic, ' + m + ' Malay. Arabic ones are listed first.';
 }
@@ -145,14 +145,14 @@ document.getElementById('playGames').addEventListener('click', () => {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const arabic = voices.find(v => /^ar/i.test(v.lang));
-  const rizal = voices.find(v => /rizal/i.test(v.name)) || voices.find(v => /^ms/i.test(v.lang));
+  const male = voices.find(v => /^en/i.test(v.lang) && /daniel|aaron|arthur|fred|alex|gordon|rishi|james|oliver/i.test(v.name)) || voices.find(v => /^en/i.test(v.lang));
   speakWith('إِنْشَاءَ اللّٰهُ', arabic, 0.8);
-  speakWith('lain kali', rizal, 0.9);
+  speakWith('next time', male, 0.9);
 });
 document.getElementById('playTail').addEventListener('click', () => {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
-  speakWith('lain kali', voices[Number(document.getElementById('voiceMs').value)], 0.9);
+  speakWith('next time', voices[Number(document.getElementById('voiceMs').value)], 0.9);
 });
 document.getElementById('playCustom').addEventListener('click', () => speak(document.getElementById('custom').value));
 </script>
