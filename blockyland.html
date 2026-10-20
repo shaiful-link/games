@@ -95,6 +95,8 @@
 #interact[hidden]{display:none}
 #panelBody{max-width:620px;width:100%;line-height:1.65} #panelBody button{display:block;width:100%;margin:10px 0;padding:13px;border:2px solid #90d59d;border-radius:12px;background:#254b3d;color:white;font-size:16px;cursor:pointer} #panelBody button:disabled{opacity:.45;cursor:default}
 #panelBody article{background:#ffffff12;border-radius:12px;padding:12px;margin:10px 0;text-align:left}
+/* "Back to game" sits right under the title, so it is always on screen without scrolling the long guide */
+#panelTitle{order:-2} #panelClose{order:-1}
 @media(min-width:800px){#interact{bottom:92px}#blockbar{max-width:85vw}}
 </style>
 </head>
@@ -1337,8 +1339,13 @@ function interactAdventure(){
  }
  updateInventory();saveGame();nearEntity=null;document.getElementById('interact').hidden=true;
 }
-document.getElementById('interact').onclick=e=>{e.stopPropagation();interactAdventure();};
-document.getElementById('guideButton').onclick=e=>{e.stopPropagation();openGuide();};
+// On phones the game grabs every touch for the joystick and look control, so these two
+// buttons listen for the touch itself (like the pause button) instead of waiting for a click.
+for(const [id,action] of [['interact',interactAdventure],['guideButton',openGuide]]){
+ const el=document.getElementById(id);
+ el.onclick=e=>{e.stopPropagation();action();};
+ el.addEventListener('touchstart',e=>{e.stopPropagation();e.preventDefault();ensureAudio();action();},{passive:false});
+}
 document.getElementById('panelClose').onclick=closePanel;
 document.addEventListener('keydown',e=>{if(e.code==='Escape'&&document.getElementById('villagePanel').style.display==='flex'){e.preventDefault();closePanel();}});
 
