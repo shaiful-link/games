@@ -144,7 +144,7 @@
   <button class="menuBtn warn" id="pNew">🌍 New World</button>
   <button class="menuBtn" id="pTitle">🏠 Back to Title</button>
   <div id="help">
-    <b>Village adventure</b><br>Walk near a villager for Trade, a chest for Open, or an animal for Tame. Press E or use the bottom button. Chests contain emeralds and food. Tamed animals follow; interact again to sit/stay. G opens the guide.<br><b>Desktop:</b> WASD move · mouse look · Space jump · left click break · right click build · Q weapon · F fly.<br>
+    <b>Village adventure</b><br>Walk near a villager for Trade, a chest for Open, or an animal for Tame. Press E or use the bottom button. Chests contain emeralds and food. Tamed animals follow; interact again to sit/stay. Look at a door to open or close it (closed doors keep worms out). Feed hungry pets, keep them in the barn, and visit the Merchant to sell pets or buy hats and balloons. G opens the guide.<br><b>Desktop:</b> WASD move · mouse look · Space jump · left click break · right click build · Q weapon · F fly.<br>
     <b>How to play</b><br>
     Left stick = walk · Drag right side = look around<br>
     ⬆ jump · ⛏️ break block (or hit a worm!) · 🧱 place block<br>
@@ -230,6 +230,8 @@ const SFX = {
   swing(){ beep(260, .1, 'triangle', .05, 0.5); },
   fire(){ beep(200, .3, 'sawtooth', .04, 2.5); },
   fuse(){ beep(1200, .15, 'square', .03, 0.8); },
+  door(closing){ beep(closing ? 240 : 180, .18, 'triangle', .05, closing ? 0.6 : 1.5); },   // little creak
+  happy(){ [523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,.18,'triangle',.06),i*90)); },
   boom(){
     if (!soundOn || !audioCtx) return;
     beep(90, .5, 'sawtooth', .12, 0.3);
@@ -273,6 +275,11 @@ const TEX = {
   glow: makeTex(c=>{ c.fillStyle='#ffd166'; c.fillRect(0,0,16,16); c.fillStyle='#fff3b0'; c.fillRect(4,4,8,8); c.fillStyle='#ffb703'; c.fillRect(0,0,16,1); c.fillRect(0,15,16,1); c.fillRect(0,0,1,16); c.fillRect(15,0,1,16); }),
   pink: makeTex(c=>speckle(c,'#ff8fc8',['#ff6fb7','#ffb3dc','#f05aa5'],7,40)),
   blue: makeTex(c=>speckle(c,'#5aa9ff',['#3f8fe8','#7fbfff','#2f78cc'],8,40)),
+  // door: vertical wooden boards; bottom half has the gold handle, top half the small window
+  doorBottom: makeTex(c=>{ c.fillStyle='#8b5a2b'; c.fillRect(0,0,16,16); c.fillStyle='#6b4119'; for(let x=0;x<16;x+=4) c.fillRect(x,0,1,16); c.fillStyle='#a56d38'; for(let x=2;x<16;x+=4) c.fillRect(x,0,1,16); c.fillStyle='#ffd166'; c.fillRect(11,6,2,3); c.fillStyle='#3a2410'; c.fillRect(0,15,16,1); }),
+  doorTop:    makeTex(c=>{ c.fillStyle='#8b5a2b'; c.fillRect(0,0,16,16); c.fillStyle='#6b4119'; for(let x=0;x<16;x+=4) c.fillRect(x,0,1,16); c.fillStyle='#a56d38'; for(let x=2;x<16;x+=4) c.fillRect(x,0,1,16); c.fillStyle='#3a2410'; c.fillRect(4,4,8,7); c.fillStyle='#bfe9ff'; c.fillRect(5,5,6,5); c.fillStyle='#3a2410'; c.fillRect(8,5,1,5); c.fillRect(5,7,6,1); c.fillRect(0,0,16,1); }),
+  // hay: yellow straw with darker strands
+  hay: makeTex(c=>{ speckle(c,'#e6c84a',['#c9a832','#f3dc6a','#b8961f'],11,70); c.fillStyle='#a67c1a'; for(let y=2;y<16;y+=5) c.fillRect(0,y,16,1); }),
 };
 const lam = t => new THREE.MeshLambertMaterial({map:t});
 
@@ -290,9 +297,17 @@ const BLOCKS = {
   glow:   {label:'Glow',   mat:new THREE.MeshBasicMaterial({map:TEX.glow}), css:'#ffd166'},
   pink:   {label:'Pink',   mat:lam(TEX.pink),   css:'#ff8fc8'},
   blue:   {label:'Blue',   mat:lam(TEX.blue),   css:'#5aa9ff'},
+  hay:    {label:'Hay',    mat:lam(TEX.hay),    css:'repeating-linear-gradient(#e6c84a 0 5px,#a67c1a 5px 6px)'},
+  // A door is two blocks tall: 'door' (bottom) + 'doorTop'. Closed = solid cubes.
+  // Open = 'doorOpen' + 'doorOpenTop': drawn as a thin panel swung to one side and NOT solid, so you can walk through.
+  door:        {label:'Door', mat:lam(TEX.doorBottom), css:'linear-gradient(90deg,#8b5a2b 0 25%,#6b4119 25% 30%,#8b5a2b 30% 55%,#6b4119 55% 60%,#8b5a2b 60%)'},
+  doorTop:     {label:'Door', mat:lam(TEX.doorTop)},
+  doorOpen:    {label:'Door', mat:lam(TEX.doorBottom), geo:new THREE.BoxGeometry(0.15,1,1), ox:-0.425},
+  doorOpenTop: {label:'Door', mat:lam(TEX.doorTop),    geo:new THREE.BoxGeometry(0.15,1,1), ox:-0.425},
 };
 const BLOCK_NAMES = Object.keys(BLOCKS);
-const PLACEABLE = ['grass','dirt','stone','sand','wood','planks','leaves','brick','glow','pink','blue'];
+const PLACEABLE = ['grass','dirt','stone','sand','wood','planks','leaves','brick','glow','pink','blue','hay','door'];
+const isDoor = name => !!name && name.startsWith('door');
 
 /* =========================================================
    4. WORLD GENERATION (seeded so it can be re-created from a save)
@@ -303,7 +318,8 @@ const blocks = new Map();          // key "x,y,z" -> block name
 const edits  = new Map();          // player changes only: key -> name or '' (removed)
 const key = (x,y,z)=> x+','+y+','+z;
 const getB = (x,y,z)=> blocks.get(key(x,y,z));
-const isSolid = (x,y,z)=> blocks.has(key(x,y,z));
+// solid = you (and worms, animals) cannot walk through it. An OPEN door is a block but not solid.
+const isSolid = (x,y,z)=>{ const b = blocks.get(key(x,y,z)); return b !== undefined && b !== 'doorOpen' && b !== 'doorOpenTop'; };
 
 function hash(x,z,s){
   let h = (x*374761393 + z*668265263 + s*982451653) | 0;
@@ -349,6 +365,7 @@ function generate(){
       blocks.set(key(x,h+th+2,z),'leaves');
     }
   }
+  barns.length = 0;
   if (worldVersion >= 2) buildVillages();
   // re-apply player's edits
   edits.forEach((v,k)=>{ if (v) blocks.set(k,v); else blocks.delete(k); });
@@ -356,6 +373,12 @@ function generate(){
 function groundY(x,z){           // y of the first free block above ground at (x,z)
   for (let y=40;y>=0;y--) if (isSolid(x,y,z)) return y+1;
   return 0;
+}
+// A walkable floor close to height "near" at (x,z): solid underneath, free at that height and the one above.
+// Looks 1 up and 2 down. Returns null if there is none (a wall, or a closed door).
+function floorNear(x,z,near){
+  for (let y=near+1; y>=near-2; y--) if (isSolid(x,y-1,z) && !isSolid(x,y,z) && !isSolid(x,y+1,z)) return y;
+  return null;
 }
 
 /* =========================================================
@@ -370,11 +393,13 @@ function rebuildType(name){
   blocks.forEach((v,k)=>{ if (v!==name) return; const [x,y,z]=k.split(',').map(Number);
     if ([[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]].some(([a,b,c])=>!isSolid(x+a,y+b,z+c))) list.push(k); });
   if (!list.length) return;
-  const m = new THREE.InstancedMesh(cubeGeo, BLOCKS[name].mat, list.length);
+  // open doors use a thin panel instead of a full cube, pushed to one side of the cell (ox)
+  const m = new THREE.InstancedMesh(BLOCKS[name].geo || cubeGeo, BLOCKS[name].mat, list.length);
   m.frustumCulled = false;
+  const ox = BLOCKS[name].ox || 0;
   list.forEach((k,i)=>{
     const p = k.split(',');
-    dummy.position.set(+p[0]+0.5, +p[1]+0.5, +p[2]+0.5);
+    dummy.position.set(+p[0]+0.5+ox, +p[1]+0.5, +p[2]+0.5);
     dummy.updateMatrix();
     m.setMatrixAt(i, dummy.matrix);
   });
@@ -391,6 +416,32 @@ function setBlock(x,y,z,name){        // name = null to remove
   edits.set(k, name || '');
   rebuildAll();
   dirty = true;
+}
+
+/* ---------- DOORS (two blocks tall, open or closed) ---------- */
+// Given any half of a door, return the y of its bottom half.
+function doorBase(x,y,z){ const n = getB(x,y,z); return (n && n.endsWith('Top')) ? y-1 : y; }
+// Put a door at (x,y,z) with y = bottom half. open = true/false, or null to remove it.
+// Both halves go into the edits map, so player doors AND open/closed states are saved.
+function setDoor(x,y,z,open){
+  const k1 = key(x,y,z), k2 = key(x,y+1,z);
+  const a = open === null ? null : (open ? 'doorOpen' : 'door');
+  const b = open === null ? null : (open ? 'doorOpenTop' : 'doorTop');
+  if (a){ blocks.set(k1,a); blocks.set(k2,b); } else { blocks.delete(k1); blocks.delete(k2); }
+  edits.set(k1, a || ''); edits.set(k2, b || '');
+  rebuildAll();
+  dirty = true;
+}
+function toggleDoor(x,y,z){
+  const open = getB(x,y,z) === 'doorOpen';
+  if (open){
+    // don't shut the door on yourself (you would be stuck inside a solid block)
+    const p = player.pos, w = player.w, hgt = player.h;
+    if (x+1 > p.x-w && x < p.x+w && z+1 > p.z-w && z < p.z+w && y+2 > p.y && y < p.y+hgt){ banner('Step out of the doorway first!', 1200); return; }
+  }
+  setDoor(x,y,z,!open);
+  SFX.door(open);
+  banner(open ? '🚪 Door closed' : '🚪 Door open', 800);
 }
 
 /* =========================================================
@@ -533,7 +584,8 @@ function respawn(){
 /* =========================================================
    8. VOXEL RAYCAST (which block are we looking at?)
    ========================================================= */
-function raycastBlocks(maxDist){
+// includeOpenDoors = true also stops at an open door (normally the ray passes through it)
+function raycastBlocks(maxDist, includeOpenDoors){
   const o = camera.position, d = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
   let x=Math.floor(o.x), y=Math.floor(o.y), z=Math.floor(o.z);
   const stepX=Math.sign(d.x), stepY=Math.sign(d.y), stepZ=Math.sign(d.z);
@@ -543,7 +595,7 @@ function raycastBlocks(maxDist){
   let tMz = d.z>0 ? (z+1-o.z)*tDz : d.z<0 ? (o.z-z)*tDz : 1e9;
   let px=x, py=y, pz=z, t=0;
   for (let i=0;i<80;i++){
-    if (isSolid(x,y,z)) return {x,y,z, px,py,pz, dist:t};
+    if (isSolid(x,y,z) || (includeOpenDoors && blocks.has(key(x,y,z)))) return {x,y,z, px,py,pz, dist:t};
     px=x; py=y; pz=z;
     if (tMx < tMy && tMx < tMz){ x+=stepX; t=tMx; tMx+=tDx; }
     else if (tMy < tMz){ y+=stepY; t=tMy; tMy+=tDy; }
@@ -606,8 +658,12 @@ function updateWorms(dt){
         const a = Math.random()*Math.PI*2, r = 12 + Math.random()*8;
         const x = Math.floor(player.pos.x + Math.cos(a)*r), z = Math.floor(player.pos.z + Math.sin(a)*r);
         if (x>1 && z>1 && x<W-2 && z<D-2){
-          const top = getB(x, groundY(x,z)-1, z);
+          const gy = groundY(x,z), top = getB(x, gy-1, z);
           if (top === 'leaves' || top === 'wood') continue;      // not on top of a tree
+          // only under open sky: nothing above for 8 blocks, so never inside a house or barn
+          let roofed = false;
+          for (let y=gy; y<gy+8; y++) if (blocks.has(key(x,y,z))){ roofed = true; break; }
+          if (roofed) continue;
           makeWorm(x,z); break;
         }
       }
@@ -650,11 +706,12 @@ function updateWorms(dt){
         const dx = Math.sin(ang), dz = Math.cos(ang);
         const lx = w.g.position.x + dx*0.55, lz = w.g.position.z + dz*0.55;     // look a little ahead
         if (lx<0.5 || lz<0.5 || lx>W-0.5 || lz>D-0.5) continue;
-        const gy = groundY(Math.floor(lx), Math.floor(lz));
-        if (gy > curY + 1) continue;
+        // floor near the worm's own level (so it can go through an open door or under a roof, but not climb 2 blocks)
+        const gy = floorNear(Math.floor(lx), Math.floor(lz), curY);
+        if (gy === null || gy > curY + 1) continue;
         w.g.position.x += dx*step; w.g.position.z += dz*step;
-        const hereY = groundY(Math.floor(w.g.position.x), Math.floor(w.g.position.z));
-        w.g.position.y += (hereY - w.g.position.y) * Math.min(1, dt*8);
+        const hereY = floorNear(Math.floor(w.g.position.x), Math.floor(w.g.position.z), curY);
+        if (hereY !== null) w.g.position.y += (hereY - w.g.position.y) * Math.min(1, dt*8);
         if (a !== 0 && w.headingT <= 0){ w.heading = ang; w.headingT = 0.8; }
         moved = true; break;
       }
@@ -756,6 +813,7 @@ function explode(pos, radius, dmg, crater){
       if (!b) continue;
       if (edits.get(k)) continue;                    // player-placed: keep
       if (b==='wood' || b==='leaves') continue;      // trees stay (looks nicer)
+      if (isDoor(b)) continue;                       // doors stay (so a house is never left with half a door)
       if (Math.hypot(x+0.5-pos.x, y+0.5-pos.y, z+0.5-pos.z) < 1.8) setBlock(x,y,z,null);
     }
   }
@@ -961,9 +1019,10 @@ function doBreak(){
   if (!bh) return;
   if (bh.y === 0 && getB(bh.x,0,bh.z)==='stone') { banner('That is the bottom of the world!', 1200); return; }
   const name = getB(bh.x,bh.y,bh.z);
-  setBlock(bh.x,bh.y,bh.z,null);
+  if (isDoor(name)) setDoor(bh.x, doorBase(bh.x,bh.y,bh.z), bh.z, null);   // a door breaks as one piece (both halves)
+  else setBlock(bh.x,bh.y,bh.z,null);
   SFX.brk();
-  const col = {grass:0x5fbf3c,dirt:0x8a5a2b,stone:0x8d8f94,sand:0xe8d59a,wood:0x6d4a24,planks:0xc79a5b,leaves:0x3f9a3a,brick:0xb8473f,glow:0xffd166,pink:0xff8fc8,blue:0x5aa9ff}[name]||0xffffff;
+  const col = {grass:0x5fbf3c,dirt:0x8a5a2b,stone:0x8d8f94,sand:0xe8d59a,wood:0x6d4a24,planks:0xc79a5b,leaves:0x3f9a3a,brick:0xb8473f,glow:0xffd166,pink:0xff8fc8,blue:0x5aa9ff,hay:0xe6c84a,door:0x8b5a2b,doorTop:0x8b5a2b}[name]||0xffffff;
   burst(new THREE.Vector3(bh.x+0.5,bh.y,bh.z+0.5), col);
 }
 function doPlace(){
@@ -973,9 +1032,13 @@ function doPlace(){
   if (y < 0 || y > 40 || x<0 || z<0 || x>=W || z>=D) return;
   // don't place a block inside ourselves
   const p = player.pos;
-  const overlap = x+1 > p.x-p.w && x < p.x+p.w && z+1 > p.z-p.w && z < p.z+p.w && y+1 > p.y && y < p.y+p.h;
+  const tall = selected === 'door' ? 2 : 1;          // a door takes this cell and the one above
+  const overlap = x+1 > p.x-p.w && x < p.x+p.w && z+1 > p.z-p.w && z < p.z+p.w && y+tall > p.y && y < p.y+p.h;
   if (overlap) return;
-  setBlock(x,y,z,selected);
+  if (selected === 'door'){
+    if (y+1 > 40 || blocks.has(key(x,y+1,z))){ banner('A door needs 2 free blocks', 1200); return; }
+    setDoor(x,y,z,false);
+  } else setBlock(x,y,z,selected);
   SFX.place();
 }
 
@@ -1064,7 +1127,9 @@ function saveGame(){
   try {
     const data = { seed, mode, time: timeOfDay, hp: player.hp, pos:[player.pos.x,player.pos.y,player.pos.z], yaw:player.yaw, pitch:player.pitch,
                    flying: player.flying, sound: soundOn, edits: Array.from(edits.entries()),
-                   worldVersion, size:W, bag, openedChests:Array.from(openedChests), pets:animals.filter(a=>a.tamed).map(a=>({id:a.id,x:a.g.position.x,z:a.g.position.z,sitting:a.sitting})), traps: traps.map(t=>[t.x,t.y,t.z]) };
+                   worldVersion, size:W, bag, openedChests:Array.from(openedChests),
+                   pets:animals.filter(a=>a.tamed).map(a=>({id:a.id,x:a.g.position.x,z:a.g.position.z,sitting:a.sitting,hunger:Math.round(a.hunger),items:a.items})),
+                   traps: traps.map(t=>[t.x,t.y,t.z]) };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     dirty = false;
   } catch(e){}
@@ -1081,7 +1146,7 @@ let running = false, started = false, lastT = 0, nightAnnounced = false, dayAnno
 const titleEl = document.getElementById('title'), hudEl = document.getElementById('hud'), pauseEl = document.getElementById('pause'), deadEl = document.getElementById('dead');
 
 function newWorld(m){
-  W=D=128; worldVersion=2; resetAdventure();
+  W=D=128; worldVersion=3; resetAdventure();
   seed = Math.floor(Math.random()*100000) + 1;
   edits.clear();
   worms.slice().forEach(removeWorm); traps.slice().forEach(removeTrap); bombs.forEach(b=>scene.remove(b.g)); bombs.length = 0;
@@ -1101,7 +1166,8 @@ function continueWorld(data){
   (data.edits||[]).forEach(([k,v])=>edits.set(k,v));
   worms.slice().forEach(removeWorm); traps.slice().forEach(removeTrap); bombs.forEach(b=>scene.remove(b.g)); bombs.length = 0;
   generate(); rebuildAll(); populateAdventure();
-  (data.pets||[]).forEach(p=>{const a=animals.find(a=>a.id===p.id);if(a){a.tamed=true;a.sitting=!!p.sitting;a.g.position.set(p.x,groundY(Math.floor(p.x),Math.floor(p.z)),p.z);addCollar(a);}});
+  // old saves have no hunger or items: the pet starts full and plain
+  (data.pets||[]).forEach(p=>{const a=animals.find(a=>a.id===p.id);if(a){a.tamed=true;a.sitting=!!p.sitting;a.g.position.set(p.x,groundY(Math.floor(p.x),Math.floor(p.z)),p.z);a.stay=a.g.position.clone();a.hunger=p.hunger??100;a.items=p.items||{};addCollar(a);drawPetItems(a);setPetLabel(a);}});
   timeOfDay = data.time ?? 0.15;
   nightAnnounced = isNight(); dayAnnounced = !isNight();
   player.hp = data.hp ?? 10; player.flying = !!data.flying;
@@ -1186,18 +1252,24 @@ window.addEventListener('blur', ()=>{ if (started && running) pauseGame(); });
 
 
 /* VILLAGE ADVENTURE — original block characters, procedural structures and pets. */
-let worldVersion=2;
+let worldVersion=3;   // 1 = old flat world, 2 = villages, 3 = villages with doors, barns and a Merchant
 const villageSites=[[64,48,'Meadow Village'],[27,94,'Oakridge Village'],[101,95,'Sunfield Village']];
-const villagers=[], animals=[], chests=[], adventureRoot=new THREE.Group(); scene.add(adventureRoot);
-const bag={emeralds:0,carrots:0,wheat:0,bones:0};
-const openedChests=new Set(); let nearEntity=null;
+const villagers=[], animals=[], chests=[], barns=[], adventureRoot=new THREE.Group(); scene.add(adventureRoot);
+// the bag: food and emeralds, plus fun items bought from the Merchant (one count per item)
+const bag={emeralds:0,carrots:0,wheat:0,bones:0,partyhat:0,bow:0,sunglasses:0,balloon:0};
+// fun pet items: [bag key, name, icon, price in emeralds, which slot on the pet it uses]
+const FUN_ITEMS=[['partyhat','party hat','🎉',3,'head'],['bow','bow','🎀',2,'head'],['sunglasses','sunglasses','🕶️',3,'face'],['balloon','balloon','🎈',3,'balloon']];
+const SELL_PRICE={wolf:6,cow:5,sheep:4,rabbit:3};     // what the Merchant pays for a pet
+const openedChests=new Set(); let nearEntity=null, nearDoor=null;
 const professions=[
  {name:'Farmer',color:0x876535,hat:0xd9b856,description:'Straw hat. Trades carrots and wheat for your animal friends.',offers:[['carrots',4,2],['wheat',4,2]]},
  {name:'Shepherd',color:0xe6d8b0,hat:0xf0ead7,description:'Cream cap. Trades wheat for sheep and cows.',offers:[['wheat',8,3]]},
- {name:'Ranger',color:0x456448,hat:0x345337,description:'Green cap. Trades bones for taming wolves.',offers:[['bones',4,3]]}
+ {name:'Ranger',color:0x456448,hat:0x345337,description:'Green cap. Trades bones for taming wolves.',offers:[['bones',4,3]]},
+ {name:'Merchant',color:0x6a3fa0,hat:0xe0b43a,description:'Purple coat and gold hat. Buys your animal friends for emeralds, and sells food and fun pet items: party hat, bow, sunglasses, balloon.',offers:[['carrots',4,2],['wheat',4,2],['bones',4,2]],merchant:true}
 ];
 function resetAdventure(){Object.keys(bag).forEach(k=>bag[k]=0);openedChests.clear();nearEntity=null;}
 function buildVillages(){
+ barns.length=0;
  for(const [cx,cz] of villageSites){
   const h=terrainHeight(cx,cz);
   // Clear trees, level the settlement and provide solid foundations.
@@ -1211,7 +1283,7 @@ function buildVillages(){
     blocks.set(key(ax+x,h-1,az+z),'planks');
     for(let y=1;y<=3;y++){
      const wall=x===0||x===5||z===0||z===5;
-     const door=z===0&&(x===2||x===3)&&y<=2;
+     const door=z===0&&x===2&&y<=2;        // one-block-wide doorway, two blocks tall
      const window=(x===0||x===5)&&z===3&&y===2;
      if(wall&&!door&&!window)blocks.set(key(ax+x,h+y-1,az+z),y===1?'stone':'planks');
     }
@@ -1219,9 +1291,29 @@ function buildVillages(){
     if(x>=1&&x<=4)blocks.set(key(ax+x,h+4,az+z),'brick');
     if(x>=2&&x<=3)blocks.set(key(ax+x,h+5,az+z),'brick');
    }
-   // Two-block wide doorway and flush path: no jumping needed to enter.
+   // A closed wooden door fills the doorway (worms cannot climb a 2-tall door). Flush path: no jumping needed to enter.
+   blocks.set(key(ax+2,h,az),'door');blocks.set(key(ax+2,h+1,az),'doorTop');
    for(const x of [2,3]){blocks.set(key(ax+x,h-1,az-1),'stone');blocks.set(key(ax+x,h-1,az-2),'stone');}
    blocks.set(key(ax+1,h+1,az+4),'glow');
+  }
+  // Barn: 8x6 planks building, 4 high, between the two north houses. The front (facing the square)
+  // has a 3-wide opening: a door in the middle and a low wood fence either side. Hay inside.
+  {
+   const bx=cx-3,bz=cz-10;
+   for(let x=0;x<8;x++)for(let z=0;z<6;z++){
+    blocks.set(key(bx+x,h-1,bz+z),'planks');
+    for(let y=0;y<4;y++){
+     const wall=x===0||x===7||z===0||z===5;
+     const opening=z===5&&x>=3&&x<=5&&y<=1;
+     if(wall&&!opening)blocks.set(key(bx+x,h+y,bz+z),'planks');
+    }
+    blocks.set(key(bx+x,h+4,bz+z),'wood');
+   }
+   blocks.set(key(bx+4,h,bz+5),'door');blocks.set(key(bx+4,h+1,bz+5),'doorTop');
+   blocks.set(key(bx+3,h,bz+5),'wood');blocks.set(key(bx+5,h,bz+5),'wood');
+   for(const [x,y,z] of [[1,0,1],[2,0,1],[1,1,1],[1,0,2],[6,0,1],[5,0,1],[6,0,2]])blocks.set(key(bx+x,h+y,bz+z),'hay');
+   blocks.set(key(bx+3,h+4,bz+2),'glow');blocks.set(key(bx+5,h+4,bz+3),'glow');
+   barns.push({x0:bx+1,z0:bz+1,x1:bx+6,z1:bz+4,y:h});   // the floor area inside the walls
   }
   // Meeting square and four lamp posts.
   for(const dx of [-3,3])for(const dz of [-2,2]){for(let y=0;y<3;y++)blocks.set(key(cx+dx,h+y,cz+dz),'wood');blocks.set(key(cx+dx,h+3,cz+dz),'glow');}
@@ -1235,8 +1327,9 @@ function part(g,w,h,d,x,y,z,color){
 function label(g,text,y){
  const cv=document.createElement('canvas');cv.width=512;cv.height=80;const ctx=cv.getContext('2d');
  ctx.fillStyle='rgba(15,30,25,.8)';ctx.fillRect(0,0,512,80);ctx.fillStyle='#fff';ctx.font='bold 32px sans-serif';ctx.textAlign='center';ctx.fillText(text,256,52);
- const tex=new THREE.CanvasTexture(cv),mat=new THREE.SpriteMaterial({map:tex,depthTest:true});const sp=new THREE.Sprite(mat);sp.scale.set(3.2,.5,1);sp.position.y=y;g.add(sp);
+ const tex=new THREE.CanvasTexture(cv),mat=new THREE.SpriteMaterial({map:tex,depthTest:true});const sp=new THREE.Sprite(mat);sp.scale.set(3.2,.5,1);sp.position.y=y;g.add(sp);return sp;
 }
+function removeLabel(g,sp){if(!sp)return;g.remove(sp);sp.material.map.dispose();sp.material.dispose();}
 function addVillager(x,z,job,id){
  const g=new THREE.Group(),p=professions[job];
  part(g,.65,.95,.42,0,.94,0,p.color);part(g,.5,.55,.5,0,1.69,0,0xb58b6c);
@@ -1250,16 +1343,67 @@ function addVillager(x,z,job,id){
 }
 function addAnimal(type,x,z,id){
  const g=new THREE.Group();const colors={wolf:0xa9afb5,sheep:0xf1eadc,cow:0x78513a,rabbit:0xc6ad8f};const c=colors[type];
- part(g,.7,.52,1.04,0,.68,0,c);part(g,.47,.46,.49,0,.88,.64,c);
+ part(g,.7,.52,1.04,0,.68,0,c);const head=part(g,.47,.46,.49,0,.88,.64,c);   // head is kept so it can droop when hungry
  for(const dx of [-.24,.24])for(const dz of [-.34,.34])part(g,.17,.47,.18,dx,.25,dz,type==='sheep'?0x766659:c);
  for(const dx of [-.14,.14])part(g,.065,.065,.035,dx,.96,.899,0x172122);
  part(g,.23,.16,.15,0,.79,.94,type==='rabbit'?0xbf7379:0x343434);
  if(type==='rabbit'){for(const dx of [-.14,.14])part(g,.14,.65,.15,dx,1.35,.62,0xc6ad8f);part(g,.3,.3,.3,0,.6,-.65,0xf5eee4);g.scale.setScalar(.78);}
  if(type==='wolf'){for(const dx of [-.18,.18])part(g,.15,.24,.16,dx,1.18,.58,c);part(g,.15,.2,.5,0,.86,-.66,c);}
  if(type==='cow'){part(g,.3,.28,.05,.15,.77,-.53,0xf3ebdf);for(const dx of [-.28,.28])part(g,.1,.18,.14,dx,1.16,.6,0xeadbb3);}
- g.position.set(x,groundY(Math.floor(x),Math.floor(z)),z);adventureRoot.add(g);animals.push({kind:'animal',type,id,g,tamed:false,sitting:false,phase:id*1.7,home:g.position.clone()});
+ g.position.set(x,groundY(Math.floor(x),Math.floor(z)),z);adventureRoot.add(g);
+ // hunger 0..100 (full = 100), items = fun things it wears, stay = where it was told to stay, itemMeshes = the drawn items
+ animals.push({kind:'animal',type,id,g,head,tamed:false,sitting:false,phase:id*1.7,home:g.position.clone(),stay:null,hunger:100,items:{},itemMeshes:[],label:null,labelText:''});
 }
-function addCollar(a){if(a.collar)return;a.collar=part(a.g,.74,.12,.2,0,.88,.41,0xe94d4d);label(a.g,'♥ Your '+a.type,1.8);}
+function addCollar(a){if(a.collar)return;a.collar=part(a.g,.74,.12,.2,0,.88,.41,0xe94d4d);setPetLabel(a);}
+const foodFor=type=>type==='wolf'?'bones':type==='rabbit'?'carrots':'wheat';
+const FOOD_NAME={bones:'bone',carrots:'carrot',wheat:'wheat'};
+
+/* ---------- HUNGER ---------- */
+const HUNGER_RATE=100/360;   // full to empty in about 6 minutes of play
+let hungerMult=1;            // test hook: BL.setHungerMult(60) makes it 60x faster
+const isHungry=a=>a.hunger<30;
+// The floating label shows the hunger meter. It is redrawn only when the words change (about every 4 s), never every frame.
+function setPetLabel(a){
+ const text=(isHungry(a)?'😢 Your '+a.type+' is hungry':'♥ Your '+a.type)+'  🍖 '+Math.round(a.hunger)+'%';
+ if(text===a.labelText)return;a.labelText=text;
+ removeLabel(a.g,a.label);a.label=label(a.g,text,1.8);
+ a.head.position.y=isHungry(a)?.72:.88;   // droop the head when hungry
+}
+function feedPet(a){
+ const food=foodFor(a.type);if(bag[food]<1)return;
+ bag[food]--;a.hunger=100;setPetLabel(a);SFX.happy();
+ burst(a.g.position,0xff4d8d);burst(a.g.position,0xff8fc8);   // pink heart sparkles
+ banner('Alhamdulillah! Your '+a.type+' is full and happy ♥',2200);
+}
+
+/* ---------- FUN ITEMS drawn on the pet (party hat, bow, sunglasses, balloon) ---------- */
+const balloonGeo=new THREE.SphereGeometry(.3,10,8);
+function drawPetItems(a){
+ a.itemMeshes.forEach(m=>a.g.remove(m));a.itemMeshes.length=0;
+ const it=a.items,M=a.itemMeshes,g=a.g;
+ if(it.head==='partyhat'){   // a blocky cone: three shrinking stripes and a white pompom
+  M.push(part(g,.42,.16,.42,0,1.18,.64,0xff4fa3),part(g,.3,.16,.3,0,1.34,.64,0xffd166),part(g,.18,.16,.18,0,1.5,.64,0xff4fa3),part(g,.12,.12,.12,0,1.64,.64,0xffffff));
+ }
+ if(it.head==='bow'){for(const dx of [-.15,.15])M.push(part(g,.2,.16,.12,dx,1.17,.6,0xff4fa3));M.push(part(g,.1,.1,.14,0,1.17,.6,0xd81b60));}
+ if(it.face==='sunglasses'){M.push(part(g,.44,.12,.06,0,.96,.915,0x111111));}
+ if(it.balloon){   // a string up from the back and a red balloon above
+  M.push(part(g,.03,1.1,.03,0,1.75,-.5,0xdddddd));
+  if(!entityMaterials.has(0xe63946))entityMaterials.set(0xe63946,new THREE.MeshLambertMaterial({color:0xe63946}));
+  const b=new THREE.Mesh(balloonGeo,entityMaterials.get(0xe63946));b.position.set(0,2.5,-.5);g.add(b);M.push(b);
+ }
+}
+function petHasSlot(a,slot){return slot==='balloon'?!!a.items.balloon:!!a.items[slot];}
+function giveItem(a,id){
+ const item=FUN_ITEMS.find(f=>f[0]===id);if(!item||bag[id]<1||petHasSlot(a,item[4]))return;
+ bag[id]--;if(item[4]==='balloon')a.items.balloon=true;else a.items[item[4]]=id;
+ drawPetItems(a);SFX.happy();burst(a.g.position,0xffd166);banner(item[2]+' Your '+a.type+' loves the '+item[1]+'!',2200);
+}
+// Selling to the Merchant: the pet becomes a wild animal again (no collar, no label, no items) next to the Merchant.
+function untame(a,near){
+ a.tamed=false;a.sitting=false;a.stay=null;a.hunger=100;a.items={};drawPetItems(a);
+ if(a.collar){a.g.remove(a.collar);a.collar=null;}removeLabel(a.g,a.label);a.label=null;a.labelText='';a.head.position.y=.88;
+ a.home.set(near.x+1.5,near.y,near.z+2.5);a.g.position.copy(a.home);
+}
 function addChest(x,y,z,id){
  const g=new THREE.Group();part(g,.9,.66,.65,0,.33,0,0x9b6128);part(g,.96,.18,.7,0,.72,0,0xc28a3b);
  for(const dx of [-.35,.35])part(g,.1,.8,.72,dx,.4,0,0x413a30);part(g,.13,.19,.07,0,.53,.39,0xffcf4a);
@@ -1271,14 +1415,17 @@ function populateAdventure(){
  adventureRoot.clear();villagers.length=animals.length=chests.length=0;
  if(worldVersion<2)return;
  villageSites.forEach(([cx,cz],i)=>{
-  for(let j=0;j<3;j++)addVillager(cx-2+j*2,cz, j,i*3+j);
+  for(let j=0;j<4;j++)addVillager(cx-2+j*2,cz, j,i*4+j);   // Farmer, Shepherd, Ranger, Merchant
   for(const [j,dx,dz] of [[0,-7,-6],[1,7,7]])addChest(cx+dx+.5,terrainHeight(cx,cz),cz+dz+.5,'v'+i+'c'+j);
   ['wolf','sheep','cow','rabbit'].forEach((t,j)=>addAnimal(t,cx-9+j*4,cz+11,i*4+j));
  });
  for(let i=0;i<8;i++){const x=10+Math.floor(hash(i,1,seed)*108),z=10+Math.floor(hash(i,2,seed)*108);if(villageSites.some(([cx,cz])=>Math.abs(x-cx)<15&&Math.abs(z-cz)<15))continue;addChest(x+.5,groundY(x,z),z+.5,'wild'+i);}
  updateInventory();
 }
-function updateInventory(){document.getElementById('inventory').textContent=`💎 ${bag.emeralds} emeralds · 🥕 ${bag.carrots} · 🌾 ${bag.wheat} · 🦴 ${bag.bones} · ♥ ${animals.filter(a=>a.tamed).length} pets`;}
+function updateInventory(){
+ const items=FUN_ITEMS.filter(f=>bag[f[0]]>0).map(f=>' · '+f[2]+' '+bag[f[0]]).join('');
+ document.getElementById('inventory').textContent=`💎 ${bag.emeralds} emeralds · 🥕 ${bag.carrots} · 🌾 ${bag.wheat} · 🦴 ${bag.bones} · ♥ ${animals.filter(a=>a.tamed).length} pets`+items;
+}
 function reachable(e){
  const target=e.g.position.clone().add(new THREE.Vector3(0,e.kind==='villager'?1.3:.65,0));
  const delta=target.sub(camera.position),distance=delta.length();if(distance>3.8)return false;
@@ -1290,19 +1437,30 @@ function updateAdventure(dt){
  for(const v of villagers){if(v.g.position.distanceTo(player.pos)<7)v.g.rotation.y=Math.atan2(player.pos.x-v.g.position.x,player.pos.z-v.g.position.z);}
  for(const a of animals){
   a.phase+=dt;const p=a.g.position;
-  const target=a.tamed?player.pos:a.home.clone().add(new THREE.Vector3(Math.sin(a.phase*.24)*2,0,Math.cos(a.phase*.31)*2));
-  const dx=target.x-p.x,dz=target.z-p.z,dist=Math.hypot(dx,dz);
-  if(!a.sitting&&dist>(a.tamed?2.4:.6)){
-   const speed=a.tamed?3.4:.65,nx=p.x+dx/dist*speed*dt,nz=p.z+dz/dist*speed*dt;
+  if(a.tamed&&a.hunger>0)a.hunger=Math.max(0,a.hunger-HUNGER_RATE*hungerMult*dt);
+  // Where does it want to go? Following = the player. Staying = wander within 1.5 blocks of its stay spot
+  // (so a pet left in the barn stays in the barn). Wild = wander around its home.
+  let tx,tz;
+  if(a.tamed&&!a.sitting){tx=player.pos.x;tz=player.pos.z;}
+  else{const c=a.sitting&&a.stay?a.stay:a.home,r=a.sitting?1.5:2;tx=c.x+Math.sin(a.phase*.24)*r;tz=c.z+Math.cos(a.phase*.31)*r;}
+  const dx=tx-p.x,dz=tz-p.z,dist=Math.hypot(dx,dz);
+  if(dist>(a.tamed&&!a.sitting?2.4:.6)){
+   let speed=a.tamed&&!a.sitting?3.4:.65;if(isHungry(a))speed*=.6;   // hungry pets are slow
+   const nx=p.x+dx/dist*speed*dt,nz=p.z+dz/dist*speed*dt;
    // Find walkable ground near current feet, never jump onto roofs or through walls.
    let floor=null;for(let y=Math.floor(p.y)+1;y>=Math.floor(p.y)-2;y--)if(isSolid(Math.floor(nx),y-1,Math.floor(nz))&&!isSolid(Math.floor(nx),y,Math.floor(nz))&&!isSolid(Math.floor(nx),y+1,Math.floor(nz))){floor=y;break;}
    if(floor!==null&&nx>1&&nz>1&&nx<W-1&&nz<D-1){p.set(nx,floor,nz);a.g.rotation.y=Math.atan2(dx,dz);}
   }
  }
  proximityTick+=dt;if(proximityTick<.16)return;proximityTick=0;
+ for(const a of animals)if(a.tamed)setPetLabel(a);   // refresh the hunger meter (only redraws when the % changes)
  nearEntity=[...villagers,...chests.filter(c=>!openedChests.has(c.id)),...animals].filter(e=>e.g.position.distanceTo(player.pos)<4.2).sort((a,b)=>a.g.position.distanceTo(player.pos)-b.g.position.distanceTo(player.pos)).find(reachable)||null;
- const b=document.getElementById('interact');b.hidden=!nearEntity;
- if(nearEntity)b.textContent=nearEntity.kind==='villager'?'Trade · '+professions[nearEntity.job].name+' [E]':nearEntity.kind==='chest'?'Open treasure chest [E]':nearEntity.tamed?(nearEntity.sitting?'Follow':'Stay')+' · '+nearEntity.type+' [E]':'Tame '+nearEntity.type+' [E]';
+ // a door under the crosshair wins over nearby villagers and pets
+ nearDoor=null;const dh=raycastBlocks(4,true);
+ if(dh&&isDoor(getB(dh.x,dh.y,dh.z)))nearDoor={x:dh.x,y:doorBase(dh.x,dh.y,dh.z),z:dh.z};
+ const b=document.getElementById('interact');b.hidden=!nearEntity&&!nearDoor;
+ if(nearDoor)b.textContent=(getB(nearDoor.x,nearDoor.y,nearDoor.z)==='doorOpen'?'Close door':'Open door')+' [E]';
+ else if(nearEntity)b.textContent=nearEntity.kind==='villager'?'Trade · '+professions[nearEntity.job].name+' [E]':nearEntity.kind==='chest'?'Open treasure chest [E]':nearEntity.tamed?petAction(nearEntity).text+' [E]':'Tame '+nearEntity.type+' [E]';
  const village=villageSites.find(([x,z])=>Math.hypot(player.pos.x-x,player.pos.z-z)<19);
  b.title=village?village[2]:'Explore the land';
 }
@@ -1314,24 +1472,55 @@ function openPanel(title){
 function closePanel(){document.getElementById('villagePanel').style.display='none';resumeGame();saveGame();}
 function openGuide(){
  openPanel('📖 Village & Animal Guide');
- document.getElementById('panelBody').innerHTML='<article><b>Find the villages</b><br>Meadow: 64, 48 · Oakridge: 27, 94 · Sunfield: 101, 95. Your first village is straight ahead from spawn. Each village has four houses, three traders and two chests.</article><article><b>Treasure → Trade → Tame</b><br>Find a chest inside a house or in the wilderness. Walk close and select Open. Use the emeralds to buy animal food. Trade appears at the bottom when you meet a villager. Press E on a computer.</article>'+professions.map(p=>'<article><b>'+p.name+'</b><br>'+p.description+'</article>').join('')+'<article><b>Taming in Survival</b><br>Wolf: 1 bone · Rabbit: 1 carrot · Sheep or cow: 1 wheat. Taming always succeeds. Your pet wears a red collar and follows you. Interact again to switch Stay / Follow. Creative taming is free. Pets and supplies save automatically.</article><article><b>Controls</b><br>WASD walk · Space jump · mouse look · E interact · G guide · Q weapon · F Creative flight. Touch: left joystick, right side to look, action buttons. Your existing world is preserved; start New World for the larger village map.</article>';
+ document.getElementById('panelBody').innerHTML='<article><b>Find the villages</b><br>Meadow: 64, 48 · Oakridge: 27, 94 · Sunfield: 101, 95. Your first village is straight ahead from spawn. Each village has four houses with doors, a barn, four traders and two chests.</article><article><b>Doors</b><br>Look at a door and tap Open door / Close door (E on a computer). A closed door keeps worms out: in Survival, shut the door and you are safe inside. You can place your own doors from the block bar: they need 2 free blocks.</article><article><b>Barn</b><br>The big planks building with hay in every village. Open its door, walk your pet in and choose Stay: it will wander around inside the barn until you come back and choose Follow.</article><article><b>Feeding</b><br>Pets get hungry slowly (the 🍖 meter above them). A hungry pet droops and walks slowly but never gets hurt. Stand near it with its food in your bag and tap Feed: wolf eats bones, rabbit eats carrots, sheep and cow eat wheat.</article><article><b>Treasure → Trade → Tame</b><br>Find a chest inside a house or in the wilderness. Walk close and select Open. Use the emeralds to buy animal food. Trade appears at the bottom when you meet a villager. Press E on a computer.</article>'+professions.map(p=>'<article><b>'+p.name+'</b><br>'+p.description+'</article>').join('')+'<article><b>Taming in Survival</b><br>Wolf: 1 bone · Rabbit: 1 carrot · Sheep or cow: 1 wheat. Taming always succeeds. Your pet wears a red collar and follows you. Interact again to switch Stay / Follow. Creative taming is free. Pets and supplies save automatically.</article><article><b>Merchant</b><br>Sell a pet for emeralds (wolf 6, cow 5, sheep 4, rabbit 3): it goes back to living at the village. Buy food, or fun items for your pets: 🎉 party hat, 🎀 bow, 🕶️ sunglasses, 🎈 balloon. Walk up to a pet with the item in your bag and tap Give. A pet can wear one thing on its head, one on its face, and hold one balloon.</article><article><b>Controls</b><br>WASD walk · Space jump · mouse look · E interact · G guide · Q weapon · F Creative flight. Touch: left joystick, right side to look, action buttons. Your existing world is preserved; start New World for the larger village map.</article>';
 }
 function showTrade(v){
  if(!reachable(v))return;openPanel('Trade with '+professions[v.job].name);
  const body=document.getElementById('panelBody');
  const info=document.createElement('p');info.textContent='You have '+bag.emeralds+' emeralds. Find more in treasure chests.';body.appendChild(info);
- for(const [item,count,cost] of professions[v.job].offers){const b=document.createElement('button');b.textContent=cost+' emeralds → '+count+' '+item;b.disabled=bag.emeralds<cost;b.onclick=()=>{if(bag.emeralds<cost)return;bag.emeralds-=cost;bag[item]+=count;updateInventory();saveGame();showTrade(v);SFX.pop();};body.appendChild(b);}
+ const p=professions[v.job];
+ const heading=t=>{const h=document.createElement('article');h.innerHTML='<b>'+t+'</b>';body.appendChild(h);};
+ if(p.merchant){
+  // SELL: one button per pet. The pet is set free next to the Merchant and you get emeralds.
+  heading('Sell an animal friend');
+  const pets=animals.filter(a=>a.tamed);
+  if(!pets.length){const n=document.createElement('p');n.textContent='No pets to sell yet. Tame an animal first.';body.appendChild(n);}
+  for(const a of pets){const b=document.createElement('button');b.textContent='Sell '+a.type+' → '+SELL_PRICE[a.type]+' emeralds';b.onclick=()=>{sellPet(a,v);showTrade(v);};body.appendChild(b);}
+  heading('Buy');
+ }
+ for(const [item,count,cost] of p.offers){const b=document.createElement('button');b.textContent=cost+' emeralds → '+count+' '+item;b.disabled=bag.emeralds<cost;b.onclick=()=>{if(bag.emeralds<cost)return;bag.emeralds-=cost;bag[item]+=count;updateInventory();saveGame();showTrade(v);SFX.pop();};body.appendChild(b);}
+ if(p.merchant){
+  for(const [id,name,icon,cost] of FUN_ITEMS){const b=document.createElement('button');b.textContent=cost+' emeralds → '+icon+' '+name+' (give it to a pet)';b.disabled=bag.emeralds<cost;b.onclick=()=>{buyItem(id);showTrade(v);};body.appendChild(b);}
+ }
  if(mode==='survival'&&player.hp<10){const b=document.createElement('button');b.textContent='2 emeralds → restore all hearts';b.disabled=bag.emeralds<2;b.onclick=()=>{if(bag.emeralds<2)return;bag.emeralds-=2;player.hp=10;drawHearts();updateInventory();saveGame();showTrade(v);};body.appendChild(b);}
 }
+function buyItem(id){
+ const item=FUN_ITEMS.find(f=>f[0]===id);if(!item||bag.emeralds<item[3])return;
+ bag.emeralds-=item[3];bag[id]++;updateInventory();saveGame();SFX.pop();
+}
+function sellPet(a,v){
+ if(!a.tamed)return;bag.emeralds+=SELL_PRICE[a.type];untame(a,v.g.position);
+ updateInventory();saveGame();SFX.pop();banner('Sold! Your '+a.type+' now lives at the village. +'+SELL_PRICE[a.type]+' emeralds',2500);
+}
+// What the green button does for a tamed pet, in this order: feed it (if it is getting hungry and you have its food),
+// give it a fun item from your bag (if that slot is free), otherwise Stay / Follow.
+function petAction(a){
+ const food=foodFor(a.type);
+ if(a.hunger<70&&bag[food]>0)return {text:'Feed '+a.type+' (1 '+FOOD_NAME[food]+')',run:()=>feedPet(a)};
+ for(const [id,name,icon,cost,slot] of FUN_ITEMS)if(bag[id]>0&&!petHasSlot(a,slot))return {text:'Give '+name+' to '+a.type,run:()=>giveItem(a,id)};
+ return {text:(a.sitting?'Follow':'Stay')+' · '+a.type,run:()=>{a.sitting=!a.sitting;a.stay=a.g.position.clone();banner('Your '+a.type+(a.sitting?' will stay around here.':' will follow you.'),1800);}};
+}
 function interactAdventure(){
- const e=nearEntity;if(!running||!e||!reachable(e))return;
+ if(!running)return;
+ if(nearDoor){toggleDoor(nearDoor.x,nearDoor.y,nearDoor.z);nearDoor=null;proximityTick=1;return;}
+ const e=nearEntity;if(!e||!reachable(e))return;
  if(e.kind==='villager'){showTrade(e);return;}
  if(e.kind==='chest'){
   if(openedChests.has(e.id))return;openedChests.add(e.id);bag.emeralds+=10;bag.carrots+=2;bag.wheat+=2;bag.bones+=2;
   // Refresh this chest label immediately.
   const old=e.g.children.find(c=>c.isSprite);if(old){e.g.remove(old);old.material.map.dispose();old.material.dispose();}label(e.g,'Empty chest',1.3);
   banner('Treasure! +10 emeralds, +2 carrots, +2 wheat, +2 bones',3500);SFX.pop();
- }else if(e.tamed){e.sitting=!e.sitting;banner('Your '+e.type+(e.sitting?' will stay here.':' will follow you.'),1800);}
+ }else if(e.tamed){petAction(e).run();}
  else{
   const food=e.type==='wolf'?'bones':e.type==='rabbit'?'carrots':'wheat';
   if(mode==='survival'&&bag[food]<1){banner('You need '+food+'. Find a chest or trade with a villager!',2800);return;}
@@ -1349,7 +1538,10 @@ for(const [id,action] of [['interact',interactAdventure],['guideButton',openGuid
 document.getElementById('panelClose').onclick=closePanel;
 document.addEventListener('keydown',e=>{if(e.code==='Escape'&&document.getElementById('villagePanel').style.display==='flex'){e.preventDefault();closePanel();}});
 
-window.BL = { newWorld, continueWorld, saveGame, getB, groundY, villagers, animals, chests, bag, interactAdventure, updateAdventure, openGuide, get worldSize(){return W;}, setTime:t=>{ timeOfDay=t; }, worms, player, traps, bombs, makeWorm, get mode(){ return mode; } };   // small debug hook
+window.BL = { newWorld, continueWorld, saveGame, getB, groundY, villagers, animals, chests, bag, interactAdventure, updateAdventure, openGuide, get worldSize(){return W;}, setTime:t=>{ timeOfDay=t; }, worms, player, traps, bombs, makeWorm, get mode(){ return mode; },
+  // added for doors / barn / pets / Merchant tests
+  isSolid, setDoor, toggleDoor, doorBase, barns, professions, showTrade, feedPet, giveItem, sellPet, buyItem, untame, petAction, drawPetItems, setPetLabel, doPlace, doBreak, setBlock,
+  select:n=>{ selected=n; buildBar(); }, setHungerMult:m=>{ hungerMult=m; }, forceSpawn:()=>{ spawnTimer=0; }, addCollar, get nearDoor(){ return nearDoor; }, get nearEntity(){ return nearEntity; }, get edits(){ return edits; }, get running(){ return running; }, get worldVersion(){ return worldVersion; } };   // small debug hook
 
 // first paint: a pretty empty world behind the title
 generate(); rebuildAll(); respawn(); camera.position.set(player.pos.x, player.pos.y+1.6, player.pos.z); updateSky(); renderer.render(scene, camera);
