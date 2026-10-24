@@ -158,7 +158,7 @@
 <div class="screen" id="dead">
   <div class="wormpic">🐛</div>
   <h2>Oh no! The worms got you!</h2>
-  <p>Your world is safe. Try building a wall around you next time!</p>
+  <p>Insya-Allah lain kali. Your world is safe. Try building a wall around you next time!</p>
   <button class="menuBtn" id="dRespawn">💚 Try Again</button>
   <button class="menuBtn" id="dCreative">✨ Switch to Creative</button>
 </div>
@@ -1459,8 +1459,9 @@ function updateAdventure(dt){
  nearDoor=null;const dh=raycastBlocks(4,true);
  if(dh&&isDoor(getB(dh.x,dh.y,dh.z)))nearDoor={x:dh.x,y:doorBase(dh.x,dh.y,dh.z),z:dh.z};
  const b=document.getElementById('interact');b.hidden=!nearEntity&&!nearDoor;
- if(nearDoor)b.textContent=(getB(nearDoor.x,nearDoor.y,nearDoor.z)==='doorOpen'?'Close door':'Open door')+' [E]';
- else if(nearEntity)b.textContent=nearEntity.kind==='villager'?'Trade · '+professions[nearEntity.job].name+' [E]':nearEntity.kind==='chest'?'Open treasure chest [E]':nearEntity.tamed?petAction(nearEntity).text+' [E]':'Tame '+nearEntity.type+' [E]';
+ const keyHint=isTouch?'':' [E]';   // phones have no E key, so only laptops see the hint
+ if(nearDoor)b.textContent=(getB(nearDoor.x,nearDoor.y,nearDoor.z)==='doorOpen'?'Close door':'Open door')+keyHint;
+ else if(nearEntity)b.textContent=(nearEntity.kind==='villager'?'Trade · '+professions[nearEntity.job].name:nearEntity.kind==='chest'?'Open treasure chest':nearEntity.tamed?petAction(nearEntity).text:'Tame '+nearEntity.type)+keyHint;
  const village=villageSites.find(([x,z])=>Math.hypot(player.pos.x-x,player.pos.z-z)<19);
  b.title=village?village[2]:'Explore the land';
 }
@@ -1519,12 +1520,12 @@ function interactAdventure(){
   if(openedChests.has(e.id))return;openedChests.add(e.id);bag.emeralds+=10;bag.carrots+=2;bag.wheat+=2;bag.bones+=2;
   // Refresh this chest label immediately.
   const old=e.g.children.find(c=>c.isSprite);if(old){e.g.remove(old);old.material.map.dispose();old.material.dispose();}label(e.g,'Empty chest',1.3);
-  banner('Treasure! +10 emeralds, +2 carrots, +2 wheat, +2 bones',3500);SFX.pop();
+  banner('Alhamdulillah! Treasure: +10 emeralds, +2 carrots, +2 wheat, +2 bones',3500);SFX.pop();
  }else if(e.tamed){petAction(e).run();}
  else{
   const food=e.type==='wolf'?'bones':e.type==='rabbit'?'carrots':'wheat';
   if(mode==='survival'&&bag[food]<1){banner('You need '+food+'. Find a chest or trade with a villager!',2800);return;}
-  if(mode==='survival')bag[food]--;e.tamed=true;addCollar(e);SFX.pop();banner('♥ You tamed a '+e.type+'! It will follow you.',2500);
+  if(mode==='survival')bag[food]--;e.tamed=true;addCollar(e);SFX.pop();banner('Alhamdulillah! ♥ You tamed a '+e.type+'. It will follow you.',2500);
  }
  updateInventory();saveGame();nearEntity=null;document.getElementById('interact').hidden=true;
 }
