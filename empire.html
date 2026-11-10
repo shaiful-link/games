@@ -131,7 +131,7 @@
 
 // ---------- Settings (change these to experiment) ----------
 const TILE = 40;                              // size of one map square in game units
-const MAP_W = 48, MAP_H = 30;                 // map size in squares
+const MAP_W = 60, MAP_H = 38;                 // map size in squares
 const WORLD_W = MAP_W * TILE, WORLD_H = MAP_H * TILE;
 const POP_BASE = 5, POP_PER_HOUSE = 5, POP_MAX = 40;
 const CARRY = 10;                             // resources a villager carries per trip
@@ -307,12 +307,20 @@ function makeMap() {
   };
   basePlaces(6, MAP_H - 8, false);
   basePlaces(6, MAP_H - 8, true);
-  for (let i = 0; i < 18; i++) addResource('tree', 18 + (i % 6) * 1.3 + Math.random() * 0.6, 12 + Math.floor(i / 6) * 1.3 + Math.random() * 0.6);
-  for (let i = 0; i < 4; i++) addResource('gold', 27 + (i % 2) * 1.2, 14 + Math.floor(i / 2) * 1.2);
-  for (let i = 0; i < 4; i++) addResource('bush', 19 + (i % 2) * 1.2, 20 + Math.floor(i / 2) * 1.2);
-  for (let i = 0; i < 4; i++) addResource('bush', 27 + (i % 2) * 1.2, 7 + Math.floor(i / 2) * 1.2);
-  for (let i = 0; i < 10; i++) addResource('tree', 2 + Math.random() * 6, 2 + Math.random() * 8);
-  for (let i = 0; i < 10; i++) addResource('tree', MAP_W - 9 + Math.random() * 6, MAP_H - 11 + Math.random() * 8);
+  // The middle of the map: a big forest, gold and berries worth fighting over
+  const cx = MAP_W / 2, cy = MAP_H / 2;
+  const forest = (tx, ty, n, w) => { for (let i = 0; i < n; i++) addResource('tree', tx + (i % w) * 1.3 + Math.random() * 0.6, ty + Math.floor(i / w) * 1.3 + Math.random() * 0.6); };
+  forest(cx - 6, cy - 3, 24, 6);
+  for (let i = 0; i < 4; i++) addResource('gold', cx + 4 + (i % 2) * 1.2, cy - 1 + Math.floor(i / 2) * 1.2);
+  for (let i = 0; i < 4; i++) addResource('bush', cx - 5 + (i % 2) * 1.2, cy + 5 + Math.floor(i / 2) * 1.2);
+  for (let i = 0; i < 4; i++) addResource('bush', cx + 4 + (i % 2) * 1.2, cy - 8 + Math.floor(i / 2) * 1.2);
+  // Woods in the two empty corners, and a few gold rocks along the edges
+  forest(2, 2, 12, 4); forest(MAP_W - 7, MAP_H - 6, 12, 4);
+  forest(cx - 14, 3, 10, 5); forest(cx + 4, MAP_H - 6, 10, 5);
+  for (let i = 0; i < 3; i++) addResource('gold', 3 + i * 1.2, cy + 2 + (i % 2));
+  for (let i = 0; i < 3; i++) addResource('gold', MAP_W - 5 + (i % 2) * 1.2 - 1, cy - 4 + i * 1.2);
+  for (let i = 0; i < 3; i++) addResource('bush', cx - 1 + i * 1.1, 3 + (i % 2));
+  for (let i = 0; i < 3; i++) addResource('bush', cx - 1 + i * 1.1, MAP_H - 4 - (i % 2));
 
   // Look at your town centre
   const tc = buildings[0];
@@ -850,33 +858,78 @@ function draw() {
   ctx.restore();
   drawMini();
 }
+// Buildings: stone base, timber or stone walls, tiled roof with a ridge, doors and windows.
+// Half-built ones are drawn see-through with a progress bar.
 function drawBuilding(b) {
-  const def = BUILDINGS[b.type], x = b.x - b.w / 2, y = b.y - b.h / 2, c = TEAM_COLOR[b.team];
+  const def = BUILDINGS[b.type], x = b.x - b.w / 2, y = b.y - b.h / 2, w = b.w, h = b.h, c = TEAM_COLOR[b.team];
   const sel = selected.includes(b);
   ctx.globalAlpha = b.progress < 1 ? 0.45 + b.progress * 0.55 : 1;
+  // Ground shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(x + 3, y + h - 4, w, 7);
+
   if (b.type === 'farm') {
-    ctx.fillStyle = '#b89a4a'; ctx.fillRect(x, y, b.w, b.h);
-    ctx.strokeStyle = '#8a6d2a'; ctx.lineWidth = 2; for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo(x, y + b.h * i / 4); ctx.lineTo(x + b.w, y + b.h * i / 4); ctx.stroke(); }
-    ctx.strokeStyle = c; ctx.lineWidth = 3; ctx.strokeRect(x + 1, y + 1, b.w - 2, b.h - 2);
+    // Tilled soil with crop rows and a fence
+    ctx.fillStyle = '#9b7a46'; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#7d5f33'; for (let i = 0; i < 5; i++) ctx.fillRect(x + 4, y + 5 + i * (h - 10) / 4.6, w - 8, 3);
+    ctx.fillStyle = b.progress < 1 ? '#8aa84a' : '#d9b64a';
+    for (let i = 0; i < 5; i++) for (let j = 0; j < 7; j++) ctx.fillRect(x + 7 + j * (w - 14) / 6.5, y + 3 + i * (h - 10) / 4.6, 3, 4);
+    ctx.strokeStyle = '#c9a66b'; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+    for (let i = 0; i <= 4; i++) { ctx.fillStyle = '#c9a66b'; ctx.fillRect(x + i * (w - 3) / 4, y - 2, 3, 6); ctx.fillRect(x + i * (w - 3) / 4, y + h - 4, 3, 6); }
+    ctx.fillStyle = c; ctx.fillRect(x + 2, y + h - 3, 6, 2);
   } else if (b.type === 'tower') {
-    ctx.fillStyle = '#8e8e8e'; ctx.fillRect(x + 6, y + 4, b.w - 12, b.h - 4);
-    ctx.fillStyle = '#6f6f6f'; ctx.fillRect(x + 3, y - 4, b.w - 6, 10);
-    ctx.fillStyle = c; ctx.fillRect(x + 3, y - 4, b.w - 6, 3);
+    // Round stone tower with battlements and an arrow slit
+    ctx.fillStyle = '#7d7d7d'; ctx.fillRect(x + 5, y - 14, w - 10, h + 12);
+    ctx.fillStyle = '#9a9a9a'; ctx.fillRect(x + 5, y - 14, 5, h + 12);
+    ctx.fillStyle = '#6a6a6a'; for (let i = 0; i < 6; i++) ctx.fillRect(x + 7 + (i % 2) * 8, y - 10 + i * 6, 10, 1.2);
+    ctx.fillStyle = '#8e8e8e'; ctx.fillRect(x + 2, y - 20, w - 4, 7);
+    ctx.fillStyle = '#9a9a9a'; for (let i = 0; i < 4; i++) ctx.fillRect(x + 2 + i * (w - 4) / 3.5, y - 25, 6, 6);
+    ctx.fillStyle = '#1a1a1a'; ctx.fillRect(b.x - 1.5, y - 6, 3, 10);
+    ctx.fillStyle = c; ctx.fillRect(x + 2, y - 20, w - 4, 2);
+    ctx.fillStyle = '#5a3a1e'; ctx.fillRect(b.x - 5, y + h - 12, 10, 12);
   } else {
-    // Walls and a roof in the team colour
-    ctx.fillStyle = b.type === 'towncentre' ? '#d9c48e' : b.type === 'barracks' ? '#9a7b5a' : '#e0d2b0';
-    ctx.fillRect(x, y + b.h * 0.3, b.w, b.h * 0.7);
-    ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x - 3, y + b.h * 0.32); ctx.lineTo(b.x, y); ctx.lineTo(x + b.w + 3, y + b.h * 0.32); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(b.x - 6, y + b.h * 0.62, 12, b.h * 0.38);     // door
-    if (b.type === 'towncentre') { ctx.fillStyle = c; ctx.fillRect(b.x - 2, y - 14, 3, 16); ctx.beginPath(); ctx.moveTo(b.x + 1, y - 14); ctx.lineTo(b.x + 14, y - 10); ctx.lineTo(b.x + 1, y - 6); ctx.fill(); }
-    if (b.type === 'barracks') { ctx.fillStyle = '#eee'; ctx.fillRect(x + 8, y + b.h * 0.42, 10, 3); ctx.fillRect(x + 11, y + b.h * 0.38, 4, 11); }
+    const roofH = h * 0.42, wallY = y + roofH, wallH = h - roofH;
+    const stone = b.type === 'barracks';
+    // Stone base
+    ctx.fillStyle = '#6f6f6f'; ctx.fillRect(x, y + h - 6, w, 6);
+    // Walls: plaster with timber frame, or grey stone for the barracks
+    ctx.fillStyle = stone ? '#8a8a8a' : b.type === 'towncentre' ? '#e8dcc0' : '#efe3c8';
+    ctx.fillRect(x, wallY, w, wallH - 6);
+    if (stone) { ctx.fillStyle = '#767676'; for (let r = 0; r < 4; r++) for (let i = 0; i < 6; i++) ctx.fillRect(x + ((r % 2) * 10 + i * 20) % w, wallY + 4 + r * 11, 16, 1.2); }
+    else { ctx.fillStyle = '#6b4a2b'; ctx.fillRect(x, wallY, w, 2.5); ctx.fillRect(x, wallY, 2.5, wallH - 6); ctx.fillRect(x + w - 2.5, wallY, 2.5, wallH - 6); ctx.fillRect(b.x - 1.2, wallY, 2.4, wallH - 6);
+      if (b.type === 'towncentre') { ctx.fillRect(x + w * 0.25, wallY, 2.4, wallH - 6); ctx.fillRect(x + w * 0.75, wallY, 2.4, wallH - 6); } }
+    // Roof: tiles with a ridge, overhanging the walls
+    ctx.fillStyle = b.type === 'towncentre' ? '#b5443a' : stone ? '#4e5a6a' : '#c0603f';
+    ctx.beginPath(); ctx.moveTo(x - 4, wallY + 2); ctx.lineTo(x + w * 0.5, y - 2); ctx.lineTo(x + w + 4, wallY + 2); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 1;
+    for (let i = 1; i < 5; i++) { const t = i / 5; ctx.beginPath(); ctx.moveTo(x - 4 + (w * 0.5 + 4) * t, wallY + 2 - (roofH + 4) * t); ctx.lineTo(x + w + 4 - (w * 0.5 + 4) * t, wallY + 2 - (roofH + 4) * t); ctx.stroke(); }
+    ctx.fillStyle = c; ctx.fillRect(x + w * 0.5 - 3, y - 4, 6, 4);                                 // ridge cap in team colour
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(x - 4, wallY + 1, w + 8, 2.5);                  // eave shadow
+    // Door with an arch, and windows
+    ctx.fillStyle = '#5a3a1e'; ctx.fillRect(b.x - 6, wallY + wallH - 22, 12, 16); ctx.beginPath(); ctx.arc(b.x, wallY + wallH - 22, 6, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = '#f4c542'; ctx.fillRect(b.x + 3, wallY + wallH - 14, 1.5, 1.5);
+    ctx.fillStyle = '#4a6a8a'; const wy = wallY + 7, ww = 7, wh = 8;
+    const windows = b.type === 'house' ? [x + 7] : [x + 8, x + w - 15];
+    for (const wx of windows) { ctx.fillStyle = '#4a6a8a'; ctx.fillRect(wx, wy, ww, wh); ctx.fillStyle = '#cfe8ff'; ctx.fillRect(wx + 1, wy + 1, 2, 2.5); ctx.fillStyle = '#6b4a2b'; ctx.fillRect(wx - 1, wy + wh, ww + 2, 1.5); }
+    if (b.type === 'house') { ctx.fillStyle = '#7a4a3a'; ctx.fillRect(x + w - 14, y + 4, 6, 14); }   // chimney
+    if (b.type === 'towncentre') {
+      // Flag pole on the ridge, and a bell tower
+      ctx.fillStyle = '#5a3a1e'; ctx.fillRect(b.x - 1, y - 24, 2, 22);
+      ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(b.x + 1, y - 24); ctx.lineTo(b.x + 16, y - 19); ctx.lineTo(b.x + 1, y - 14); ctx.fill();
+    }
+    if (stone) {
+      // Battlements along the top and a shield sign by the door
+      ctx.fillStyle = '#8a8a8a'; for (let i = 0; i < 6; i++) ctx.fillRect(x - 4 + i * (w + 8) / 5.6, wallY - 5, 6, 6);
+      ctx.fillStyle = c; ctx.beginPath(); ctx.arc(b.x + 16, wallY + wallH - 20, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#e8edf3'; ctx.fillRect(b.x + 15, wallY + wallH - 26, 2, 12);
+    }
   }
   ctx.globalAlpha = 1;
-  // Progress or health bar
-  if (b.progress < 1) { ctx.fillStyle = '#000'; ctx.fillRect(x, y - 8, b.w, 5); ctx.fillStyle = '#ffd166'; ctx.fillRect(x, y - 8, b.w * b.progress, 5); }
-  else if (b.hp < b.maxHp) { ctx.fillStyle = '#000'; ctx.fillRect(x, y - 8, b.w, 4); ctx.fillStyle = b.hp / b.maxHp > 0.5 ? '#7be495' : '#ff6b6b'; ctx.fillRect(x, y - 8, b.w * b.hp / b.maxHp, 4); }
-  if (b.queue.length) { const def2 = UNITS[b.queue[0]]; ctx.fillStyle = '#000'; ctx.fillRect(x, y + b.h + 3, b.w, 4); ctx.fillStyle = '#8fb8ff'; ctx.fillRect(x, y + b.h + 3, b.w * (1 - b.trainLeft / def2.time), 4); }
-  if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.strokeRect(x - 4, y - 4, b.w + 8, b.h + 8); ctx.setLineDash([]); }
+  // Progress or health bar, training bar, selection box
+  const barY = y - (b.type === 'towncentre' ? 30 : b.type === 'tower' ? 32 : 10);
+  if (b.progress < 1) { ctx.fillStyle = '#000'; ctx.fillRect(x, barY, w, 5); ctx.fillStyle = '#ffd166'; ctx.fillRect(x, barY, w * b.progress, 5); }
+  else if (b.hp < b.maxHp) { ctx.fillStyle = '#000'; ctx.fillRect(x, barY, w, 4); ctx.fillStyle = b.hp / b.maxHp > 0.5 ? '#7be495' : '#ff6b6b'; ctx.fillRect(x, barY, w * b.hp / b.maxHp, 4); }
+  if (b.queue.length) { const def2 = UNITS[b.queue[0]]; ctx.fillStyle = '#000'; ctx.fillRect(x, y + h + 4, w, 4); ctx.fillStyle = '#8fb8ff'; ctx.fillRect(x, y + h + 4, w * (1 - b.trainLeft / def2.time), 4); }
+  if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.strokeRect(x - 5, y - 5, w + 10, h + 10); ctx.setLineDash([]); }
 }
 function drawResource(r) {
   if (r.kind === 'tree') {
