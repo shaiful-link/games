@@ -1505,102 +1505,122 @@ function buildCarSet(teamId, width) {
   return set;
 }
 
+// ---- Shading helpers for the cars: gradients instead of flat colour, so the bodywork looks like
+// painted metal lit from above, and the tyres look round.
+function vgrad(g, y0, y1, stops) { const gr = g.createLinearGradient(0, y0, 0, y1); for (const [t, col] of stops) gr.addColorStop(t, col); return gr; }
+function hgrad(g, x0, x1, stops) { const gr = g.createLinearGradient(x0, 0, x1, 0); for (const [t, col] of stops) gr.addColorStop(t, col); return gr; }
+function paintBody(g, main, y0, y1) { return vgrad(g, y0, y1, [[0, shade(main, 0.45)], [0.18, shade(main, 0.12)], [0.55, main], [1, shade(main, -0.45)]]); }
+const CARBON = '#1b1d22', CARBON_HI = '#34373f';
+// A tyre seen from behind: a dark cylinder, lighter where the light catches the middle, dark at the edges
+function paintTyreRear(g, x, top, w, h, compound) {
+  rr(g, x - w / 2, top, w, h, w * 0.16);
+  g.fillStyle = hgrad(g, x - w / 2, x + w / 2, [[0, '#0b0c0e'], [0.2, '#2c2e33'], [0.45, '#3a3d44'], [0.7, '#262930'], [1, '#08090a']]); g.fill();
+  g.save(); rr(g, x - w / 2, top, w, h, w * 0.16); g.clip();
+  g.fillStyle = vgrad(g, top, top + h, [[0, 'rgba(255,255,255,0.22)'], [0.12, 'rgba(255,255,255,0.05)'], [0.8, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.45)']]); g.fillRect(x - w / 2, top, w, h);
+  g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 1.2;
+  for (let y = top + h * 0.2; y < top + h - 4; y += h * 0.11) { g.beginPath(); g.moveTo(x - w / 2, y); g.lineTo(x + w / 2, y); g.stroke(); }
+  g.fillStyle = compound; g.fillRect(x - w / 2 + 2, top + h * 0.12, 3, h * 0.72); g.fillRect(x + w / 2 - 5, top + h * 0.12, 3, h * 0.72);
+  g.restore();
+}
+
 // Paint a Formula-style car seen from behind in a 360 x 223 box. turn: -1 (hard left) .. 1 (hard right)
 function paintCarRear(g, team, turn) {
   const cx = 180, ground = 206;
-  const main = team.main, trim = team.trim, dark = '#15161a';
+  const main = team.main, trim = team.trim;
   g.save();
   g.translate(cx, ground); g.rotate(turn * 0.05); g.translate(-cx, -ground);   // the car leans a little into the turn
-  // shadow
-  g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(cx, ground - 4, 160, 13, 0, 0, Math.PI * 2); g.fill();
+  // soft ground shadow
+  const sh = g.createRadialGradient(cx, ground - 4, 10, cx, ground - 4, 170);
+  sh.addColorStop(0, 'rgba(0,0,0,0.5)'); sh.addColorStop(0.7, 'rgba(0,0,0,0.3)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = sh; g.beginPath(); g.ellipse(cx, ground - 4, 170, 14, 0, 0, Math.PI * 2); g.fill();
   const shift = turn * 12;                                      // the far (front) end swings sideways
-  // front tyres: smaller and higher, mostly hidden; one peeks out when turning
-  for (const s of [-1, 1]) {
-    const x = cx + s * 92 + shift * 2.2;
-    rr(g, x - 20, 126, 40, 56, 8); g.fillStyle = '#1b1c21'; g.fill();
-    g.fillStyle = '#2d2f36'; g.fillRect(x - 15, 132, 30, 7);
-  }
+  // front tyres, further away and in shadow
+  for (const s of [-1, 1]) paintTyreRear(g, cx + s * 92 + shift * 2.2, 126, 40, 56, '#8a7a2a');
+  g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(cx - 120 + shift * 2.2, 126, 240, 56);
   // front wing tips peeking out beyond the body
-  g.fillStyle = trim; g.fillRect(cx - 150 + shift * 2.2, 162, 300, 7);
-  g.fillStyle = shade(trim, -0.3); g.fillRect(cx - 150 + shift * 2.2, 166, 300, 3);
-  // floor and diffuser (dark, with fins)
-  g.fillStyle = '#0f1013'; g.beginPath(); g.moveTo(cx - 118, ground - 8); g.lineTo(cx - 104, 172); g.lineTo(cx + 104, 172); g.lineTo(cx + 118, ground - 8); g.closePath(); g.fill();
-  g.strokeStyle = '#2a2c33'; g.lineWidth = 2;
+  g.fillStyle = vgrad(g, 160, 170, [[0, shade(trim, 0.3)], [0.5, trim], [1, shade(trim, -0.5)]]); g.fillRect(cx - 150 + shift * 2.2, 161, 300, 9);
+  // floor and diffuser: carbon, with lighter strakes
+  g.fillStyle = vgrad(g, 170, ground, [[0, '#15171b'], [1, '#050506']]);
+  g.beginPath(); g.moveTo(cx - 118, ground - 8); g.lineTo(cx - 104, 172); g.lineTo(cx + 104, 172); g.lineTo(cx + 118, ground - 8); g.closePath(); g.fill();
+  g.strokeStyle = 'rgba(120,125,135,0.35)'; g.lineWidth = 1.5;
   for (let i = -3; i <= 3; i++) { g.beginPath(); g.moveTo(cx + i * 22, 176); g.lineTo(cx + i * 26, ground - 10); g.stroke(); }
-  // rear tyres: big, with tread grooves and a highlight band
+  // rear tyres: big, round-shaded, with a contact shadow on the ground
   for (const s of [-1, 1]) {
     const x = cx + s * 116;
-    rr(g, x - 34, 118, 68, 86, 10); g.fillStyle = dark; g.fill();
-    g.fillStyle = '#2a2c33'; rr(g, x - 30, 122, 60, 10, 5); g.fill();
-    g.strokeStyle = '#0a0a0c'; g.lineWidth = 2;
-    for (let y = 140; y < 198; y += 9) { g.beginPath(); g.moveTo(x - 31, y); g.lineTo(x + 31, y); g.stroke(); }
-    g.strokeStyle = '#3a3c44'; g.lineWidth = 1.5;
-    for (let y = 144; y < 198; y += 9) { g.beginPath(); g.moveTo(x - 31, y); g.lineTo(x + 31, y); g.stroke(); }
-    g.fillStyle = 'rgba(255,255,255,0.10)'; g.fillRect(x - 32, 120, 64, 5);
-    // a touch of colour on the tyre's shoulder (the compound band)
-    g.fillStyle = s < 0 ? '#ffd200' : '#ffd200'; g.fillRect(x - 34 + (s < 0 ? 0 : 64), 130, 4, 60);
+    g.fillStyle = 'rgba(0,0,0,0.45)'; g.beginPath(); g.ellipse(x, ground - 2, 36, 5, 0, 0, Math.PI * 2); g.fill();
+    paintTyreRear(g, x, 118, 68, 86, '#f0c419');
   }
-  // suspension arms: thin grey rods from the body to each rear wheel
-  g.strokeStyle = '#8a8f99'; g.lineWidth = 4; g.lineCap = 'round';
+  // suspension arms: carbon rods with a thin light edge
+  g.lineCap = 'round';
   for (const s of [-1, 1]) {
-    g.beginPath(); g.moveTo(cx + s * 44, 150); g.lineTo(cx + s * 84, 134); g.stroke();
-    g.beginPath(); g.moveTo(cx + s * 44, 182); g.lineTo(cx + s * 84, 178); g.stroke();
-    g.strokeStyle = '#5c6270'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx + s * 44, 166); g.lineTo(cx + s * 84, 156); g.stroke(); g.strokeStyle = '#8a8f99'; g.lineWidth = 4;
+    for (const [y1, y2, lw] of [[150, 134, 5], [182, 178, 5], [166, 156, 2.5]]) {
+      g.strokeStyle = CARBON; g.lineWidth = lw; g.beginPath(); g.moveTo(cx + s * 44, y1); g.lineTo(cx + s * 84, y2); g.stroke();
+      g.strokeStyle = 'rgba(255,255,255,0.28)'; g.lineWidth = 1; g.beginPath(); g.moveTo(cx + s * 44, y1 - 1.5); g.lineTo(cx + s * 84, y2 - 1.5); g.stroke();
+    }
   }
-  // sidepods and engine cover (team colour, with the trim stripe)
-  g.fillStyle = main;
-  g.beginPath(); g.moveTo(cx - 104, 184); g.lineTo(cx - 96, 142); g.lineTo(cx - 56, 128); g.lineTo(cx + 56, 128); g.lineTo(cx + 96, 142); g.lineTo(cx + 104, 184); g.closePath(); g.fill();
-  g.fillStyle = shade(main, -0.25);
-  g.beginPath(); g.moveTo(cx - 104, 184); g.lineTo(cx - 96, 142); g.lineTo(cx - 76, 150); g.lineTo(cx - 70, 184); g.closePath(); g.fill();
-  g.fillStyle = shade(main, 0.18);
-  g.beginPath(); g.moveTo(cx + 104, 184); g.lineTo(cx + 96, 142); g.lineTo(cx + 76, 150); g.lineTo(cx + 70, 184); g.closePath(); g.fill();
-  g.fillStyle = 'rgba(255,255,255,0.22)';                                       // highlight along the top of the sidepods
-  g.beginPath(); g.moveTo(cx - 96, 142); g.lineTo(cx - 56, 128); g.lineTo(cx + 56, 128); g.lineTo(cx + 96, 142); g.lineTo(cx + 92, 147); g.lineTo(cx + 54, 134); g.lineTo(cx - 54, 134); g.lineTo(cx - 92, 147); g.closePath(); g.fill();
+  // sidepods and the lower body: painted metal, bright on top, dark underneath
+  g.fillStyle = paintBody(g, main, 128, 184);
+  g.beginPath(); g.moveTo(cx - 104, 184); g.lineTo(cx - 98, 150); g.lineTo(cx - 84, 134); g.lineTo(cx - 56, 128); g.lineTo(cx + 56, 128); g.lineTo(cx + 84, 134); g.lineTo(cx + 98, 150); g.lineTo(cx + 104, 184); g.closePath(); g.fill();
+  // shaded flanks: the far side darker, the near side catching light
+  g.fillStyle = hgrad(g, cx - 104, cx - 60, [[0, 'rgba(0,0,0,0.45)'], [1, 'rgba(0,0,0,0)']]);
+  g.beginPath(); g.moveTo(cx - 104, 184); g.lineTo(cx - 98, 150); g.lineTo(cx - 84, 134); g.lineTo(cx - 60, 184); g.closePath(); g.fill();
+  g.fillStyle = hgrad(g, cx + 60, cx + 104, [[0, 'rgba(255,255,255,0)'], [1, 'rgba(255,255,255,0.18)']]);
+  g.beginPath(); g.moveTo(cx + 104, 184); g.lineTo(cx + 98, 150); g.lineTo(cx + 84, 134); g.lineTo(cx + 60, 184); g.closePath(); g.fill();
+  // glossy reflection line along the top of the sidepods
+  g.fillStyle = 'rgba(255,255,255,0.35)';
+  g.beginPath(); g.moveTo(cx - 84, 134); g.lineTo(cx - 56, 128); g.lineTo(cx + 56, 128); g.lineTo(cx + 84, 134); g.lineTo(cx + 80, 137.5); g.lineTo(cx + 54, 131.5); g.lineTo(cx - 54, 131.5); g.lineTo(cx - 80, 137.5); g.closePath(); g.fill();
+  // cooling outlets at the back of the sidepods (dark slots)
+  g.fillStyle = vgrad(g, 150, 180, [[0, '#0a0b0d'], [1, '#2a2c32']]);
+  for (const s of [-1, 1]) { rr(g, cx + s * 78 - 9, 152, 18, 26, 4); g.fill(); }
   // wing mirrors either side of the cockpit
-  for (const s of [-1, 1]) { rr(g, cx + s * 52 + shift * 0.5 - 7, 112, 14, 8, 2); g.fillStyle = trim; g.fill(); g.fillStyle = '#9fdcff'; g.fillRect(cx + s * 52 + shift * 0.5 - 5, 114, 10, 4); }
-  // airbox / engine cover: the narrow hump rising up behind the driver
-  const ax = cx + shift;
-  g.fillStyle = main;
-  g.beginPath(); g.moveTo(cx - 56, 128); g.lineTo(ax - 24, 100); g.lineTo(ax - 14, 86); g.lineTo(ax + 14, 86); g.lineTo(ax + 24, 100); g.lineTo(cx + 56, 128); g.closePath(); g.fill();
-  g.fillStyle = shade(main, -0.3);
-  g.beginPath(); g.moveTo(cx - 56, 128); g.lineTo(ax - 24, 100); g.lineTo(ax - 14, 86); g.lineTo(ax - 6, 88); g.lineTo(ax - 12, 104); g.lineTo(cx - 30, 128); g.closePath(); g.fill();
-  g.fillStyle = trim; g.fillRect(ax - 6, 86, 12, 44);                             // trim stripe down the spine
-  g.fillStyle = dark; rr(g, ax - 12, 88, 24, 12, 5); g.fill();                     // the air intake opening
-  // gearbox / crash structure between the body and the wing
-  g.fillStyle = shade(main, -0.4); g.fillRect(cx - 22, 146, 44, 40);
-  // exhaust pipe
-  blob(g, cx, 160, 11, '#2a2c33'); blob(g, cx, 160, 7, '#0a0a0c');
-  g.strokeStyle = '#8a8f99'; g.lineWidth = 2; g.beginPath(); g.arc(cx, 160, 11, 0, Math.PI * 2); g.stroke();
-  // rain light (red, lit when braking is drawn separately on top)
-  rr(g, cx - 9, 178, 18, 10, 2); g.fillStyle = '#5a0f12'; g.fill();
-  // rear wing: pylons, main plane, upper flap, endplates with the number
-  g.fillStyle = shade(main, -0.35); g.fillRect(ax - 18, 100, 7, 34); g.fillRect(ax + 11, 100, 7, 34);
-  const wx = cx + shift * 0.8;
-  g.fillStyle = main; rr(g, wx - 128, 90, 256, 16, 3); g.fill();
-  g.fillStyle = shade(main, -0.3); g.fillRect(wx - 128, 102, 256, 4);
-  g.fillStyle = trim; rr(g, wx - 120, 74, 240, 10, 3); g.fill();
-  g.fillStyle = shade(trim, -0.3); g.fillRect(wx - 120, 81, 240, 3);
-  g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(wx - 120, 74, 240, 2); g.fillRect(wx - 128, 90, 256, 2);
   for (const s of [-1, 1]) {
-    const ex = wx + s * 132;
-    rr(g, ex - 6, 66, 12, 66, 2); g.fillStyle = trim; g.fill();
-    g.fillStyle = shade(trim, -0.3); g.fillRect(ex - 6 + (s < 0 ? 0 : 8), 66, 4, 66);
-    g.fillStyle = isLight(trim) ? '#15171c' : '#ffffff'; g.font = '900 11px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.save(); g.translate(ex, 100); g.rotate(-Math.PI / 2); g.fillText(String(team.number), 0, 0); g.restore();
+    rr(g, cx + s * 52 + shift * 0.5 - 7, 112, 14, 8, 2); g.fillStyle = shade(trim, -0.1); g.fill();
+    g.fillStyle = hgrad(g, cx + s * 52 - 5, cx + s * 52 + 5, [[0, '#dff3ff'], [1, '#7fb3d6']]); g.fillRect(cx + s * 52 + shift * 0.5 - 5, 114, 10, 4);
   }
-  // the helmet behind the halo
+  // airbox / engine cover: the hump behind the driver
+  const ax = cx + shift;
+  g.fillStyle = paintBody(g, main, 86, 130);
+  g.beginPath(); g.moveTo(cx - 56, 128); g.lineTo(ax - 24, 100); g.lineTo(ax - 14, 86); g.lineTo(ax + 14, 86); g.lineTo(ax + 24, 100); g.lineTo(cx + 56, 128); g.closePath(); g.fill();
+  g.fillStyle = hgrad(g, cx - 56, ax, [[0, 'rgba(0,0,0,0.4)'], [1, 'rgba(0,0,0,0)']]);
+  g.beginPath(); g.moveTo(cx - 56, 128); g.lineTo(ax - 24, 100); g.lineTo(ax - 14, 86); g.lineTo(ax - 4, 88); g.lineTo(ax - 10, 106); g.lineTo(cx - 30, 128); g.closePath(); g.fill();
+  g.fillStyle = vgrad(g, 86, 130, [[0, shade(trim, 0.2)], [1, shade(trim, -0.35)]]); g.fillRect(ax - 6, 86, 12, 44);   // trim stripe down the spine
+  rr(g, ax - 12, 88, 24, 12, 5); g.fillStyle = vgrad(g, 88, 100, [[0, '#000'], [1, '#2a2c32']]); g.fill();             // air intake
+  // gearbox / crash structure between the body and the wing: carbon
+  g.fillStyle = vgrad(g, 146, 186, [[0, CARBON_HI], [1, '#0a0b0d']]); g.fillRect(cx - 22, 146, 44, 40);
+  // exhaust: a metal ring with a dark hot centre
+  const ex = g.createRadialGradient(cx - 3, 157, 2, cx, 160, 12); ex.addColorStop(0, '#d9dde4'); ex.addColorStop(0.55, '#6b7079'); ex.addColorStop(1, '#2a2c33');
+  blob(g, cx, 160, 12, ex); const hot = g.createRadialGradient(cx, 160, 1, cx, 160, 7); hot.addColorStop(0, '#3a2a22'); hot.addColorStop(1, '#050505'); blob(g, cx, 160, 7, hot);
+  // rain light (lit red when braking is drawn on top in the game)
+  rr(g, cx - 9, 178, 18, 10, 2); g.fillStyle = vgrad(g, 178, 188, [[0, '#7a1a1e'], [1, '#3a0a0c']]); g.fill();
+  g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(cx - 7, 179, 14, 2);
+  // rear wing: carbon pylons, painted main plane, trim flap, endplates with the number
+  g.fillStyle = CARBON; g.fillRect(ax - 18, 100, 7, 34); g.fillRect(ax + 11, 100, 7, 34);
+  g.fillStyle = 'rgba(255,255,255,0.2)'; g.fillRect(ax - 18, 100, 2, 34); g.fillRect(ax + 11, 100, 2, 34);
+  const wx = cx + shift * 0.8;
+  rr(g, wx - 128, 90, 256, 16, 3); g.fillStyle = vgrad(g, 90, 106, [[0, shade(main, 0.4)], [0.3, main], [1, shade(main, -0.5)]]); g.fill();
+  rr(g, wx - 120, 74, 240, 10, 3); g.fillStyle = vgrad(g, 74, 84, [[0, shade(trim, 0.4)], [0.4, trim], [1, shade(trim, -0.5)]]); g.fill();
+  g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(wx - 118, 75, 236, 1.5); g.fillRect(wx - 126, 91, 252, 1.5);
+  g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(wx - 128, 104, 256, 2);
+  for (const s of [-1, 1]) {
+    const ex2 = wx + s * 132;
+    rr(g, ex2 - 6, 66, 12, 66, 2); g.fillStyle = hgrad(g, ex2 - 6, ex2 + 6, s < 0 ? [[0, shade(trim, -0.4)], [0.6, trim], [1, shade(trim, 0.2)]] : [[0, shade(trim, 0.2)], [0.4, trim], [1, shade(trim, -0.4)]]); g.fill();
+    g.fillStyle = isLight(trim) ? '#15171c' : '#ffffff'; g.font = '900 11px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.save(); g.translate(ex2, 100); g.rotate(-Math.PI / 2); g.fillText(String(team.number), 0, 0); g.restore();
+  }
+  // the helmet behind the halo: glossy, with a visor strip
   const hx = ax, hy = 100;
-  blob(g, hx, hy, 17, team.helmet);
-  g.fillStyle = 'rgba(255,255,255,0.3)'; g.beginPath(); g.arc(hx - 5, hy - 6, 7, 0, Math.PI * 2); g.fill();
-  g.fillStyle = shade(team.helmet, -0.45); g.fillRect(hx - 17, hy + 4, 34, 7);
+  const hg = g.createRadialGradient(hx - 6, hy - 7, 2, hx, hy, 18); hg.addColorStop(0, shade(team.helmet, 0.55)); hg.addColorStop(0.5, team.helmet); hg.addColorStop(1, shade(team.helmet, -0.5));
+  blob(g, hx, hy, 17, hg);
+  g.fillStyle = vgrad(g, hy + 3, hy + 11, [[0, '#0d1a26'], [1, '#2a3f55']]); rr(g, hx - 16, hy + 3, 32, 8, 3); g.fill();
+  g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(hx - 12, hy + 4.5, 20, 1.5);
   g.fillStyle = isLight(team.helmet) ? team.main : '#ffffff'; g.fillRect(hx - 2, hy - 17, 4, 20);
-  // halo: the ring over the cockpit
-  g.strokeStyle = '#2b2d35'; g.lineWidth = 8; g.lineCap = 'round';
+  // halo: carbon ring with a light edge
+  g.strokeStyle = CARBON; g.lineWidth = 8; g.lineCap = 'round';
   g.beginPath(); g.moveTo(cx - 40 + shift * 0.6, 128); g.quadraticCurveTo(hx, 62, cx + 40 + shift * 0.6, 128); g.stroke();
-  g.strokeStyle = '#4a4d57'; g.lineWidth = 3;
-  g.beginPath(); g.moveTo(cx - 40 + shift * 0.6, 126); g.quadraticCurveTo(hx, 64, cx + 40 + shift * 0.6, 126); g.stroke();
+  g.strokeStyle = 'rgba(255,255,255,0.3)'; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(cx - 40 + shift * 0.6, 125); g.quadraticCurveTo(hx, 61, cx + 40 + shift * 0.6, 125); g.stroke();
   // the number on the engine cover
-  g.fillStyle = isLight(main) ? '#15171c' : '#ffffff'; g.font = '900 20px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = isLight(main) ? 'rgba(20,23,28,0.9)' : 'rgba(255,255,255,0.92)'; g.font = '900 20px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(String(team.number), cx, 140);
   g.restore();
 }
@@ -1608,54 +1628,67 @@ function paintCarRear(g, team, turn) {
 // Side view of a car (for the title and the car-select podium). size = length in pixels.
 function drawCarSide(c, x, y, size, team, wheelTurn) {
   const s = size / 300;
-  const main = team.main, trim = team.trim, dark = '#15161a';
+  const main = team.main, trim = team.trim;
   c.save(); c.translate(x, y); c.scale(s, s);
-  c.fillStyle = 'rgba(0,0,0,0.3)'; c.beginPath(); c.ellipse(-14, 52, 160, 9, 0, 0, Math.PI * 2); c.fill();
+  const sh = c.createRadialGradient(-14, 52, 10, -14, 52, 170); sh.addColorStop(0, 'rgba(0,0,0,0.45)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = sh; c.beginPath(); c.ellipse(-14, 52, 170, 10, 0, 0, Math.PI * 2); c.fill();
   // rear wing (endplate, two planes)
-  c.fillStyle = trim; rr(c, 106, -36, 14, 62, 2); c.fill();
-  c.fillStyle = main; c.fillRect(94, -32, 42, 7); c.fillRect(94, -18, 42, 6);
-  c.fillStyle = shade(main, -0.3); c.fillRect(94, -27, 42, 2); c.fillRect(94, -14, 42, 2);
-  // floor
-  c.fillStyle = dark; rr(c, -84, 30, 204, 10, 3); c.fill();
+  rr(c, 106, -36, 14, 62, 2); c.fillStyle = hgrad(c, 106, 120, [[0, shade(trim, 0.2)], [1, shade(trim, -0.4)]]); c.fill();
+  c.fillStyle = vgrad(c, -32, -25, [[0, shade(main, 0.4)], [1, shade(main, -0.4)]]); c.fillRect(94, -32, 42, 7);
+  c.fillStyle = vgrad(c, -18, -12, [[0, shade(main, 0.4)], [1, shade(main, -0.4)]]); c.fillRect(94, -18, 42, 6);
+  // floor: carbon
+  rr(c, -84, 30, 204, 10, 3); c.fillStyle = vgrad(c, 30, 40, [[0, CARBON_HI], [1, '#050506']]); c.fill();
   // front wing with its endplate
-  c.fillStyle = trim; rr(c, -166, 28, 92, 8, 2); c.fill(); c.fillRect(-166, 10, 6, 26);
-  c.fillStyle = shade(trim, -0.3); c.fillRect(-166, 33, 92, 3);
-  // body: low nose, raised cockpit, engine cover sloping down to the wing
-  c.fillStyle = main;
+  rr(c, -166, 28, 92, 8, 2); c.fillStyle = vgrad(c, 28, 36, [[0, shade(trim, 0.35)], [1, shade(trim, -0.5)]]); c.fill();
+  c.fillStyle = hgrad(c, -166, -160, [[0, shade(trim, 0.2)], [1, shade(trim, -0.3)]]); c.fillRect(-166, 10, 6, 26);
+  // body: low nose, raised cockpit, engine cover sloping down to the wing, painted metal
+  c.fillStyle = paintBody(c, main, -32, 32);
   c.beginPath();
   c.moveTo(-152, 26); c.lineTo(-122, 12); c.lineTo(-62, 6); c.lineTo(-38, 2); c.lineTo(-20, -22); c.lineTo(24, -24);
   c.lineTo(46, -32); c.lineTo(60, -32); c.lineTo(100, -8); c.lineTo(110, 10); c.lineTo(110, 32); c.lineTo(-82, 32); c.lineTo(-122, 30);
   c.closePath(); c.fill();
-  c.fillStyle = shade(main, -0.25);                                // darker lower band
-  c.beginPath(); c.moveTo(-52, 32); c.lineTo(-42, 16); c.lineTo(106, 16); c.lineTo(110, 32); c.closePath(); c.fill();
-  c.fillStyle = 'rgba(255,255,255,0.18)';                          // highlight along the top edge
-  c.beginPath(); c.moveTo(-120, 13); c.lineTo(-62, 7); c.lineTo(-40, 4); c.lineTo(-42, 8); c.lineTo(-62, 11); c.lineTo(-118, 17); c.closePath(); c.fill();
-  c.fillStyle = dark;                                              // sidepod intake
+  // sidepod bulge with its own shading and a dark intake
+  c.fillStyle = vgrad(c, 3, 32, [[0, shade(main, 0.25)], [0.5, main], [1, shade(main, -0.5)]]);
+  c.beginPath(); c.moveTo(-42, 16); c.lineTo(-32, 3); c.lineTo(100, 3); c.lineTo(108, 16); c.lineTo(110, 32); c.lineTo(-52, 32); c.closePath(); c.fill();
+  c.fillStyle = vgrad(c, 3, 14, [[0, '#000'], [1, '#2a2c32']]);
   c.beginPath(); c.moveTo(-38, 14); c.lineTo(-32, 3); c.lineTo(-12, 3); c.lineTo(-14, 14); c.closePath(); c.fill();
-  c.fillStyle = trim;                                              // trim stripe along the side
+  // glossy highlight along the top edges
+  c.fillStyle = 'rgba(255,255,255,0.3)';
+  c.beginPath(); c.moveTo(-120, 13); c.lineTo(-62, 7); c.lineTo(-40, 4); c.lineTo(-42, 8); c.lineTo(-62, 11); c.lineTo(-118, 17); c.closePath(); c.fill();
+  c.beginPath(); c.moveTo(-32, 3); c.lineTo(100, 3); c.lineTo(98, 6); c.lineTo(-30, 6); c.closePath(); c.fill();
+  c.beginPath(); c.moveTo(46, -32); c.lineTo(60, -32); c.lineTo(100, -8); c.lineTo(96, -7); c.lineTo(58, -29); c.lineTo(47, -29); c.closePath(); c.fill();
+  // trim stripe along the side
+  c.fillStyle = vgrad(c, 13, 26, [[0, shade(trim, 0.3)], [1, shade(trim, -0.3)]]);
   c.beginPath(); c.moveTo(-118, 21); c.lineTo(104, 13); c.lineTo(106, 18); c.lineTo(-116, 26); c.closePath(); c.fill();
   // cockpit, helmet, mirror and halo
-  c.fillStyle = dark; c.beginPath(); c.moveTo(-28, 0); c.lineTo(-16, -20); c.lineTo(26, -22); c.lineTo(30, -2); c.closePath(); c.fill();
-  blob(c, 8, -16, 12, team.helmet);
-  blob(c, 4, -22, 4, 'rgba(255,255,255,0.35)');
-  c.fillStyle = shade(team.helmet, -0.5); c.fillRect(-4, -18, 12, 5);
+  c.fillStyle = vgrad(c, -22, 0, [[0, '#0a0b0d'], [1, '#26282e']]); c.beginPath(); c.moveTo(-28, 0); c.lineTo(-16, -20); c.lineTo(26, -22); c.lineTo(30, -2); c.closePath(); c.fill();
+  const hg = c.createRadialGradient(4, -21, 1, 8, -16, 13); hg.addColorStop(0, shade(team.helmet, 0.55)); hg.addColorStop(0.5, team.helmet); hg.addColorStop(1, shade(team.helmet, -0.5));
+  blob(c, 8, -16, 12, hg);
+  c.fillStyle = hgrad(c, -4, 8, [[0, '#2a3f55'], [1, '#0d1a26']]); rr(c, -5, -19, 13, 6, 2); c.fill();
+  c.fillStyle = 'rgba(255,255,255,0.4)'; c.fillRect(-3, -18, 6, 1.2);
   c.fillStyle = trim; c.fillRect(-34, -14, 9, 5);
-  c.strokeStyle = '#2b2d35'; c.lineWidth = 5; c.lineCap = 'round';
+  c.strokeStyle = CARBON; c.lineWidth = 5; c.lineCap = 'round';
   c.beginPath(); c.moveTo(-34, -4); c.quadraticCurveTo(6, -46, 42, -14); c.stroke();
   c.beginPath(); c.moveTo(-34, -4); c.lineTo(-26, -26); c.stroke();
+  c.strokeStyle = 'rgba(255,255,255,0.3)'; c.lineWidth = 1.2;
+  c.beginPath(); c.moveTo(-34, -6); c.quadraticCurveTo(6, -48, 42, -16); c.stroke();
   // number on the engine cover
-  c.fillStyle = isLight(main) ? '#15171c' : '#ffffff'; c.font = '900 16px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = isLight(main) ? 'rgba(20,23,28,0.9)' : 'rgba(255,255,255,0.92)'; c.font = '900 16px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.fillText(String(team.number), 72, -8);
-  // wheels: tyre, sidewall ring, rim with turning spokes
+  // wheels: round-shaded tyre, sidewall, metal rim with turning spokes, contact shadow
   for (const wx of [-108, 84]) {
-    blob(c, wx, 26, 28, dark);
-    c.strokeStyle = '#2a2c33'; c.lineWidth = 2; c.beginPath(); c.arc(wx, 26, 22, 0, Math.PI * 2); c.stroke();
-    blob(c, wx, 26, 16, '#3a3c44');
-    c.save(); c.translate(wx, 26); c.rotate(wheelTurn || 0); c.strokeStyle = '#c9ced6'; c.lineWidth = 2.5;
+    c.fillStyle = 'rgba(0,0,0,0.5)'; c.beginPath(); c.ellipse(wx, 52, 26, 4, 0, 0, Math.PI * 2); c.fill();
+    const tg = c.createRadialGradient(wx - 8, 18, 4, wx, 26, 30); tg.addColorStop(0, '#3c3f47'); tg.addColorStop(0.6, '#1a1b1f'); tg.addColorStop(1, '#060607');
+    blob(c, wx, 26, 28, tg);
+    c.strokeStyle = 'rgba(255,255,255,0.12)'; c.lineWidth = 1.5; c.beginPath(); c.arc(wx, 26, 22, 0, Math.PI * 2); c.stroke();
+    const rg = c.createRadialGradient(wx - 5, 21, 2, wx, 26, 17); rg.addColorStop(0, '#9aa0aa'); rg.addColorStop(0.7, '#4a4e58'); rg.addColorStop(1, '#2a2d34');
+    blob(c, wx, 26, 16, rg);
+    c.save(); c.translate(wx, 26); c.rotate(wheelTurn || 0); c.strokeStyle = '#d7dbe2'; c.lineWidth = 2.5; c.lineCap = 'round';
     for (let i = 0; i < 5; i++) { c.rotate(Math.PI * 2 / 5); c.beginPath(); c.moveTo(0, 0); c.lineTo(13, 0); c.stroke(); }
     c.restore();
-    blob(c, wx, 26, 5, '#8a8f99');
-    c.strokeStyle = 'rgba(255,255,255,0.25)'; c.lineWidth = 3; c.beginPath(); c.arc(wx, 26, 25, Math.PI * 1.1, Math.PI * 1.6); c.stroke();
+    const ng = c.createRadialGradient(wx - 1, 25, 0.5, wx, 26, 5); ng.addColorStop(0, '#f0f2f5'); ng.addColorStop(1, '#6b7079');
+    blob(c, wx, 26, 5, ng);
+    c.strokeStyle = 'rgba(255,255,255,0.3)'; c.lineWidth = 3; c.beginPath(); c.arc(wx, 26, 25, Math.PI * 1.1, Math.PI * 1.6); c.stroke();
   }
   c.restore();
 }
