@@ -892,18 +892,92 @@ function drawResource(r) {
   }
   if (selected.includes(r)) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(r.x, r.y, r.r + 6, 0, Math.PI * 2); ctx.stroke(); }
 }
+// People are drawn as small figures: head, tunic in the team colour, arms and legs that swing
+// when walking, and a job-specific outfit and tool. Everything faces the way the unit last moved.
+const SKIN = ['#f1c9a5', '#e0a97f', '#c68a5b', '#8d5a3a'];
+const HAIR = ['#2b1d12', '#5a3a1e', '#1a1a1a', '#8a6a3a'];
 function drawUnit(u) {
   const def = UNITS[u.type], c = TEAM_COLOR[u.team], sel = selected.includes(u);
-  const bob = (u.task === 'move' || u.task === 'attack' || (u.task === 'gather' && u.gatherT === 0)) ? Math.sin(time * 14 + u.id) * 1.5 : 0;
-  if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(u.x, u.y + 8, def.r + 4, (def.r + 4) * 0.5, 0, 0, Math.PI * 2); ctx.stroke(); }
-  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(u.x, u.y + 8, def.r * 0.9, def.r * 0.4, 0, 0, Math.PI * 2); ctx.fill();
-  // Body (team colour), head, and a tool or weapon
-  ctx.fillStyle = c; ctx.fillRect(u.x - 5, u.y - 6 + bob, 10, 12);
-  ctx.fillStyle = '#f1c9a5'; ctx.beginPath(); ctx.arc(u.x, u.y - 10 + bob, 4.5, 0, Math.PI * 2); ctx.fill();
-  if (u.type === 'villager') { ctx.fillStyle = '#8b5a2b'; ctx.fillRect(u.x + u.face * 5, u.y - 12 + bob, 2, 14); if (u.carry > 0) { ctx.fillStyle = u.carryKind === 'wood' ? '#8b5a2b' : u.carryKind === 'food' ? '#e5533d' : '#f4c542'; ctx.fillRect(u.x - u.face * 9, u.y - 4 + bob, 6, 6); } }
-  else if (u.type === 'swordsman') { ctx.fillStyle = '#dfe6ee'; ctx.fillRect(u.x + u.face * 6, u.y - 14 + bob, 2, 16); ctx.fillStyle = '#555'; ctx.beginPath(); ctx.arc(u.x - u.face * 6, u.y - 1 + bob, 4, 0, Math.PI * 2); ctx.fill(); }
-  else { ctx.strokeStyle = '#8b5a2b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(u.x + u.face * 6, u.y - 3 + bob, 7, -Math.PI / 2, Math.PI / 2, u.face < 0); ctx.stroke(); }
-  if (u.hp < u.maxHp) { ctx.fillStyle = '#000'; ctx.fillRect(u.x - 9, u.y - 20, 18, 3); ctx.fillStyle = u.hp / u.maxHp > 0.5 ? '#7be495' : '#ff6b6b'; ctx.fillRect(u.x - 9, u.y - 20, 18 * u.hp / u.maxHp, 3); }
+  const f = u.face;
+  const walking = u.task === 'move' || (u.task === 'attack' && u.target && dist(u, u.target) > def.range + 20) ||
+    ((u.task === 'gather' || u.task === 'farm' || u.task === 'build') && u.gatherT === 0 && u.carry !== CARRY && !nearTarget(u));
+  const working = (u.task === 'gather' || u.task === 'farm' || u.task === 'build') && nearTarget(u);
+  const fighting = u.task === 'attack' && u.target && !walking;
+  const ph = time * 9 + u.id;                                  // animation clock, different per person
+  const swing = walking ? Math.sin(ph) : 0;                   // legs and arms swing
+  const bob = walking ? Math.abs(Math.cos(ph)) * 1.2 : 0;
+  const work = working ? Math.max(0, Math.sin(ph * 1.2)) : fighting ? Math.max(0, Math.sin(ph * 1.6)) : 0;   // arm raised then struck
+  const skin = SKIN[u.id % 4], hair = HAIR[(u.id * 7) % 4];
+  const x = u.x, y = u.y - bob;                              // y is the hip line
+
+  if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(u.x, u.y + 9, def.r + 5, (def.r + 5) * 0.45, 0, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(u.x, u.y + 9, 8, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.lineCap = 'round';
+  // Legs (dark trousers), stepping
+  ctx.strokeStyle = '#3b2f2a'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x - 2, y + 1); ctx.lineTo(x - 2 + swing * 3 * f, y + 9); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x + 2, y + 1); ctx.lineTo(x + 2 - swing * 3 * f, y + 9); ctx.stroke();
+  // Boots
+  ctx.fillStyle = '#2a1f1a'; ctx.fillRect(x - 4 + swing * 3 * f, y + 8, 4, 2); ctx.fillRect(x + swing * -3 * f, y + 8, 4, 2);
+  // Back arm (behind the body)
+  ctx.strokeStyle = skin; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(x - 3 * f, y - 8); ctx.lineTo(x - 3 * f - swing * 3 * f, y - 1); ctx.stroke();
+  // Tunic in the team colour, with a belt
+  ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x - 5, y - 10); ctx.lineTo(x + 5, y - 10); ctx.lineTo(x + 6, y + 1); ctx.lineTo(x - 6, y + 1); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#5a3a1e'; ctx.fillRect(x - 6, y - 2, 12, 2);
+  if (u.type === 'swordsman') { ctx.fillStyle = 'rgba(220,228,240,0.75)'; ctx.fillRect(x - 5, y - 10, 10, 6); }      // chest plate
+  // Neck and head
+  ctx.fillStyle = skin; ctx.fillRect(x - 1.5, y - 13, 3, 3);
+  ctx.beginPath(); ctx.arc(x, y - 16, 4.5, 0, Math.PI * 2); ctx.fill();
+  // Eye and mouth on the facing side
+  ctx.fillStyle = '#1a1a1a'; ctx.fillRect(x + f * 1.5, y - 17, 1.2, 1.2);
+  ctx.fillStyle = 'rgba(120,50,40,0.8)'; ctx.fillRect(x + f * 1, y - 14.2, 2, 0.8);
+  // Hair or headgear
+  if (u.type === 'villager') {
+    ctx.fillStyle = hair; ctx.beginPath(); ctx.arc(x, y - 17, 4.6, Math.PI, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#c9a66b'; ctx.beginPath(); ctx.arc(x, y - 18, 5, Math.PI, Math.PI * 2); ctx.fill(); ctx.fillRect(x - 2 * f, y - 18.5, 7 * f, 1.5);   // straw cap with a brim
+  } else if (u.type === 'swordsman') {
+    ctx.fillStyle = '#9aa5b5'; ctx.beginPath(); ctx.arc(x, y - 16.5, 5, Math.PI, Math.PI * 2); ctx.fill(); ctx.fillRect(x - 5, y - 16.5, 10, 2);  // helmet
+    ctx.fillStyle = c; ctx.fillRect(x - 0.7, y - 23, 1.4, 4);                                                                                   // plume
+  } else {
+    ctx.fillStyle = '#2f5d3a'; ctx.beginPath(); ctx.moveTo(x - 5.5, y - 13); ctx.lineTo(x, y - 23); ctx.lineTo(x + 5.5, y - 13); ctx.closePath(); ctx.fill();   // hood
+    ctx.fillStyle = hair; ctx.fillRect(x - 3, y - 14, 6, 1.2);
+  }
+  // Front arm and the tool or weapon it holds
+  const armAng = working || fighting ? -1.2 + work * 1.9 : 0.5 + swing * 0.5;   // raised when working, swings when walking
+  const hx = x + f * (3 + Math.cos(armAng) * 7), hy = y - 8 + Math.sin(armAng) * 7;
+  ctx.strokeStyle = skin; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(x + 3 * f, y - 8); ctx.lineTo(hx, hy); ctx.stroke();
+  if (u.type === 'villager') {
+    // Axe for wood, basket when carrying, bare hands otherwise
+    ctx.save(); ctx.translate(hx, hy); ctx.rotate(f * (armAng + 0.3));
+    ctx.fillStyle = '#8b5a2b'; ctx.fillRect(-1, -9, 2, 10);
+    ctx.fillStyle = '#9aa5b5'; ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(4 * f, -8); ctx.lineTo(4 * f, -3); ctx.lineTo(0, -4); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    if (u.carry > 0) { ctx.fillStyle = '#b9834a'; ctx.beginPath(); ctx.moveTo(x - f * 10, y - 7); ctx.lineTo(x - f * 3, y - 7); ctx.lineTo(x - f * 4, y - 1); ctx.lineTo(x - f * 9, y - 1); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = u.carryKind === 'wood' ? '#6b4423' : u.carryKind === 'food' ? '#e5533d' : '#f4c542'; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(x - f * (5 + i * 2), y - 8.5, 1.6, 0, Math.PI * 2); ctx.fill(); } }
+  } else if (u.type === 'swordsman') {
+    ctx.save(); ctx.translate(hx, hy); ctx.rotate(f * (armAng + 0.2));
+    ctx.fillStyle = '#5a3a1e'; ctx.fillRect(-1, -1, 2, 4);                                 // grip
+    ctx.fillStyle = '#e8edf3'; ctx.fillRect(-1, -14, 2, 13); ctx.fillRect(-3, -2, 6, 1.5);  // blade and cross-guard
+    ctx.restore();
+    ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x - f * 7, y - 3, 4.5, 0, Math.PI * 2); ctx.fill();   // round shield on the back arm
+    ctx.fillStyle = '#e8edf3'; ctx.beginPath(); ctx.arc(x - f * 7, y - 3, 1.5, 0, Math.PI * 2); ctx.fill();
+  } else {
+    // Bow held out front, quiver on the back
+    ctx.fillStyle = '#6b4423'; ctx.fillRect(x - f * 6 - 1, y - 14, 2, 9); ctx.fillStyle = '#f3e9c6'; ctx.fillRect(x - f * 6 - 1.5, y - 16, 3, 2);
+    ctx.strokeStyle = '#8b5a2b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(hx, hy, 7, -Math.PI / 2, Math.PI / 2, f < 0); ctx.stroke();
+    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(hx, hy - 7); ctx.lineTo(hx - f * (fighting ? 3 : 0), hy); ctx.lineTo(hx, hy + 7); ctx.stroke();
+  }
+  ctx.lineCap = 'butt';
+  if (u.hp < u.maxHp) { ctx.fillStyle = '#000'; ctx.fillRect(u.x - 9, u.y - 27, 18, 3); ctx.fillStyle = u.hp / u.maxHp > 0.5 ? '#7be495' : '#ff6b6b'; ctx.fillRect(u.x - 9, u.y - 27, 18 * u.hp / u.maxHp, 3); }
+}
+// Is a working villager standing at its tree / farm / building site?
+function nearTarget(u) {
+  const t = u.task === 'build' ? u.buildTarget : u.target;
+  if (!t) return false;
+  if (t.w) return overlapsBuilding(t, u.x, u.y, 16);
+  return dist(u, t) <= t.r + 9;
 }
 function drawEffect(e) {
   const k = e.t / e.life;
