@@ -1751,9 +1751,11 @@ function pieceShape(type) {
     addRoundRect(p, 26, 31, 48, 9, 3.5);                   // crown band
     for (const x of [30, 40, 50, 60, 70]) addEllipse(p, x, 31, 3.2, 3.2);   // small bumps along the band
     addEllipse(p, 50, 31, 18, 15);                         // dome
-    // A bold "T" on top so the king stands out from the queen (a T, not a cross)
-    addRoundRect(p, 46.5, 10, 7, 12, 1.5);                 // T stem
-    addRoundRect(p, 37, 3, 26, 8, 2.5);                    // T bar across the top
+    // A bold "K" (for King) on top so the king stands out from the queen
+    addRoundRect(p, 47.5, 20, 5, 4, 1);                    // little neck joining the K to the dome
+    addRoundRect(p, 38, 2, 7, 20, 1.5);                    // K upright
+    addPolygon(p, [[44, 11], [56, 1], [62, 5], [50, 15]]); // K upper arm
+    addPolygon(p, [[48, 10], [54, 8], [63, 20], [58, 23]]); // K lower arm
   }
   return p;
 }
@@ -1812,7 +1814,6 @@ function pieceDetails(g, type, colour) {
     // Two arches over the dome, meeting under the T
     g.beginPath(); g.moveTo(33, 31); g.quadraticCurveTo(38, 18, 50, 18); g.stroke();
     g.beginPath(); g.moveTo(67, 31); g.quadraticCurveTo(62, 18, 50, 18); g.stroke();
-    g.beginPath(); g.moveTo(39, 11); g.lineTo(61, 11); g.stroke();                 // underside of the T bar
   } else if (type === PAWN) {
     g.lineWidth = 1.6;
     g.beginPath(); g.moveTo(38, 51); g.lineTo(62, 51); g.stroke();
