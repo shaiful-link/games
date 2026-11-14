@@ -73,6 +73,10 @@
   .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
   .big { height: 48px; padding: 0 22px; border: 0; border-radius: 12px; background: #1c2742; color: #fff; font: inherit; font-size: 16px; font-weight: 700; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   .big.main { background: #2a6f5c; }
+  .big.lv { min-width: 56px; padding: 0 12px; position: relative; }
+  .big.lv.done { background: #2a6f5c; }
+  .big.lv.done::after { content: '\2713'; position: absolute; top: 2px; right: 6px; font-size: 11px; color: #bff0d4; }
+  #levelNote { font-size: 13px; color: rgba(255,255,255,0.6); max-width: 440px; }
   #speak { display: none; height: 36px; padding: 0 14px; border: 0; border-radius: 10px; background: rgba(28,39,66,0.9); color: #fff; font: inherit; font-size: 13px; font-weight: 700; }
   #speak.show { display: inline-block; }
   #toast { position: fixed; left: 50%; top: calc(48px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); padding: 6px 14px; border-radius: 10px; background: rgba(11,18,32,0.85); font-size: 14px; font-weight: 700; pointer-events: none; opacity: 0; transition: opacity .3s; }
@@ -102,17 +106,15 @@
   <h1 id="msgTitle">Kingdom Rise</h1>
   <p id="msgLine">Gather wood, food and gold. Build houses, a barracks and towers. Train an army and destroy the enemy Town Centre before they destroy yours.</p>
   <p id="msgHint">Drag the map to look around. Tap a villager, then tap a tree, bush or gold rock to gather. Turn the phone sideways.</p>
-  <div class="row" id="diffRow">
-    <button class="big main" data-d="easy">Easy</button>
-    <button class="big" data-d="medium">Medium</button>
-    <button class="big" data-d="hard">Hard</button>
-  </div>
+  <div class="row" id="diffRow"></div>
+  <p id="levelNote" class="sub"></p>
   <div class="row" id="pauseRow" style="display:none">
     <button class="big main" id="resume">Continue</button>
     <button class="big" id="quit">Quit to menu</button>
   </div>
   <div class="row" id="endRow" style="display:none">
-    <button class="big main" id="again">Play again</button>
+    <button class="big main" id="nextLevel">Next level</button>
+    <button class="big" id="again">Menu</button>
   </div>
   <button id="speak" aria-label="Say again">&#x1F50A; Say again</button>
 </div>
@@ -140,26 +142,49 @@ const TREE_WOOD = 100, BUSH_FOOD = 150, GOLD_ROCK = 300;
 const SOUND_VOLUME = 0.25;
 
 // Units: hp, speed (units/second), attack, range, cooldown (seconds), cost {wood, food, gold}, train time
+// vsBuilding / vsUnit scale the attack against buildings or people. minLevel = first level it appears.
 const UNITS = {
-  villager:  { name: 'Villager',  hp: 25, speed: 62, atk: 3,  range: 26,  cd: 1.2, cost: { food: 50 },            time: 20, r: 9 },
-  swordsman: { name: 'Swordsman', hp: 60, speed: 66, atk: 9,  range: 28,  cd: 1.0, cost: { food: 40, gold: 20 },  time: 15, r: 10 },
-  archer:    { name: 'Archer',    hp: 35, speed: 64, atk: 6,  range: 150, cd: 1.5, cost: { wood: 30, gold: 30 },  time: 18, r: 9 }
+  villager:  { name: 'Villager',  hp: 25,  speed: 62, atk: 3,  range: 26,  cd: 1.2, cost: { food: 50 },             time: 20, r: 9 },
+  swordsman: { name: 'Swordsman', hp: 60,  speed: 66, atk: 9,  range: 28,  cd: 1.0, cost: { food: 40, gold: 20 },   time: 15, r: 10 },
+  archer:    { name: 'Archer',    hp: 35,  speed: 64, atk: 6,  range: 150, cd: 1.5, cost: { wood: 30, gold: 30 },   time: 18, r: 9, vsBuilding: 0.6 },
+  knight:    { name: 'Knight',    hp: 120, speed: 96, atk: 14, range: 32,  cd: 1.0, cost: { food: 70, gold: 45 },   time: 24, r: 12, minLevel: 4 },
+  catapult:  { name: 'Catapult',  hp: 80,  speed: 34, atk: 40, range: 230, cd: 4.0, cost: { wood: 130, gold: 60 },  time: 32, r: 13, minLevel: 5, siege: 'rock', vsUnit: 0.45, splash: 36 },
+  cannon:    { name: 'Cannon',    hp: 100, speed: 32, atk: 60, range: 290, cd: 4.5, cost: { wood: 110, gold: 130 }, time: 36, r: 13, minLevel: 9, siege: 'ball', vsUnit: 0.5, splash: 30 }
 };
 // Buildings: size in squares, hp, cost, build time (seconds of one villager working)
 const BUILDINGS = {
   towncentre: { name: 'Town Centre', w: 3, h: 3, hp: 1500, cost: {},                        time: 0,  trains: ['villager'] },
-  house:      { name: 'House',       w: 2, h: 2, hp: 300, cost: { wood: 30 },              time: 15 },
-  farm:       { name: 'Farm',        w: 2, h: 2, hp: 200, cost: { wood: 45 },              time: 12 },
-  barracks:   { name: 'Barracks',    w: 3, h: 3, hp: 800, cost: { wood: 110 },             time: 30, trains: ['swordsman', 'archer'] },
-  tower:      { name: 'Tower',       w: 1, h: 1, hp: 500, cost: { wood: 60, gold: 30 },    time: 25, atk: 7, range: 190, cd: 1.4 }
+  house:      { name: 'House',       w: 2, h: 2, hp: 300,  cost: { wood: 30 },              time: 15 },
+  farm:       { name: 'Farm',        w: 2, h: 2, hp: 200,  cost: { wood: 45 },              time: 12 },
+  barracks:   { name: 'Barracks',    w: 3, h: 3, hp: 800,  cost: { wood: 110 },             time: 30, trains: ['swordsman', 'archer'] },
+  tower:      { name: 'Tower',       w: 1, h: 1, hp: 500,  cost: { wood: 60, gold: 30 },    time: 25, atk: 7, range: 190, cd: 1.4 },
+  wall:       { name: 'Wall',        w: 1, h: 1, hp: 700,  cost: { wood: 12 },              time: 5,  minLevel: 2, wall: true },
+  gate:       { name: 'Gate',        w: 1, h: 1, hp: 600,  cost: { wood: 35 },              time: 8,  minLevel: 3, wall: true },
+  stable:     { name: 'Stable',      w: 3, h: 3, hp: 700,  cost: { wood: 130, food: 60 },   time: 32, minLevel: 4, trains: ['knight'] },
+  workshop:   { name: 'Workshop',    w: 3, h: 3, hp: 700,  cost: { wood: 160, gold: 60 },   time: 35, minLevel: 5, trains: ['catapult', 'cannon'] },
+  stonetower: { name: 'Stone Tower', w: 1, h: 1, hp: 950,  cost: { wood: 90, gold: 70 },    time: 35, minLevel: 6, atk: 12, range: 240, cd: 1.4 }
 };
-// Difficulty: how fast the computer works, when and with how many soldiers it attacks, the most
-// soldiers it keeps (aiMaxArmy), and what both sides start with
-const DIFFICULTY = {
-  easy:   { aiSpeed: 0.6, aiAttackAt: 10, aiMaxArmy: 10, aiFirstAttack: 480, start: { wood: 300, food: 300, gold: 150 }, aiStart: { wood: 150, food: 150, gold: 60 } },
-  medium: { aiSpeed: 1.0, aiAttackAt: 7,  aiMaxArmy: 16, aiFirstAttack: 210, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 200, food: 200, gold: 100 } },
-  hard:   { aiSpeed: 1.3, aiAttackAt: 6,  aiMaxArmy: 26, aiFirstAttack: 150, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 300, food: 300, gold: 150 } }
-};
+// Is this unit or building type available on the current level?
+function unlocked(def) { return (def.minLevel || 1) <= levelNo; }
+// The 10 levels. aiSpeed = how fast the computer gathers/builds/trains; it attacks once it has
+// aiAttackAt soldiers and aiFirstAttack seconds have passed, and keeps at most aiMaxArmy.
+// aiTowers / aiBarracks = how many it builds. aiFort = it starts inside walls with towers.
+// news = what is new for you on that level (shown on the menu).
+const LEVELS = [
+  { aiSpeed: 0.6,  aiAttackAt: 10, aiMaxArmy: 10, aiFirstAttack: 480, aiTowers: 1, aiBarracks: 1, start: { wood: 300, food: 300, gold: 150 }, aiStart: { wood: 150, food: 150, gold: 60 },  news: 'Learn the basics: gather, build, train, attack.' },
+  { aiSpeed: 0.7,  aiAttackAt: 10, aiMaxArmy: 12, aiFirstAttack: 420, aiTowers: 1, aiBarracks: 1, start: { wood: 300, food: 300, gold: 150 }, aiStart: { wood: 200, food: 200, gold: 80 },  news: 'New: Walls. Select a villager, tap Build Wall, then drag a line on the ground.' },
+  { aiSpeed: 0.85, aiAttackAt: 9,  aiMaxArmy: 14, aiFirstAttack: 360, aiTowers: 2, aiBarracks: 1, start: { wood: 250, food: 250, gold: 120 }, aiStart: { wood: 200, food: 200, gold: 100 }, news: 'New: Gate. Your own units walk through it, enemies must break it.' },
+  { aiSpeed: 1.0,  aiAttackAt: 8,  aiMaxArmy: 16, aiFirstAttack: 300, aiTowers: 2, aiBarracks: 1, start: { wood: 250, food: 250, gold: 120 }, aiStart: { wood: 250, food: 250, gold: 120 }, news: 'New: Stable and Knights - fast, strong riders.' },
+  { aiSpeed: 1.1,  aiAttackAt: 8,  aiMaxArmy: 18, aiFirstAttack: 270, aiTowers: 2, aiBarracks: 1, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 300, food: 300, gold: 150 }, news: 'New: Workshop and Catapult - smashes walls and buildings from far away.' },
+  { aiSpeed: 1.2,  aiAttackAt: 8,  aiMaxArmy: 20, aiFirstAttack: 240, aiTowers: 3, aiBarracks: 1, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 300, food: 300, gold: 150 }, news: 'New: Stone Tower - tougher and shoots further.' },
+  { aiSpeed: 1.3,  aiAttackAt: 8,  aiMaxArmy: 22, aiFirstAttack: 210, aiTowers: 3, aiBarracks: 2, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 350, food: 350, gold: 180 }, news: 'The enemy builds two Barracks now.' },
+  { aiSpeed: 1.4,  aiAttackAt: 9,  aiMaxArmy: 26, aiFirstAttack: 180, aiTowers: 3, aiBarracks: 2, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 400, food: 400, gold: 200 }, news: 'Bigger enemy armies with knights and catapults.' },
+  { aiSpeed: 1.5,  aiAttackAt: 10, aiMaxArmy: 30, aiFirstAttack: 150, aiTowers: 4, aiBarracks: 2, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 450, food: 450, gold: 250 }, news: 'New: Cannon - out-ranges every tower.' },
+  { aiSpeed: 1.6,  aiAttackAt: 12, aiMaxArmy: 36, aiFirstAttack: 120, aiTowers: 4, aiBarracks: 2, aiFort: true, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 500, food: 500, gold: 300 }, news: 'The final test: the enemy starts behind walls with stone towers.' }
+];
+let levelNo = 1;
+let cleared = [];
+try { cleared = JSON.parse(localStorage.getItem('kingdomCleared') || '[]'); } catch (e) { cleared = []; }
 const MSG_WIN  = 'Alhamdulillah';
 const MSG_LOSE = 'Insya-Allah lain kali';
 
@@ -217,6 +242,8 @@ const sfx = {
   arrow:  () => beep(1200, 0.05, 'sine', 0, 400, 0.3),
   deny:   () => beep(200, 0.12, 'square', 0, 0, 0.4),
   alarm:  () => { beep(440, 0.15, 'square', 0, 0, 0.5); beep(440, 0.15, 'square', 0.25, 0, 0.5); },
+  whoosh: () => noise(0.35, 1400, 0, 0.35),
+  boom:   () => { noise(0.4, 300, 0, 0.9); beep(70, 0.3, 'sine', 0, 40, 0.8); },
   win:    () => [523, 659, 784, 1047].forEach((f, i) => beep(f, 0.2, 'triangle', i * 0.14)),
   lose:   () => [392, 330, 262, 196].forEach((f, i) => beep(f, 0.22, 'triangle', i * 0.16, 0, 0.8))
 };
@@ -266,7 +293,7 @@ btnSpeak.addEventListener('click', () => { startAudio(); if (lastSpoken) speak(l
 
 // ---------- Game state ----------
 let screen = 'title';            // 'title' | 'play' | 'paused' | 'over'
-let diff = DIFFICULTY.easy;
+let diff = LEVELS[0];
 let time = 0;                    // seconds of play
 let units = [], buildings = [], resources = [], arrows = [], effects = [];
 let teams = [];                  // per team: { wood, food, gold }
@@ -322,6 +349,18 @@ function makeMap() {
   for (let i = 0; i < 3; i++) addResource('bush', cx - 1 + i * 1.1, 3 + (i % 2));
   for (let i = 0; i < 3; i++) addResource('bush', cx - 1 + i * 1.1, MAP_H - 4 - (i % 2));
 
+  // Level 10: the enemy starts inside a wall ring with a gate and stone towers
+  if (diff.aiFort) {
+    const etc = buildings[1], x0 = etc.tx - 5, y0 = etc.ty - 4, x1 = etc.tx + 7, y1 = etc.ty + 7;
+    for (let tx = x0; tx <= x1; tx++) for (let ty = y0; ty <= y1; ty++) {
+      if (tx !== x0 && tx !== x1 && ty !== y0 && ty !== y1) continue;
+      if (tx < 0 || ty < 0 || tx >= MAP_W || ty >= MAP_H) continue;
+      const isGate = (tx === x0 && ty === Math.round((y0 + y1) / 2)) || (ty === y1 && tx === Math.round((x0 + x1) / 2));
+      resources = resources.filter(r => !(r.x > tx * TILE - 6 && r.x < (tx + 1) * TILE + 6 && r.y > ty * TILE - 6 && r.y < (ty + 1) * TILE + 6));
+      addBuilding(ENEMY, isGate ? 'gate' : 'wall', tx, ty, true);
+    }
+    addBuilding(ENEMY, 'stonetower', x0 + 1, y1 - 1, true); addBuilding(ENEMY, 'stonetower', x1 - 1, y0 + 1, true);
+  }
   // Look at your town centre
   const tc = buildings[0];
   cam.x = tc.x - stage.clientWidth / zoom / 2; cam.y = tc.y - stage.clientHeight / zoom / 2;
@@ -349,14 +388,20 @@ function addUnit(team, type, x, y) {
 function overlapsBuilding(b, x, y, pad) {
   return x > b.x - b.w / 2 - pad && x < b.x + b.w / 2 + pad && y > b.y - b.h / 2 - pad && y < b.y + b.h / 2 + pad;
 }
+function wallAt(tx, ty) { return buildings.some(b => BUILDINGS[b.type].wall && b.tx === tx && b.ty === ty); }
 function canPlace(type, tx, ty) {
   const def = BUILDINGS[type];
   if (tx < 0 || ty < 0 || tx + def.w > MAP_W || ty + def.h > MAP_H) return false;
   const x0 = tx * TILE, y0 = ty * TILE, x1 = x0 + def.w * TILE, y1 = y0 + def.h * TILE;
-  // Leave a lane of one square between buildings so units can always walk through a base
-  const gap = TILE - 2;
-  for (const b of buildings) if (x1 > b.x - b.w / 2 - gap && x0 < b.x + b.w / 2 + gap && y1 > b.y - b.h / 2 - gap && y0 < b.y + b.h / 2 + gap) return false;
-  for (const r of resources) if (r.x > x0 - 10 && r.x < x1 + 10 && r.y > y0 - 10 && r.y < y1 + 10) return false;
+  // Leave a lane of one square between buildings so units can always walk through a base;
+  // wall pieces may touch each other and other buildings
+  const isWall = !!def.wall;
+  for (const b of buildings) {
+    const gap = (isWall || BUILDINGS[b.type].wall) ? 0 : TILE - 2;
+    if (x1 > b.x - b.w / 2 - gap && x0 < b.x + b.w / 2 + gap && y1 > b.y - b.h / 2 - gap && y0 < b.y + b.h / 2 + gap) return false;
+  }
+  const rp = isWall ? 2 : 10;
+  for (const r of resources) if (r.x > x0 - rp && r.x < x1 + rp && r.y > y0 - rp && r.y < y1 + rp) return false;
   return true;
 }
 function popUsed(team) { return units.filter(u => u.team === team).length + buildings.filter(b => b.team === team).reduce((n, b) => n + b.queue.length, 0); }
@@ -411,7 +456,18 @@ function update(dt) {
   // Arrows fly, then hit
   for (const a of arrows) {
     a.t += dt / a.dur;
-    if (a.t >= 1) { a.done = true; if (a.target && a.target.hp > 0) damage(a.target, a.dmg, a.from); }
+    if (a.t >= 1) {
+      a.done = true;
+      if (a.kind) {
+        // Siege shot: lands where it was aimed and hurts everything near the spot
+        const lx = a.tx, ly = a.ty;
+        effects.push({ kind: 'smoke', x: lx, y: ly, t: 0, life: 0.7, size: 50 });
+        if (a.target && a.target.hp > 0 && (a.target.w ? overlapsBuilding(a.target, lx, ly, 6) : dist(a.target, { x: lx, y: ly }) < a.splash)) damage(a.target, a.dmg, a.from);
+        for (const u of units) if (u.team !== a.team && u !== a.target && dist(u, { x: lx, y: ly }) < a.splash) damage(u, a.dmg * 0.4, a.from);
+        for (const b of buildings) if (b.team !== a.team && b !== a.target && overlapsBuilding(b, lx, ly, 6)) damage(b, a.dmg * 0.4, a.from);
+        if (a.team === ENEMY) sfx.hit();
+      } else if (a.target && a.target.hp > 0) damage(a.target, a.dmg, a.from);
+    }
   }
   arrows = arrows.filter(a => !a.done);
   for (const e of effects) e.t += dt;
@@ -450,6 +506,7 @@ function moveToward(u, x, y, dt, stopAt, toB) {
   else { const d = Math.hypot(x - u.x, y - u.y); if (d <= stopAt + 0.5) return true; }   // +0.5 so a tiny rounding gap never leaves a villager stuck
   const d = Math.hypot(x - u.x, y - u.y);
   if (d < 1) return true;
+  u.blockedBy = null;
   const sp = UNITS[u.type].speed * dt;
   const step = toB ? Math.min(sp, d) : Math.min(sp, d - stopAt);
   let nx = u.x + (x - u.x) / d * step, ny = u.y + (y - u.y) / d * step;
@@ -457,12 +514,14 @@ function moveToward(u, x, y, dt, stopAt, toB) {
   // walk along the wall towards the corner nearest the target
   for (const b of buildings) {
     if (b === u.buildTarget || b === toB) continue;
+    if (b.type === 'gate' && b.team === u.team) continue;          // your own gate lets you through
     const pad = UNITS[u.type].r;
     if (overlapsBuilding(b, nx, ny, pad)) {
       const dx = nx - b.x, dy = ny - b.y;
       const ox = (b.w / 2 + pad) - Math.abs(dx), oy = (b.h / 2 + pad) - Math.abs(dy);
       if (ox < oy) { nx = b.x + Math.sign(dx || 1) * (b.w / 2 + pad); ny = u.y + (y >= b.y ? 1 : -1) * sp; }
       else         { ny = b.y + Math.sign(dy || 1) * (b.h / 2 + pad); nx = u.x + (x >= b.x ? 1 : -1) * sp; }
+      u.blockedBy = b;
     }
   }
   u.face = nx >= u.x ? 1 : -1;
@@ -499,14 +558,19 @@ function updateUnit(u, dt) {
       // Blocked on the way (a wall in between)? After 1.5 s hit whatever enemy thing is nearest instead
       u.stuckT = Math.hypot(u.x - ox, u.y - oy) < def.speed * dt * 0.3 ? (u.stuckT || 0) + dt : 0;
       if (u.stuckT > 1.5) { u.stuckT = 0; const e = nearestEnemyThing(u.team, u, 220); if (e && e !== t) orderAttack(u, e); }
+      // Sliding along an enemy wall or gate for a second: break through it instead
+      const wb = u.blockedBy;
+      if (wb && wb.team !== u.team && wb !== t && BUILDINGS[wb.type].wall) { u.blockT = (u.blockT || 0) + dt; if (u.blockT > 1) { u.blockT = 0; orderAttack(u, wb); } }
+      else u.blockT = 0;
       return;
     }
     if (u.cd <= 0) {
       u.cd = def.cd;
-      let dmg = def.atk;
+      let dmg = def.atk * (t.w ? (def.vsBuilding || 1) : (def.vsUnit || 1));
       if (u.type === 'swordsman' && t.type === 'archer') dmg *= 1.5;      // swords beat archers up close
-      if (u.type === 'archer' && t.w) dmg *= 0.6;                          // arrows do little to walls
-      if (def.range > 60) { arrows.push({ x: u.x, y: u.y, target: t, dmg, from: u, t: 0, dur: 0.35, team: u.team }); sfx.arrow(); }
+      if (u.type === 'knight' && !t.w && t.type !== 'knight') dmg *= 1.3;  // a charging horse hits hard
+      if (def.siege) { arrows.push({ x: u.x, y: u.y, target: t, dmg, from: u, t: 0, dur: def.siege === 'ball' ? 0.5 : 0.9, team: u.team, kind: def.siege, splash: def.splash, tx: t.x, ty: t.y }); if (u.team === PLAYER) (def.siege === 'ball' ? sfx.boom : sfx.whoosh)(); }
+      else if (def.range > 60) { arrows.push({ x: u.x, y: u.y, target: t, dmg, from: u, t: 0, dur: 0.35, team: u.team }); sfx.arrow(); }
       else { damage(t, dmg, u); effects.push({ kind: 'hit', x: t.x, y: t.y, t: 0, life: 0.25 }); }
     }
     return;
@@ -561,8 +625,13 @@ function updateUnit(u, dt) {
     const b = u.buildTarget;
     if (!b || b.hp <= 0) { u.task = 'idle'; u.buildTarget = null; return; }
     if (b.progress >= 1) {
-      // Finished: farms get worked by their builder
+      // Finished: farms get worked by their builder; wall builders move on to the next piece nearby
       if (b.type === 'farm') { u.task = 'farm'; u.target = b; u.buildTarget = null; }
+      else if (BUILDINGS[b.type].wall) {
+        let next = null, nd = 240;
+        for (const o of buildings) if (o.team === u.team && BUILDINGS[o.type].wall && o.progress < 1) { const d = dist(o, u); if (d < nd) { nd = d; next = o; } }
+        if (next) orderBuild(u, next); else { u.task = 'idle'; u.buildTarget = null; }
+      }
       else { u.task = 'idle'; u.buildTarget = null; }
       return;
     }
@@ -629,6 +698,9 @@ function runAI(dt) {
   const tc = myB.find(b => b.type === 'towncentre');
   if (!tc) return;
   const barracks = myB.filter(b => b.type === 'barracks' && b.progress >= 1);
+  const stables = myB.filter(b => b.type === 'stable' && b.progress >= 1);
+  const workshops = myB.filter(b => b.type === 'workshop' && b.progress >= 1);
+  const towerType = unlocked(BUILDINGS.stonetower) ? 'stonetower' : 'tower';
   const unfinished = myB.filter(b => b.progress < 1);
 
   // 1. Keep villagers busy: wood 45%, food 35%, gold 20%; one builder for unfinished buildings
@@ -661,14 +733,19 @@ function runAI(dt) {
   if (unfinished.length === 0 && builderFree) {
     if (used >= cap - 1 && cap < POP_MAX && res.wood >= BUILDINGS.house.cost.wood) aiPlace('house', builderFree);
     else if (barracks.length === 0 && res.wood >= BUILDINGS.barracks.cost.wood) aiPlace('barracks', builderFree);
-    else if (barracks.length === 1 && time > 240 && res.wood >= BUILDINGS.barracks.cost.wood + 60) aiPlace('barracks', builderFree);
-    else if (myB.filter(b => b.type === 'tower').length < (diff.aiSpeed >= 1 ? 2 : 1) && time > 120 && canAfford(T, BUILDINGS.tower.cost)) aiPlace('tower', builderFree);
+    else if (unlocked(BUILDINGS.stable) && barracks.length && myB.filter(b => b.type === 'stable').length === 0 && canAfford(T, BUILDINGS.stable.cost)) aiPlace('stable', builderFree);
+    else if (unlocked(BUILDINGS.workshop) && barracks.length && time > 200 && myB.filter(b => b.type === 'workshop').length === 0 && canAfford(T, BUILDINGS.workshop.cost)) aiPlace('workshop', builderFree);
+    else if (myB.filter(b => b.type === 'barracks').length < diff.aiBarracks && time > 240 && res.wood >= BUILDINGS.barracks.cost.wood + 60) aiPlace('barracks', builderFree);
+    else if (myB.filter(b => b.type === 'tower' || b.type === 'stonetower').length < diff.aiTowers && time > 120 && canAfford(T, BUILDINGS[towerType].cost)) aiPlace(towerType, builderFree);
     else if (!resources.some(r => r.kind === 'bush' && r.left > 0 && dist(r, tc) < 500) && myB.filter(b => b.type === 'farm').length < 4 && res.wood >= BUILDINGS.farm.cost.wood + 40) aiPlace('farm', builderFree);
   }
 
   // 3. Train: villagers up to 10, then soldiers (swordsman / archer mixed)
   if (tc.queue.length === 0 && vill.length < 10 && used < cap) startTraining(tc, 'villager');
   for (const b of barracks) if (b.queue.length === 0 && used < cap && army.length < diff.aiMaxArmy) startTraining(b, army.length % 3 === 2 ? 'archer' : 'swordsman');
+  for (const b of stables) if (b.queue.length === 0 && used < cap && army.length < diff.aiMaxArmy) startTraining(b, 'knight');
+  const siege = army.filter(u => UNITS[u.type].siege).length;
+  for (const b of workshops) if (b.queue.length === 0 && used < cap && army.length < diff.aiMaxArmy && siege < 2) startTraining(b, unlocked(UNITS.cannon) ? 'cannon' : 'catapult');
 
   // 4. Attack when the army is big enough (and not too early), or defend when attacked
   const enemyNear = units.some(u => u.team === PLAYER && u.type !== 'villager' && dist(u, tc) < 420);
@@ -680,7 +757,8 @@ function runAI(dt) {
     for (const s of army) {
       if (s.task === 'attack' && s.target && s.target.hp > 0) continue;
       let best = null, bd = 1e9;
-      for (const t of targets) { const d = dist(t, s) + (t.type === 'towncentre' ? -200 : 0) + (t.type === 'tower' ? -100 : 0); if (d < bd) { bd = d; best = t; } }
+      const isSiege = !!UNITS[s.type].siege;
+      for (const t of targets) { if (isSiege && !t.w) continue; const d = dist(t, s) + (t.type === 'towncentre' ? -200 : 0) + (t.type === 'tower' || t.type === 'stonetower' ? -100 : 0) + (BUILDINGS[t.type] && BUILDINGS[t.type].wall ? 150 : 0); if (d < bd) { bd = d; best = t; } }
       if (best) orderAttack(s, best);
     }
     if (army.length < Math.max(2, Math.floor(diff.aiAttackAt / 3))) { ai.attacking = false; for (const s of army) orderMove(s, tc.x, tc.y + 80); }
@@ -703,9 +781,11 @@ function endGame(won) {
   screen = 'over';
   const title = won ? MSG_WIN : MSG_LOSE;
   msgTitle.textContent = title;
-  msgLine.textContent = won ? 'Tahniah, anda menang. The enemy Town Centre has fallen after ' + Math.round(time / 60) + ' minutes.' : 'Cuba lagi · the enemy destroyed your Town Centre.';
-  msgHint.textContent = '';
-  diffRow.style.display = 'none'; pauseRow.style.display = 'none'; endRow.style.display = 'flex';
+  msgLine.textContent = won ? 'Tahniah, anda menang. Level ' + levelNo + ' cleared in ' + Math.round(time / 60) + ' minutes.' : 'Cuba lagi · the enemy destroyed your Town Centre on level ' + levelNo + '.';
+  msgHint.textContent = won && levelNo < 10 ? 'Next, level ' + (levelNo + 1) + ': ' + LEVELS[levelNo].news : '';
+  if (won && !cleared.includes(levelNo)) { cleared.push(levelNo); try { localStorage.setItem('kingdomCleared', JSON.stringify(cleared)); } catch (e) {} }
+  document.getElementById('nextLevel').style.display = won && levelNo < 10 ? '' : 'none';
+  diffRow.style.display = 'none'; levelNote.style.display = 'none'; pauseRow.style.display = 'none'; endRow.style.display = 'flex';
   btnSpeak.classList.add('show');
   if (won) sfx.win(); else sfx.lose();
   speak(title);
@@ -720,24 +800,45 @@ function clampCam() {
   cam.x = clamp(cam.x, 0, Math.max(0, WORLD_W - stage.clientWidth / zoom));
   cam.y = clamp(cam.y, 0, Math.max(0, WORLD_H - stage.clientHeight / zoom));
 }
+let wallDrag = null;       // while building a wall: { x0, y0, x1, y1 } in map squares
+function wallTiles(d) {
+  // A straight line of squares, horizontal or vertical (whichever way the finger went further)
+  const out = [];
+  if (Math.abs(d.x1 - d.x0) >= Math.abs(d.y1 - d.y0)) { const step = d.x1 >= d.x0 ? 1 : -1; for (let x = d.x0; x !== d.x1 + step; x += step) out.push([x, d.y0]); }
+  else { const step = d.y1 >= d.y0 ? 1 : -1; for (let y = d.y0; y !== d.y1 + step; y += step) out.push([d.x0, y]); }
+  return out;
+}
 canvas.addEventListener('pointerdown', e => {
   if (screen !== 'play') return;
   canvas.setPointerCapture(e.pointerId);
   pointer = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
+  if (placing === 'wall') { const p = toWorld(e.clientX, e.clientY); const tx = Math.floor(p.x / TILE), ty = Math.floor(p.y / TILE); wallDrag = { x0: tx, y0: ty, x1: tx, y1: ty }; }
 });
 canvas.addEventListener('pointermove', e => {
   if (!pointer) return;
   const dx = e.clientX - pointer.x, dy = e.clientY - pointer.y;
   if (Math.hypot(e.clientX - pointer.sx, e.clientY - pointer.sy) > 8) pointer.moved = true;
-  if (pointer.moved) { cam.x -= dx / zoom; cam.y -= dy / zoom; clampCam(); }
+  if (wallDrag) { const p = toWorld(e.clientX, e.clientY); wallDrag.x1 = clamp(Math.floor(p.x / TILE), 0, MAP_W - 1); wallDrag.y1 = clamp(Math.floor(p.y / TILE), 0, MAP_H - 1); }
+  else if (pointer.moved) { cam.x -= dx / zoom; cam.y -= dy / zoom; clampCam(); }
   pointer.x = e.clientX; pointer.y = e.clientY;
 });
 canvas.addEventListener('pointerup', e => {
   if (!pointer) return;
   const wasTap = !pointer.moved; pointer = null;
+  if (wallDrag) {
+    // Place every square of the line we can afford and that is free; one villager builds them in turn
+    const tiles = wallTiles(wallDrag); wallDrag = null;
+    const builder = selected.find(u => u.type === 'villager');
+    let placed = 0, first = null;
+    for (const [tx, ty] of tiles) { if (!canAfford(PLAYER, BUILDINGS.wall.cost)) break; if (!canPlace('wall', tx, ty)) continue; const b = placeBuilding(PLAYER, 'wall', tx, ty, null); if (b) { placed++; if (!first) first = b; } }
+    if (placed) { sfx.place(); if (builder && first) orderBuild(builder, first); toast(placed + ' wall piece' + (placed > 1 ? 's' : '') + ' placed'); }
+    else toast(canAfford(PLAYER, BUILDINGS.wall.cost) ? 'Cannot build there' : 'Not enough wood', true);
+    if (!canAfford(PLAYER, BUILDINGS.wall.cost)) { placing = null; refreshActions(); }
+    return;
+  }
   if (wasTap && screen === 'play') tapAt(toWorld(e.clientX, e.clientY));
 });
-canvas.addEventListener('pointercancel', () => { pointer = null; });
+canvas.addEventListener('pointercancel', () => { pointer = null; wallDrag = null; });
 
 function thingAt(p) {
   for (const u of units) if (dist(u, p) < UNITS[u.type].r + 8) return u;
@@ -810,7 +911,7 @@ function refreshActions() {
     const def = BUILDINGS[s.type];
     infoEl.innerHTML = '<b>' + def.name + '</b>' + (s.progress < 1 ? 'Building ' + Math.round(s.progress * 100) + '%' : Math.ceil(s.hp) + ' / ' + s.maxHp + ' hp') + (s.queue.length ? '<br>Training ' + UNITS[s.queue[0]].name + ' (' + s.queue.length + ')' : '');
     if (s.progress < 1) add('Send builder', 'idle villager', () => { const v = idleV()[0]; if (v) { orderBuild(v, s); sfx.order(); } else toast('No idle villager', true); });
-    else if (def.trains) for (const t of def.trains) add('Train ' + UNITS[t].name, costText(UNITS[t].cost), () => { if (startTraining(s, t)) { sfx.order(); refreshActions(); } });
+    else if (def.trains) for (const t of def.trains) { if (!unlocked(UNITS[t])) continue; add('Train ' + UNITS[t].name, costText(UNITS[t].cost), () => { if (startTraining(s, t)) { sfx.order(); refreshActions(); } }); }
     add('Select army', army().length, () => { selected = army(); sfx.select(); refreshActions(); });
     return;
   }
@@ -819,9 +920,10 @@ function refreshActions() {
   if (selected.length === 1) infoEl.innerHTML = '<b>' + UNITS[s.type].name + '</b>' + Math.ceil(s.hp) + ' / ' + s.maxHp + ' hp<br>' + taskText(s);
   else infoEl.innerHTML = '<b>' + selected.length + ' units</b>' + vill.length + ' villagers, ' + (selected.length - vill.length) + ' soldiers';
   if (vill.length) {
-    for (const t of ['house', 'farm', 'barracks', 'tower']) {
+    for (const t of ['house', 'farm', 'barracks', 'tower', 'wall', 'gate', 'stable', 'workshop', 'stonetower']) {
       const d = BUILDINGS[t];
-      add('Build ' + d.name, costText(d.cost), () => { placing = placing === t ? null : t; refreshActions(); if (placing) toast('Tap the ground to place the ' + d.name); }, placing === t ? 'on' : '');
+      if (!unlocked(d)) continue;
+      add('Build ' + d.name, costText(d.cost) + (t === 'wall' ? ' each' : ''), () => { placing = placing === t ? null : t; refreshActions(); if (placing) toast(t === 'wall' ? 'Drag a line on the ground to build the wall' : 'Tap the ground to place the ' + d.name); }, placing === t ? 'on' : '');
     }
   }
   add('Stop', '', () => { for (const u of selected) { u.task = 'idle'; u.target = null; u.dest = null; } placing = null; refreshActions(); });
@@ -868,9 +970,17 @@ function draw() {
   for (const b of buildings) if (visible(b)) drawBuilding(b);
   for (const r of resources) if (visible(r)) drawResource(r);
   // Placing ghost
-  if (placing) { const def = BUILDINGS[placing]; ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.font = '13px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('Tap the ground to place the ' + def.name, cam.x + W / zoom / 2, cam.y + 24); }
+  if (placing) { const def = BUILDINGS[placing]; ctx.font = '13px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(placing === 'wall' ? 'Drag a line to build the wall' : 'Tap the ground to place the ' + def.name, cam.x + W / zoom / 2, cam.y + 24); }
+  if (wallDrag) { for (const [tx, ty] of wallTiles(wallDrag)) { ctx.fillStyle = canPlace('wall', tx, ty) ? 'rgba(255,255,255,0.45)' : 'rgba(255,80,80,0.45)'; ctx.fillRect(tx * TILE + 3, ty * TILE + 3, TILE - 6, TILE - 6); } }
   for (const u of units) if (visible(u)) drawUnit(u);
-  for (const a of arrows) { const t = a.target; const x = a.x + (t.x - a.x) * a.t, y = a.y + (t.y - a.y) * a.t - Math.sin(a.t * Math.PI) * 18; ctx.strokeStyle = '#f3e9c6'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 4, y); ctx.lineTo(x + 4, y); ctx.stroke(); }
+  for (const a of arrows) {
+    const tx = a.kind ? a.tx : a.target.x, ty = a.kind ? a.ty : a.target.y;
+    const arc = a.kind === 'rock' ? 70 : a.kind === 'ball' ? 30 : 18;
+    const x = a.x + (tx - a.x) * a.t, y = a.y + (ty - a.y) * a.t - Math.sin(a.t * Math.PI) * arc;
+    if (a.kind === 'rock') { ctx.fillStyle = '#5a5a5a'; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(a.x + (tx - a.x) * a.t, a.y + (ty - a.y) * a.t + 2, 5, 2, 0, 0, Math.PI * 2); ctx.fill(); }
+    else if (a.kind === 'ball') { ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill(); }
+    else { ctx.strokeStyle = '#f3e9c6'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 4, y); ctx.lineTo(x + 4, y); ctx.stroke(); }
+  }
   for (const e of effects) drawEffect(e);
   ctx.restore();
   drawMini();
@@ -884,6 +994,25 @@ function drawBuilding(b) {
   // Ground shadow
   ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(x + 3, y + h - 4, w, 7);
 
+  if (b.type === 'wall' || b.type === 'gate') {
+    // Stone wall piece: joins up with neighbours; the gate is a wooden door between two posts
+    const n = { u: wallAt(b.tx, b.ty - 1), d: wallAt(b.tx, b.ty + 1) };
+    ctx.fillStyle = '#7a7a7a'; ctx.fillRect(x, y - 10, w, h + 10);
+    ctx.fillStyle = '#9a9a9a'; ctx.fillRect(x, y - 10, w, 6);
+    ctx.fillStyle = '#5f5f5f'; for (let i = 0; i < 4; i++) ctx.fillRect(x + (i % 2) * 10, y + 2 + i * 9, 14, 1.3);
+    if (!n.u || !n.d) { ctx.fillStyle = '#9a9a9a'; for (let i = 0; i < 3; i++) ctx.fillRect(x + 2 + i * 14, y - 15, 8, 6); }   // battlements
+    if (b.type === 'gate') {
+      ctx.fillStyle = '#5a3a1e'; ctx.fillRect(x + 6, y - 2, w - 12, h + 2);
+      ctx.fillStyle = '#3d2712'; ctx.fillRect(b.x - 1, y - 2, 2, h + 2); for (let i = 0; i < 3; i++) ctx.fillRect(x + 6, y + 4 + i * 11, w - 12, 1.5);
+      ctx.fillStyle = '#c9c9c9'; ctx.fillRect(x + 9, y + 14, 3, 3); ctx.fillRect(x + w - 12, y + 14, 3, 3);
+      ctx.fillStyle = c; ctx.fillRect(x + 6, y - 2, w - 12, 3);
+    }
+    ctx.globalAlpha = 1;
+    if (b.progress < 1) { ctx.fillStyle = '#000'; ctx.fillRect(x, y - 18, w, 4); ctx.fillStyle = '#ffd166'; ctx.fillRect(x, y - 18, w * b.progress, 4); }
+    else if (b.hp < b.maxHp) { ctx.fillStyle = '#000'; ctx.fillRect(x, y - 18, w, 3); ctx.fillStyle = b.hp / b.maxHp > 0.5 ? '#7be495' : '#ff6b6b'; ctx.fillRect(x, y - 18, w * b.hp / b.maxHp, 3); }
+    if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.strokeRect(x - 3, y - 13, w + 6, h + 16); ctx.setLineDash([]); }
+    return;
+  }
   if (b.type === 'farm') {
     // Tilled soil with crop rows and a fence
     ctx.fillStyle = '#9b7a46'; ctx.fillRect(x, y, w, h);
@@ -893,19 +1022,24 @@ function drawBuilding(b) {
     ctx.strokeStyle = '#c9a66b'; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
     for (let i = 0; i <= 4; i++) { ctx.fillStyle = '#c9a66b'; ctx.fillRect(x + i * (w - 3) / 4, y - 2, 3, 6); ctx.fillRect(x + i * (w - 3) / 4, y + h - 4, 3, 6); }
     ctx.fillStyle = c; ctx.fillRect(x + 2, y + h - 3, 6, 2);
-  } else if (b.type === 'tower') {
-    // Round stone tower with battlements and an arrow slit
-    ctx.fillStyle = '#7d7d7d'; ctx.fillRect(x + 5, y - 14, w - 10, h + 12);
+  } else if (b.type === 'tower' || b.type === 'stonetower') {
+    // Round stone tower with battlements and an arrow slit (the stone tower is taller and darker)
+    const tall = b.type === 'stonetower' ? 14 : 0;
+    if (tall) { ctx.fillStyle = '#5c5c5c'; ctx.fillRect(x + 3, y - 14 - tall, w - 6, tall + 4); ctx.fillStyle = '#4a4a4a'; for (let i = 0; i < 3; i++) ctx.fillRect(x + 5 + (i % 2) * 6, y - 12 - tall + i * 5, 10, 1.2); }
+    ctx.save(); if (tall) ctx.translate(0, -tall);
+    ctx.fillStyle = tall ? '#636363' : '#7d7d7d'; ctx.fillRect(x + 5, y - 14, w - 10, h + 12);
     ctx.fillStyle = '#9a9a9a'; ctx.fillRect(x + 5, y - 14, 5, h + 12);
     ctx.fillStyle = '#6a6a6a'; for (let i = 0; i < 6; i++) ctx.fillRect(x + 7 + (i % 2) * 8, y - 10 + i * 6, 10, 1.2);
     ctx.fillStyle = '#8e8e8e'; ctx.fillRect(x + 2, y - 20, w - 4, 7);
     ctx.fillStyle = '#9a9a9a'; for (let i = 0; i < 4; i++) ctx.fillRect(x + 2 + i * (w - 4) / 3.5, y - 25, 6, 6);
     ctx.fillStyle = '#1a1a1a'; ctx.fillRect(b.x - 1.5, y - 6, 3, 10);
     ctx.fillStyle = c; ctx.fillRect(x + 2, y - 20, w - 4, 2);
+    ctx.restore();
     ctx.fillStyle = '#5a3a1e'; ctx.fillRect(b.x - 5, y + h - 12, 10, 12);
+    if (tall) { ctx.fillStyle = c; ctx.fillRect(b.x - 1, y - 40, 2, 14); ctx.beginPath(); ctx.moveTo(b.x + 1, y - 40); ctx.lineTo(b.x + 10, y - 37); ctx.lineTo(b.x + 1, y - 34); ctx.fill(); }
   } else {
     const roofH = h * 0.42, wallY = y + roofH, wallH = h - roofH;
-    const stone = b.type === 'barracks';
+    const stone = b.type === 'barracks' || b.type === 'workshop';
     // Stone base
     ctx.fillStyle = '#6f6f6f'; ctx.fillRect(x, y + h - 6, w, 6);
     // Walls: plaster with timber frame, or grey stone for the barracks
@@ -928,6 +1062,19 @@ function drawBuilding(b) {
     const windows = b.type === 'house' ? [x + 7] : [x + 8, x + w - 15];
     for (const wx of windows) { ctx.fillStyle = '#4a6a8a'; ctx.fillRect(wx, wy, ww, wh); ctx.fillStyle = '#cfe8ff'; ctx.fillRect(wx + 1, wy + 1, 2, 2.5); ctx.fillStyle = '#6b4a2b'; ctx.fillRect(wx - 1, wy + wh, ww + 2, 1.5); }
     if (b.type === 'house') { ctx.fillStyle = '#7a4a3a'; ctx.fillRect(x + w - 14, y + 4, 6, 14); }   // chimney
+    if (b.type === 'stable') {
+      // Wide barn doors and a horseshoe sign
+      ctx.fillStyle = '#6b4423'; ctx.fillRect(b.x - 16, wallY + wallH - 26, 32, 20); ctx.fillStyle = '#3d2712'; ctx.fillRect(b.x - 1, wallY + wallH - 26, 2, 20);
+      ctx.strokeStyle = '#d9d9d9'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x + w - 16, wallY + 10, 6, Math.PI * 0.85, Math.PI * 2.15); ctx.stroke();
+      ctx.fillStyle = '#c9a66b'; ctx.fillRect(x + 4, wallY + wallH - 10, 14, 4); ctx.fillRect(x + 4, wallY + wallH - 16, 14, 4);   // hay
+    }
+    if (b.type === 'workshop') {
+      // A big wooden wheel leaning on the wall and a chimney with smoke
+      ctx.strokeStyle = '#8b5a2b'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x + w - 18, wallY + wallH - 18, 11, 0, Math.PI * 2); ctx.stroke();
+      for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(x + w - 18, wallY + wallH - 18); ctx.lineTo(x + w - 18 + Math.cos(i * Math.PI / 2) * 11, wallY + wallH - 18 + Math.sin(i * Math.PI / 2) * 11); ctx.stroke(); }
+      ctx.fillStyle = '#4a4a4a'; ctx.fillRect(x + 10, y + 2, 7, 16);
+      ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.beginPath(); ctx.arc(x + 14 + Math.sin(time * 2) * 2, y - 6, 4, 0, Math.PI * 2); ctx.fill();
+    }
     if (b.type === 'towncentre') {
       // Flag pole on the ridge, and a bell tower
       ctx.fillStyle = '#5a3a1e'; ctx.fillRect(b.x - 1, y - 24, 2, 22);
@@ -978,6 +1125,8 @@ function drawUnit(u) {
   const bob = walking ? Math.abs(Math.cos(ph)) * 1.2 : 0;
   const work = working ? Math.max(0, Math.sin(ph * 1.2)) : fighting ? Math.max(0, Math.sin(ph * 1.6)) : 0;   // arm raised then struck
   const skin = SKIN[u.id % 4], hair = HAIR[(u.id * 7) % 4];
+  if (u.type === 'catapult' || u.type === 'cannon') { drawSiege(u, def, c, sel, walking, fighting, ph); return; }
+  if (u.type === 'knight') { drawKnight(u, def, c, sel, walking, fighting, ph, skin); return; }
   const x = u.x, y = u.y - bob;                              // y is the hip line
 
   if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(u.x, u.y + 9, def.r + 5, (def.r + 5) * 0.45, 0, 0, Math.PI * 2); ctx.stroke(); }
@@ -1042,6 +1191,59 @@ function drawUnit(u) {
   ctx.lineCap = 'butt';
   if (u.hp < u.maxHp) { ctx.fillStyle = '#000'; ctx.fillRect(u.x - 9, u.y - 27, 18, 3); ctx.fillStyle = u.hp / u.maxHp > 0.5 ? '#7be495' : '#ff6b6b'; ctx.fillRect(u.x - 9, u.y - 27, 18 * u.hp / u.maxHp, 3); }
 }
+// A knight: horse in profile with the rider holding a lance and a shield
+function drawKnight(u, def, c, sel, walking, fighting, ph, skin) {
+  const f = u.face, x = u.x, y = u.y;
+  const gallop = walking ? Math.sin(ph * 1.3) : 0;
+  if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y + 10, 20, 8, 0, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(x, y + 10, 17, 5, 0, 0, Math.PI * 2); ctx.fill();
+  const horse = ['#6b4a2b', '#3b2a1e', '#9a7b5a', '#d8d2c4'][u.id % 4];
+  ctx.lineCap = 'round'; ctx.strokeStyle = horse; ctx.lineWidth = 3.5;
+  for (const [lx, ph2] of [[-9, 0], [-5, Math.PI], [5, Math.PI], [9, 0]]) { const sw = gallop * Math.sin(ph2 + 1) * 5; ctx.beginPath(); ctx.moveTo(x + lx * f, y + 1); ctx.lineTo(x + lx * f + sw * f, y + 10); ctx.stroke(); }
+  ctx.fillStyle = horse; ctx.beginPath(); ctx.ellipse(x, y - 3, 15, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x + 10 * f, y - 6); ctx.lineTo(x + 18 * f, y - 16); ctx.lineTo(x + 22 * f, y - 14); ctx.lineTo(x + 15 * f, y - 2); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x + 22 * f, y - 15, 5, 3.5, f * 0.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2a1f1a'; ctx.beginPath(); ctx.moveTo(x + 14 * f, y - 17); ctx.lineTo(x + 19 * f, y - 20); ctx.lineTo(x + 20 * f, y - 16); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#2a1f1a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 14 * f, y - 4); ctx.quadraticCurveTo(x - 20 * f, y, x - 18 * f, y + 7); ctx.stroke();
+  ctx.fillStyle = c; ctx.fillRect(x - 7, y - 9, 14, 7);
+  ctx.fillStyle = '#3b2f2a'; ctx.fillRect(x - 2, y - 6, 4, 8);
+  ctx.fillStyle = '#c3cad4'; ctx.fillRect(x - 5, y - 20, 10, 12);
+  ctx.fillStyle = c; ctx.fillRect(x - 5, y - 20, 10, 3);
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(x, y - 24, 4.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#9aa5b5'; ctx.beginPath(); ctx.arc(x, y - 24.5, 4.8, Math.PI, Math.PI * 2); ctx.fill(); ctx.fillRect(x - 4.8, y - 24.5, 9.6, 2.5);
+  ctx.fillStyle = c; ctx.fillRect(x - 0.7, y - 31, 1.4, 5);
+  ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x - 7 * f, y - 13, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#e8edf3'; ctx.beginPath(); ctx.arc(x - 7 * f, y - 13, 1.5, 0, Math.PI * 2); ctx.fill();
+  const lanceDip = fighting ? Math.max(0, Math.sin(ph * 1.6)) * 4 : 0;
+  ctx.strokeStyle = '#c9a66b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 4 * f, y - 10); ctx.lineTo(x + 26 * f, y - 16 + lanceDip); ctx.stroke();
+  ctx.fillStyle = '#e8edf3'; ctx.beginPath(); ctx.moveTo(x + 26 * f, y - 16 + lanceDip); ctx.lineTo(x + 31 * f, y - 17 + lanceDip); ctx.lineTo(x + 26 * f, y - 18 + lanceDip); ctx.fill();
+  ctx.lineCap = 'butt';
+  if (u.hp < u.maxHp) { ctx.fillStyle = '#000'; ctx.fillRect(x - 10, y - 36, 20, 3); ctx.fillStyle = u.hp / u.maxHp > 0.5 ? '#7be495' : '#ff6b6b'; ctx.fillRect(x - 10, y - 36, 20 * u.hp / u.maxHp, 3); }
+}
+// Siege engines: a wooden catapult with a throwing arm, or a cannon barrel on a carriage
+function drawSiege(u, def, c, sel, walking, fighting, ph) {
+  const f = u.face, x = u.x, y = u.y;
+  if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y + 9, 20, 8, 0, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(x, y + 9, 17, 5, 0, 0, Math.PI * 2); ctx.fill();
+  const spin = walking ? ph * 0.8 : 0;
+  for (const wx of [-10, 10]) {
+    ctx.fillStyle = '#5a3a1e'; ctx.beginPath(); ctx.arc(x + wx, y + 4, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#c9a66b'; ctx.lineWidth = 1.2; for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(x + wx, y + 4); ctx.lineTo(x + wx + Math.cos(spin + i * Math.PI / 2) * 5, y + 4 + Math.sin(spin + i * Math.PI / 2) * 5); ctx.stroke(); }
+  }
+  if (u.type === 'catapult') {
+    ctx.fillStyle = '#8b5a2b'; ctx.fillRect(x - 14, y - 2, 28, 5);
+    ctx.fillStyle = c; ctx.fillRect(x - 6, y - 1, 12, 3);
+    ctx.strokeStyle = '#8b5a2b'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 8, y - 1); ctx.lineTo(x - 2, y - 14); ctx.lineTo(x + 4, y - 1); ctx.stroke();
+    const arm = fighting ? -0.3 - Math.max(0, Math.sin(ph * 0.8)) * 1.3 : -0.3;
+    ctx.save(); ctx.translate(x - 2, y - 12); ctx.rotate(f * arm); ctx.fillStyle = '#6b4423'; ctx.fillRect(0, -2, 22, 4); ctx.fillStyle = '#4a4a4a'; ctx.beginPath(); ctx.arc(22, 0, 4, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  } else {
+    ctx.fillStyle = '#6b4423'; ctx.fillRect(x - 14, y - 3, 24, 6); ctx.fillStyle = c; ctx.fillRect(x - 12, y - 2, 6, 4);
+    ctx.save(); ctx.translate(x - 4, y - 6); ctx.rotate(-f * 0.25);
+    ctx.fillStyle = '#2b2d33'; ctx.fillRect(0, -4, 24 * f, 8); ctx.fillStyle = '#c9a23a'; ctx.fillRect(14 * f, -4.5, 3 * f, 9); ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(24 * f, 0, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    if (fighting && Math.sin(ph * 0.9) > 0.8) { ctx.fillStyle = 'rgba(255,200,80,0.8)'; ctx.beginPath(); ctx.arc(x + 20 * f, y - 11, 5, 0, Math.PI * 2); ctx.fill(); }
+  }
+  if (u.hp < u.maxHp) { ctx.fillStyle = '#000'; ctx.fillRect(x - 10, y - 26, 20, 3); ctx.fillStyle = u.hp / u.maxHp > 0.5 ? '#7be495' : '#ff6b6b'; ctx.fillRect(x - 10, y - 26, 20 * u.hp / u.maxHp, 3); }
+}
 // Is a working villager standing at its tree / farm / building site?
 function nearTarget(u) {
   const t = u.task === 'build' ? u.buildTarget : u.target;
@@ -1089,20 +1291,35 @@ function loop(now) {
 }
 
 // ---------- Screens ----------
-function startGame(d) {
-  diff = DIFFICULTY[d];
+function startGame(n) {
+  levelNo = n; diff = LEVELS[n - 1];
   resize(); makeMap();
   screen = 'play';
   overlay.classList.add('hidden'); btnSpeak.classList.remove('show'); btnPause.style.display = '';
   updateHud(); refreshActions();
-  toast('Tap a villager, then a tree to gather wood');
+  toast('Level ' + n + (n === 1 ? ': tap a villager, then a tree to gather wood' : ''));
 }
-diffRow.querySelectorAll('button').forEach(b => b.addEventListener('click', () => startGame(b.dataset.d)));
+// Level buttons on the menu: any level can be played; cleared ones get a tick
+const levelNote = document.getElementById('levelNote');
+function buildLevelButtons() {
+  diffRow.innerHTML = '';
+  LEVELS.forEach((lv, i) => {
+    const b = document.createElement('button');
+    b.className = 'big lv' + (cleared.includes(i + 1) ? ' done' : '') + (i + 1 === levelNo ? ' main' : '');
+    b.textContent = i + 1;
+    b.addEventListener('click', () => startGame(i + 1));
+    b.addEventListener('pointerenter', () => { levelNote.textContent = 'Level ' + (i + 1) + ': ' + lv.news; });
+    diffRow.appendChild(b);
+  });
+  const next = LEVELS.findIndex((lv, i) => !cleared.includes(i + 1));
+  levelNote.textContent = next < 0 ? 'All 10 levels cleared. Alhamdulillah!' : 'Level ' + (next + 1) + ': ' + LEVELS[next].news;
+}
+document.getElementById('nextLevel').addEventListener('click', () => startGame(Math.min(10, levelNo + 1)));
 btnPause.addEventListener('click', () => {
   if (screen !== 'play') return;
   screen = 'paused'; msgTitle.textContent = 'Paused'; msgLine.textContent = 'Wood ' + Math.floor(teams[0].wood) + ' · Food ' + Math.floor(teams[0].food) + ' · Gold ' + Math.floor(teams[0].gold) + ' · ' + Math.floor(time / 60) + ' min played';
   msgHint.textContent = 'Tip: keep villagers busy, build houses before the population is full, and put a tower near your Town Centre.';
-  diffRow.style.display = 'none'; endRow.style.display = 'none'; pauseRow.style.display = 'flex'; overlay.classList.remove('hidden');
+  diffRow.style.display = 'none'; levelNote.style.display = 'none'; endRow.style.display = 'none'; pauseRow.style.display = 'flex'; overlay.classList.remove('hidden');
 });
 document.getElementById('resume').addEventListener('click', () => { screen = 'play'; overlay.classList.add('hidden'); });
 document.getElementById('quit').addEventListener('click', showTitle);
@@ -1110,9 +1327,10 @@ document.getElementById('again').addEventListener('click', showTitle);
 function showTitle() {
   screen = 'title';
   msgTitle.textContent = 'Kingdom Rise';
-  msgLine.textContent = 'Gather wood, food and gold. Build houses, a barracks and towers. Train an army and destroy the enemy Town Centre before they destroy yours.';
+  msgLine.textContent = 'Gather wood, food and gold. Build, train an army and destroy the enemy Town Centre before they destroy yours. Pick a level:';
   msgHint.textContent = 'Drag the map to look around. Tap a villager, then tap a tree, bush or gold rock to gather. Turn the phone sideways.';
-  diffRow.style.display = 'flex'; pauseRow.style.display = 'none'; endRow.style.display = 'none'; btnSpeak.classList.remove('show');
+  buildLevelButtons();
+  diffRow.style.display = 'flex'; levelNote.style.display = ''; pauseRow.style.display = 'none'; endRow.style.display = 'none'; btnSpeak.classList.remove('show');
   overlay.classList.remove('hidden'); btnPause.style.display = 'none';
 }
 window.addEventListener('keydown', e => { if (e.key === 'p' || e.key === 'P') btnPause.click(); });
