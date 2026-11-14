@@ -406,6 +406,7 @@ function nearestEnemyThing(team, from, range) {
 function update(dt) {
   time += dt;
   for (const u of units) updateUnit(u, dt);
+  separateIdle();
   for (const b of buildings) updateBuilding(b, dt);
   // Arrows fly, then hit
   for (const a of arrows) {
@@ -430,6 +431,20 @@ function update(dt) {
 // Walk towards a point. Arrived when within stopAt of it.
 // If toB (a building) is given, arrived means standing next to its walls (within stopAt of the edge),
 // so a villager coming from a corner still counts as arrived.
+// Idle units standing on top of each other drift apart a little (so a crowd of fresh soldiers spreads out)
+function separateIdle() {
+  for (let i = 0; i < units.length; i++) {
+    const a = units[i]; if (a.task !== 'idle') continue;
+    for (let j = i + 1; j < units.length; j++) {
+      const b = units[j]; if (b.task !== 'idle') continue;
+      let dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+      if (d >= 16) continue;
+      if (d < 0.01) { dx = Math.cos(a.id); dy = Math.sin(a.id); d = 1; }
+      const push = (16 - d) * 0.15;
+      a.x -= dx / d * push; a.y -= dy / d * push; b.x += dx / d * push; b.y += dy / d * push;
+    }
+  }
+}
 function moveToward(u, x, y, dt, stopAt, toB) {
   if (toB) { if (overlapsBuilding(toB, u.x, u.y, stopAt)) return true; }
   else { const d = Math.hypot(x - u.x, y - u.y); if (d <= stopAt + 0.5) return true; }   // +0.5 so a tiny rounding gap never leaves a villager stuck
@@ -514,7 +529,9 @@ function updateUnit(u, dt) {
       return;
     }
     if (!r || r.left <= 0) { u.task = 'idle'; u.target = null; return; }
-    if (moveToward(u, r.x, r.y, dt, r.r + 8)) {
+    // Each villager has its own standing spot around the resource, so they do not pile up on one point
+    const ang = (u.id * 2.4) % (Math.PI * 2), sx = r.x + Math.cos(ang) * (r.r + 9), sy = r.y + Math.sin(ang) * (r.r + 9);
+    if (moveToward(u, sx, sy, dt, 3)) {
       u.gatherT += dt;
       const need = GATHER_SECONDS * (u.team === ENEMY ? 1 / diff.aiSpeed : 1);
       if (u.gatherT >= need) {
@@ -1030,7 +1047,7 @@ function nearTarget(u) {
   const t = u.task === 'build' ? u.buildTarget : u.target;
   if (!t) return false;
   if (t.w) return overlapsBuilding(t, u.x, u.y, 16);
-  return dist(u, t) <= t.r + 9;
+  return dist(u, t) <= t.r + 13;
 }
 function drawEffect(e) {
   const k = e.t / e.life;
