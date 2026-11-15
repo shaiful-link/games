@@ -653,8 +653,12 @@ function moveCar(c, dt, isPlayer) {
 }
 function knockPed(p, from, byPlayer) {
   p.state = 'down'; p.down = 1.6; p.vx = Math.cos(from.angle) * 90 + rand(-30, 30); p.vy = Math.sin(from.angle) * 90 + rand(-30, 30);
-  p.shout = pick(['Oi!', 'Hey!', 'Watch it!', 'Adoi!', 'Aduh!', 'My bag!']); sfx.bump();
-  if (byPlayer) { addWanted(0.6); effects.push({ kind: 'text', x: p.x, y: p.y, text: p.shout, t: 0, life: 1.2 }); }
+  p.shout = pick(['Oi!', 'Hey!', 'Jangan langgar orang!', 'Adoi!', 'Aduh!', 'Jangan langgar!']); sfx.bump();
+  if (byPlayer) {
+    addWanted(0.6); effects.push({ kind: 'text', x: p.x, y: p.y, text: p.shout, t: 0, life: 1.2 });
+    // Ayah's rule, on the screen every time
+    toast('Jangan langgar orang!', 'Polis datang \u00B7 ' + '\u2605'.repeat(Math.min(5, Math.round(wanted))));
+  }
 }
 function paintShot(x, y, angle, dt) {
   if (player.paintCd > 0) return;
