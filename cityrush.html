@@ -116,7 +116,7 @@ const BUST_SECONDS = 2.5;                     // seconds stopped next to a polic
 const FINE = 150;                             // money taken when busted
 const PAINT_RANGE = 170;
 const SOUND_VOLUME = 0.25;
-const MSG_WIN = 'Alhamdulillah', MSG_LOSE = 'Insya-Allah lain kali';
+const MSG_WIN = 'Job done!', MSG_LOSE = 'Try again!';   // this game uses plain words instead of the zikir
 
 // ---------- Page elements ----------
 const mini = document.getElementById('mini'), mctx = mini.getContext('2d');
@@ -181,7 +181,7 @@ const sfx = {
 btnSound.addEventListener('click', () => { muted = !muted; try { localStorage.setItem('gamesMuted', muted ? '1' : '0'); } catch (e) {} showSoundButton(); btnSound.blur(); });
 
 // ---------- Speaking the zikir (same as the other games) ----------
-const SPEAK = true;
+const SPEAK = false;                           // no spoken message in this game
 let lastSpoken = '', pendingSpeech = null;
 function speak(text) {
   if (!SPEAK || muted || !('speechSynthesis' in window)) return;
@@ -388,7 +388,7 @@ function startMission(type) {
 }
 function missionDone(reward) {
   money += reward; stats.jobs++; saveProgress();
-  sfx.win(); sfx.cash(); toast(MSG_WIN, '+RM ' + reward + ' · job done'); speak(MSG_WIN);
+  sfx.win(); sfx.cash(); toast(MSG_WIN, '+RM ' + reward); speak(MSG_WIN);
   mission = null; updateHud();
 }
 function missionFail(why) { sfx.lose(); toast(MSG_LOSE, why); speak(MSG_LOSE); mission = null; updateHud(); }
@@ -806,7 +806,7 @@ function updatePolice(dt) {
 function busted() {
   bustT = 0; sfx.lose();
   const fine = Math.min(money, FINE); money -= fine; saveProgress();
-  if (mission && mission.type === 'getaway') { missionFail('Busted!'); } else { toast('BUSTED', 'Fine RM ' + fine + ' · ' + MSG_LOSE); speak(MSG_LOSE); }
+  if (mission && mission.type === 'getaway') { missionFail('Busted!'); } else { toast('BUSTED', 'Fine RM ' + fine + ' · back to the police station'); speak(MSG_LOSE); }
   if (mission && mission.type !== 'getaway') { mission = null; }
   wanted = 0; wantedT = 0;
   for (const c of police) { c.police = false; c.kind = 'policeparked'; c.ai = false; c.speed = 0; } police = [];
