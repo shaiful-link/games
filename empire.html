@@ -149,8 +149,13 @@ const UNITS = {
   archer:    { name: 'Archer',    hp: 35,  speed: 64, atk: 6,  range: 150, cd: 1.5, cost: { wood: 30, gold: 30 },   time: 18, r: 9, vsBuilding: 0.6 },
   knight:    { name: 'Knight',    hp: 120, speed: 96, atk: 14, range: 32,  cd: 1.0, cost: { food: 70, gold: 45 },   time: 24, r: 12, minLevel: 4 },
   catapult:  { name: 'Catapult',  hp: 80,  speed: 34, atk: 40, range: 230, cd: 4.0, cost: { wood: 130, gold: 60 },  time: 32, r: 13, minLevel: 5, siege: 'rock', vsUnit: 0.45, splash: 36 },
-  cannon:    { name: 'Cannon',    hp: 100, speed: 32, atk: 60, range: 290, cd: 4.5, cost: { wood: 110, gold: 130 }, time: 36, r: 13, minLevel: 9, siege: 'ball', vsUnit: 0.5, splash: 30 }
+  cannon:    { name: 'Cannon',    hp: 100, speed: 32, atk: 60, range: 290, cd: 4.5, cost: { wood: 110, gold: 130 }, time: 36, r: 13, minLevel: 9, siege: 'ball', vsUnit: 0.5, splash: 30 },
+  // Boats (naval: they stay on the water and are trained at the Port)
+  fishingboat: { name: 'Fishing boat', hp: 60,  speed: 70, atk: 0,  range: 0,   cd: 1,   cost: { wood: 60 },             time: 20, r: 14, minLevel: 7, naval: true },
+  transport:   { name: 'Transport',    hp: 180, speed: 62, atk: 0,  range: 0,   cd: 1,   cost: { wood: 110 },            time: 26, r: 17, minLevel: 8, naval: true, cargo: 5 },
+  warship:     { name: 'Warship',      hp: 220, speed: 56, atk: 22, range: 220, cd: 2.2, cost: { wood: 150, gold: 80 },  time: 34, r: 17, minLevel: 8, naval: true, siege: 'ball', vsUnit: 0.8, splash: 24 }
 };
+const FISH_FOOD = 400, BOAT_CARRY = 15;
 // Buildings: size in squares, hp, cost, build time (seconds of one villager working)
 const BUILDINGS = {
   towncentre: { name: 'Town Centre', w: 3, h: 3, hp: 1500, cost: {},                        time: 0,  trains: ['villager'] },
@@ -162,7 +167,8 @@ const BUILDINGS = {
   gate:       { name: 'Gate',        w: 1, h: 1, hp: 600,  cost: { wood: 35 },              time: 8,  minLevel: 3, wall: true },
   stable:     { name: 'Stable',      w: 3, h: 3, hp: 700,  cost: { wood: 130, food: 60 },   time: 32, minLevel: 4, trains: ['knight'] },
   workshop:   { name: 'Workshop',    w: 3, h: 3, hp: 700,  cost: { wood: 160, gold: 60 },   time: 35, minLevel: 5, trains: ['catapult', 'cannon'] },
-  stonetower: { name: 'Stone Tower', w: 1, h: 1, hp: 950,  cost: { wood: 90, gold: 70 },    time: 35, minLevel: 6, atk: 12, range: 240, cd: 1.4 }
+  stonetower: { name: 'Stone Tower', w: 1, h: 1, hp: 950,  cost: { wood: 90, gold: 70 },    time: 35, minLevel: 6, atk: 12, range: 240, cd: 1.4 },
+  port:       { name: 'Port',        w: 3, h: 2, hp: 700,  cost: { wood: 140 },             time: 30, minLevel: 7, trains: ['fishingboat', 'transport', 'warship'], shore: true }
 };
 // Is this unit or building type available on the current level?
 function unlocked(def) { return (def.minLevel || 1) <= levelNo; }
@@ -177,10 +183,10 @@ const LEVELS = [
   { aiSpeed: 1.0,  aiAttackAt: 8,  aiMaxArmy: 16, aiFirstAttack: 300, aiTowers: 2, aiBarracks: 1, start: { wood: 250, food: 250, gold: 120 }, aiStart: { wood: 250, food: 250, gold: 120 }, news: 'New: Stable and Knights - fast, strong riders.' },
   { aiSpeed: 1.1,  aiAttackAt: 8,  aiMaxArmy: 18, aiFirstAttack: 270, aiTowers: 2, aiBarracks: 1, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 300, food: 300, gold: 150 }, news: 'New: Workshop and Catapult - smashes walls and buildings from far away.' },
   { aiSpeed: 1.2,  aiAttackAt: 8,  aiMaxArmy: 20, aiFirstAttack: 240, aiTowers: 3, aiBarracks: 1, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 300, food: 300, gold: 150 }, news: 'New: Stone Tower - tougher and shoots further.' },
-  { aiSpeed: 1.3,  aiAttackAt: 8,  aiMaxArmy: 22, aiFirstAttack: 210, aiTowers: 3, aiBarracks: 2, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 350, food: 350, gold: 180 }, news: 'The enemy builds two Barracks now.' },
-  { aiSpeed: 1.4,  aiAttackAt: 9,  aiMaxArmy: 26, aiFirstAttack: 180, aiTowers: 3, aiBarracks: 2, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 400, food: 400, gold: 200 }, news: 'Bigger enemy armies with knights and catapults.' },
-  { aiSpeed: 1.5,  aiAttackAt: 10, aiMaxArmy: 30, aiFirstAttack: 150, aiTowers: 4, aiBarracks: 2, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 450, food: 450, gold: 250 }, news: 'New: Cannon - out-ranges every tower.' },
-  { aiSpeed: 1.6,  aiAttackAt: 12, aiMaxArmy: 36, aiFirstAttack: 120, aiTowers: 4, aiBarracks: 2, aiFort: true, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 500, food: 500, gold: 300 }, news: 'The final test: the enemy starts behind walls with stone towers.' }
+  { aiSpeed: 1.3,  aiAttackAt: 8,  aiMaxArmy: 22, aiFirstAttack: 210, aiTowers: 3, aiBarracks: 2, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 350, food: 350, gold: 180 }, water: true, news: 'New: the river, Port and Fishing boat. Build the Port on the shore; armies cross at the bridge.' },
+  { aiSpeed: 1.4,  aiAttackAt: 9,  aiMaxArmy: 26, aiFirstAttack: 180, aiTowers: 3, aiBarracks: 2, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 400, food: 400, gold: 200 }, water: true, news: 'New: Warship and Transport ship (carries 5 units across the river).' },
+  { aiSpeed: 1.5,  aiAttackAt: 10, aiMaxArmy: 30, aiFirstAttack: 150, aiTowers: 4, aiBarracks: 2, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 450, food: 450, gold: 250 }, water: true, news: 'New: Cannon - out-ranges every tower.' },
+  { aiSpeed: 1.6,  aiAttackAt: 12, aiMaxArmy: 36, aiFirstAttack: 120, aiTowers: 4, aiBarracks: 2, aiFort: true, water: true, start: { wood: 200, food: 200, gold: 100 }, aiStart: { wood: 500, food: 500, gold: 300 }, news: 'The final test: the enemy starts behind walls with stone towers.' }
 ];
 let levelNo = 1;
 let cleared = [];
@@ -314,11 +320,47 @@ function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 // ---------- Making the map ----------
+// ---------- Water ----------
+// On river levels a river runs down the middle of the map with a bridge in the centre.
+const RIVER_X0 = 28, RIVER_X1 = 31, BRIDGE_Y0 = 16, BRIDGE_Y1 = 21;
+let water = null;                  // one byte per map square: 1 = water
+function isWaterTile(tx, ty) { return !!water && tx >= 0 && ty >= 0 && tx < MAP_W && ty < MAP_H && water[ty * MAP_W + tx] === 1; }
+function isWaterAt(x, y) { return isWaterTile(Math.floor(x / TILE), Math.floor(y / TILE)); }
+function isBridgeTile(tx, ty) { return !!diff.water && tx >= RIVER_X0 && tx <= RIVER_X1 && ty >= BRIDGE_Y0 && ty <= BRIDGE_Y1; }
+function makeWater() {
+  water = new Uint8Array(MAP_W * MAP_H);
+  if (!diff.water) return;
+  for (let ty = 0; ty < MAP_H; ty++) for (let tx = RIVER_X0; tx <= RIVER_X1; tx++) if (!isBridgeTile(tx, ty)) water[ty * MAP_W + tx] = 1;
+  // Fish spots along the river, away from the bridge
+  for (const ty of [3, 7, 11, 25, 29, 33]) addResource('fish', RIVER_X0 + 1 + (ty % 2), ty);
+}
+// Centre of the water square nearest to a point (where boats appear and dock)
+function nearestWaterPoint(x, y) {
+  let best = null, bd = 1e9;
+  for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) if (water[ty * MAP_W + tx]) {
+    const px = (tx + 0.5) * TILE, py = (ty + 0.5) * TILE, d = Math.hypot(px - x, py - y);
+    if (d < bd) { bd = d; best = { x: px, y: py }; }
+  }
+  return best;
+}
+// A spot on land next to the water, nearest to a point (where a transport unloads)
+function nearestLandPoint(x, y) {
+  let best = null, bd = 1e9;
+  const tx0 = Math.floor(x / TILE), ty0 = Math.floor(y / TILE);
+  for (let ty = ty0 - 4; ty <= ty0 + 4; ty++) for (let tx = tx0 - 4; tx <= tx0 + 4; tx++) {
+    if (tx < 0 || ty < 0 || tx >= MAP_W || ty >= MAP_H || isWaterTile(tx, ty)) continue;
+    const px = (tx + 0.5) * TILE, py = (ty + 0.5) * TILE, d = Math.hypot(px - x, py - y);
+    if (d < bd) { bd = d; best = { x: px, y: py }; }
+  }
+  return best;
+}
+
 function makeMap() {
   units = []; buildings = []; resources = []; arrows = []; effects = []; selected = []; placing = null;
   teams = [Object.assign({}, diff.start), Object.assign({}, diff.aiStart)];
   nextId = 1; time = 0;
   ai = { nextThink: 5, attacking: false, lastAttack: 0 };
+  makeWater();
 
   // Town centres: you at the bottom left, the computer at the top right
   addBuilding(PLAYER, 'towncentre', 6, MAP_H - 8, true);
@@ -367,11 +409,13 @@ function makeMap() {
   clampCam();
 }
 function addResource(kind, tx, ty) {
-  const left = kind === 'tree' ? TREE_WOOD : kind === 'bush' ? BUSH_FOOD : GOLD_ROCK;
-  const r = { id: nextId++, kind, x: (tx + 0.5) * TILE, y: (ty + 0.5) * TILE, left, r: kind === 'gold' ? 16 : 13 };
+  const left = kind === 'tree' ? TREE_WOOD : kind === 'bush' ? BUSH_FOOD : kind === 'fish' ? FISH_FOOD : GOLD_ROCK;
+  const r = { id: nextId++, kind, x: (tx + 0.5) * TILE, y: (ty + 0.5) * TILE, left, r: kind === 'gold' ? 16 : kind === 'fish' ? 18 : 13 };
   if (buildings.some(b => overlapsBuilding(b, r.x, r.y, 34))) return;   // keep a walking gap around buildings
+  if (kind === 'fish' ? !isWaterTile(Math.floor(tx), Math.floor(ty)) : isWaterTile(Math.floor(tx), Math.floor(ty))) return;   // land things on land, fish in water
   resources.push(r);
 }
+function resKind(r) { return r.kind === 'tree' ? 'wood' : r.kind === 'gold' ? 'gold' : 'food'; }
 function addBuilding(team, type, tx, ty, finished) {
   const def = BUILDINGS[type];
   const b = { id: nextId++, team, type, tx, ty, w: def.w * TILE, h: def.h * TILE, hp: finished ? def.hp : 1, maxHp: def.hp,
@@ -382,7 +426,7 @@ function addBuilding(team, type, tx, ty, finished) {
 function addUnit(team, type, x, y) {
   const def = UNITS[type];
   const u = { id: nextId++, team, type, x, y, hp: def.hp, maxHp: def.hp, task: 'idle', target: null, carry: 0, carryKind: null,
-    gatherT: 0, cd: 0, dest: null, buildTarget: null, face: 1 };
+    gatherT: 0, cd: 0, dest: null, buildTarget: null, face: 1, cargo: [], aboard: null };
   units.push(u); return u;
 }
 function overlapsBuilding(b, x, y, pad) {
@@ -401,7 +445,14 @@ function canPlace(type, tx, ty) {
     if (x1 > b.x - b.w / 2 - gap && x0 < b.x + b.w / 2 + gap && y1 > b.y - b.h / 2 - gap && y0 < b.y + b.h / 2 + gap) return false;
   }
   const rp = isWall ? 2 : 10;
-  for (const r of resources) if (r.x > x0 - rp && r.x < x1 + rp && r.y > y0 - rp && r.y < y1 + rp) return false;
+  for (const r of resources) if (r.kind !== 'fish' && r.x > x0 - rp && r.x < x1 + rp && r.y > y0 - rp && r.y < y1 + rp) return false;
+  // Nothing is built on water; a Port must have water right next to it
+  for (let j = ty; j < ty + def.h; j++) for (let i = tx; i < tx + def.w; i++) if (isWaterTile(i, j)) return false;
+  if (def.shore) {
+    let touches = false;
+    for (let j = ty - 1; j <= ty + def.h; j++) for (let i = tx - 1; i <= tx + def.w; i++) if (isWaterTile(i, j)) touches = true;
+    if (!touches) return false;
+  }
   return true;
 }
 function popUsed(team) { return units.filter(u => u.team === team).length + buildings.filter(b => b.team === team).reduce((n, b) => n + b.queue.length, 0); }
@@ -412,16 +463,25 @@ function refund(team, cost) { for (const k in cost) teams[team][k] += cost[k]; }
 function costText(cost) { return Object.keys(cost).map(k => cost[k] + ' ' + k).join(', ') || 'free'; }
 
 // ---------- Orders ----------
-function orderMove(u, x, y) { u.task = 'move'; u.dest = { x, y }; u.target = null; u.buildTarget = null; }
+function orderMove(u, x, y) {
+  if (UNITS[u.type].naval && !isWaterAt(x, y)) { const w = nearestWaterPoint(x, y); if (!w) return; x = w.x; y = w.y; }   // boats go to the nearest water
+  u.task = 'move'; u.dest = { x, y }; u.target = null; u.buildTarget = null;
+}
 function orderGather(u, res) { u.task = 'gather'; u.target = res; u.dest = null; u.buildTarget = null; }
 function orderAttack(u, thing) { u.task = 'attack'; u.target = thing; u.dest = null; u.buildTarget = null; }
 function orderBuild(u, b) { u.task = 'build'; u.buildTarget = b; u.target = null; u.dest = null; }
-function dropOff(team, from) {
-  // nearest finished town centre of this team
+function dropOff(team, from, naval) {
+  // nearest finished town centre of this team (boats: nearest port)
   let best = null, bd = 1e9;
-  for (const b of buildings) if (b.team === team && b.type === 'towncentre' && b.progress >= 1) { const d = dist(b, from); if (d < bd) { bd = d; best = b; } }
+  for (const b of buildings) if (b.team === team && b.type === (naval ? 'port' : 'towncentre') && b.progress >= 1) { const d = dist(b, from); if (d < bd) { bd = d; best = b; } }
   return best;
 }
+// Land units board a transport; a loaded transport unloads at a point on the shore
+function orderBoard(u, boat) {
+  u.task = 'board'; u.target = boat; u.dest = null; u.buildTarget = null;
+  if (boat.task === 'idle' || boat.task === 'move') orderMove(boat, u.x, u.y);   // the boat comes to the shore nearest the passenger
+}
+function orderUnload(boat, x, y) { boat.task = 'unload'; boat.dest = { x, y }; boat.target = null; }
 function placeBuilding(team, type, tx, ty, builder) {
   const def = BUILDINGS[type];
   if (!canAfford(team, def.cost)) return null;
@@ -440,9 +500,9 @@ function startTraining(b, type) {
   if (b.queue.length === 1) b.trainLeft = def.time;
   return true;
 }
-function nearestEnemyThing(team, from, range) {
+function nearestEnemyThing(team, from, range, hitsBoats = true) {
   let best = null, bd = range;
-  for (const u of units) if (u.team !== team) { const d = dist(u, from); if (d < bd) { bd = d; best = u; } }
+  for (const u of units) if (u.team !== team && !u.aboard && (hitsBoats || !UNITS[u.type].naval)) { const d = dist(u, from); if (d < bd) { bd = d; best = u; } }
   for (const b of buildings) if (b.team !== team) { const d = dist(b, from) - Math.max(b.w, b.h) / 2; if (d < bd) { bd = d; best = b; } }
   return best;
 }
@@ -474,6 +534,7 @@ function update(dt) {
   effects = effects.filter(e => e.t < e.life);
   // Remove the dead
   units = units.filter(u => u.hp > 0);
+  for (const u of units) if (u.cargo.length) u.cargo = u.cargo.filter(c => c.hp > 0);
   buildings = buildings.filter(b => b.hp > 0);
   resources = resources.filter(r => r.left > 0);
   selected = selected.filter(s => s.hp > 0);
@@ -490,9 +551,9 @@ function update(dt) {
 // Idle units standing on top of each other drift apart a little (so a crowd of fresh soldiers spreads out)
 function separateIdle() {
   for (let i = 0; i < units.length; i++) {
-    const a = units[i]; if (a.task !== 'idle') continue;
+    const a = units[i]; if (a.task !== 'idle' || a.aboard) continue;
     for (let j = i + 1; j < units.length; j++) {
-      const b = units[j]; if (b.task !== 'idle') continue;
+      const b = units[j]; if (b.task !== 'idle' || b.aboard) continue;
       let dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
       if (d >= 16) continue;
       if (d < 0.01) { dx = Math.cos(a.id); dy = Math.sin(a.id); d = 1; }
@@ -513,6 +574,7 @@ function moveToward(u, x, y, dt, stopAt, toB) {
   // Slide around buildings instead of walking through them: push out of the wall, then
   // walk along the wall towards the corner nearest the target
   for (const b of buildings) {
+    if (UNITS[u.type].naval) break;                                   // boats never touch buildings
     if (b === u.buildTarget || b === toB) continue;
     if (b.type === 'gate' && b.team === u.team) continue;          // your own gate lets you through
     const pad = UNITS[u.type].r;
@@ -523,6 +585,16 @@ function moveToward(u, x, y, dt, stopAt, toB) {
       else         { ny = b.y + Math.sign(dy || 1) * (b.h / 2 + pad); nx = u.x + (x >= b.x ? 1 : -1) * sp; }
       u.blockedBy = b;
     }
+  }
+  // Land units stay off the water (with a little margin so they never stand on the edge),
+  // boats stay on it: slide along the shore if needed
+  const naval = !!UNITS[u.type].naval;
+  const m = naval ? 0 : 5;
+  const wet = (px, py) => naval ? isWaterAt(px, py) : (isWaterAt(px - m, py - m) || isWaterAt(px + m, py - m) || isWaterAt(px - m, py + m) || isWaterAt(px + m, py + m));
+  if (wet(nx, ny) !== naval) {
+    if (wet(nx, u.y) === naval) ny = u.y;
+    else if (wet(u.x, ny) === naval) nx = u.x;
+    else { nx = u.x; ny = u.y; }
   }
   u.face = nx >= u.x ? 1 : -1;
   const moved = Math.hypot(nx - u.x, ny - u.y);
@@ -536,9 +608,27 @@ function updateUnit(u, dt) {
   const def = UNITS[u.type];
   u.cd = Math.max(0, u.cd - dt);
   // Soldiers (and towers) fight back on their own when idle
-  if (u.task === 'idle' && u.type !== 'villager') {
-    const e = nearestEnemyThing(u.team, u, 160);
+  if (u.aboard) { u.x = u.aboard.x; u.y = u.aboard.y; return; }      // riding in a transport
+  if (u.task === 'idle' && u.type !== 'villager' && def.atk > 0) {
+    const e = nearestEnemyThing(u.team, u, def.range > 160 ? def.range : 160, def.range >= 60);   // sword and lance cannot reach boats
     if (e) orderAttack(u, e);
+  }
+  if (u.task === 'board') {
+    const boat = u.target;
+    if (!boat || boat.hp <= 0 || boat.cargo.length >= UNITS[boat.type].cargo) { u.task = 'idle'; u.target = null; return; }
+    if (dist(u, boat) < 70 || moveToward(u, boat.x, boat.y, dt, 50)) { boat.cargo.push(u); u.aboard = boat; u.task = 'idle'; u.target = null; if (u.team === PLAYER) toast('Boarded (' + boat.cargo.length + '/' + UNITS[boat.type].cargo + ')'); }
+    return;
+  }
+  if (u.task === 'unload') {
+    const w = isWaterAt(u.dest.x, u.dest.y) ? u.dest : nearestWaterPoint(u.dest.x, u.dest.y);
+    if (!w) { u.task = 'idle'; return; }
+    if (moveToward(u, w.x, w.y, dt, 8)) {
+      const land = nearestLandPoint(u.x, u.y);
+      u.cargo.forEach((c, i) => { c.aboard = null; c.x = (land ? land.x : u.x) + (i % 3 - 1) * 14; c.y = (land ? land.y : u.y) + Math.floor(i / 3) * 14; c.task = 'idle'; });
+      if (u.team === PLAYER && u.cargo.length) toast('Unloaded ' + u.cargo.length + ' units');
+      u.cargo = []; u.task = 'idle';
+    }
+    return;
   }
   if (u.task === 'idle' && u.type === 'villager') {
     // A villager being hit runs to the town centre
@@ -550,7 +640,8 @@ function updateUnit(u, dt) {
   }
   if (u.task === 'attack') {
     const t = u.target;
-    if (!t || t.hp <= 0) { u.task = 'idle'; u.target = null; return; }
+    if (!t || t.hp <= 0 || t.aboard) { u.task = 'idle'; u.target = null; return; }
+    if (!t.w && UNITS[t.type].naval && def.range < 60) { u.task = 'idle'; u.target = null; return; }   // swords cannot reach a boat
     const inReach = t.w ? overlapsBuilding(t, u.x, u.y, def.range) : dist(u, t) <= def.range + UNITS[t.type].r;
     if (!inReach) {
       const ox = u.x, oy = u.y;
@@ -577,16 +668,18 @@ function updateUnit(u, dt) {
   }
   if (u.task === 'gather') {
     const r = u.target;
-    if (u.carry >= CARRY || (!r || r.left <= 0) && u.carry > 0) {
+    const carryMax = def.naval ? BOAT_CARRY : CARRY;
+    if (u.carry >= carryMax || (!r || r.left <= 0) && u.carry > 0) {
       // Take the load home
-      const tc = dropOff(u.team, u);
+      const tc = dropOff(u.team, u, def.naval);
       if (!tc) { u.task = 'idle'; return; }
-      if (moveToward(u, tc.x, tc.y, dt, 14, tc)) {
+      if (moveToward(u, tc.x, tc.y, dt, def.naval ? 30 : 14, tc)) {
         teams[u.team][u.carryKind] += u.carry; u.carry = 0;
         if (!r || r.left <= 0) {
           // Resource gone: find the same kind nearby, else stop
-          let best = null, bd = 400;
-          for (const o of resources) if (o.kind === (u.carryKind === 'wood' ? 'tree' : u.carryKind === 'food' ? 'bush' : 'gold') && o.left > 0) { const d = dist(o, u); if (d < bd) { bd = d; best = o; } }
+          let best = null, bd = def.naval ? 2000 : 400;
+          const kind = u.lastKind || 'tree';
+          for (const o of resources) if (o.kind === kind && o.left > 0) { const d = dist(o, u); if (d < bd) { bd = d; best = o; } }
           if (best) u.target = best; else { u.task = 'idle'; u.target = null; }
         }
       }
@@ -600,7 +693,7 @@ function updateUnit(u, dt) {
       const need = GATHER_SECONDS * (u.team === ENEMY ? 1 / diff.aiSpeed : 1);
       if (u.gatherT >= need) {
         u.gatherT = 0; r.left--; u.carry++;
-        u.carryKind = r.kind === 'tree' ? 'wood' : r.kind === 'bush' ? 'food' : 'gold';
+        u.carryKind = resKind(r); u.lastKind = r.kind;
         if (r.kind === 'tree' && Math.random() < 0.3) effects.push({ kind: 'chip', x: r.x, y: r.y, t: 0, life: 0.4 });
       }
     }
@@ -653,7 +746,9 @@ function updateBuilding(b, dt) {
     b.trainLeft -= dt * (b.team === ENEMY ? diff.aiSpeed : 1);
     if (b.trainLeft <= 0) {
       const type = b.queue.shift();
-      const u = addUnit(b.team, type, b.x, b.y + b.h / 2 + 14);
+      let sx = b.x, sy = b.y + b.h / 2 + 14;
+      if (UNITS[type].naval) { const w = nearestWaterPoint(b.x, b.y); if (w) { sx = w.x; sy = w.y; } }
+      const u = addUnit(b.team, type, sx, sy);
       if (b.rally) orderMove(u, b.rally.x, b.rally.y);
       if (b.team === PLAYER) { sfx.done(); toast(UNITS[type].name + ' ready'); }
       if (b.queue.length) b.trainLeft = UNITS[b.queue[0]].time;
@@ -676,12 +771,19 @@ function damage(t, dmg, from) {
   // Attacked villager runs home; attacked soldier fights back; attacked building calls nearby idle soldiers
   if (!t.w) {
     if (t.type === 'villager' && t.task !== 'gather' && t.task !== 'farm' && t.task !== 'build') { const tc = dropOff(t.team, t); if (tc) orderMove(t, tc.x, tc.y); }
+    // Unarmed boats run for the port (or just away from the attacker)
+    else if (UNITS[t.type].naval && UNITS[t.type].atk <= 0 && t.task !== 'unload') {
+      const port = dropOff(t.team, t, true);
+      if (port) { t.task = 'move'; t.dest = nearestWaterPoint(port.x, port.y); t.target = null; }
+      else if (from) { const dx = t.x - from.x, dy = t.y - from.y, d = Math.hypot(dx, dy) || 1; orderMove(t, t.x + dx / d * 200, t.y + dy / d * 200); }
+    }
     // A soldier that is hit by a unit fights that unit (even if it was busy hitting a building)
-    else if (t.type !== 'villager' && from && !from.w && (t.task !== 'attack' || (t.target && t.target.w))) orderAttack(t, from);
+    else if (t.type !== 'villager' && UNITS[t.type].atk > 0 && from && !from.w && (t.task !== 'attack' || (t.target && t.target.w))) orderAttack(t, from);
   } else {
     for (const u of units) if (u.team === t.team && u.type !== 'villager' && u.task === 'idle' && dist(u, t) < 260) orderAttack(u, from);
   }
   if (t.hp <= 0) {
+    if (t.cargo && t.cargo.length) { for (const c of t.cargo) c.hp = 0; t.cargo = []; }   // a sunk transport takes its passengers down
     effects.push({ kind: t.w ? 'smoke' : 'pop', x: t.x, y: t.y, t: 0, life: t.w ? 1.2 : 0.4, size: t.w ? Math.max(t.w, t.h) : 14 });
     if (t.w && t.team === PLAYER) { toast('Your ' + BUILDINGS[t.type].name + ' was destroyed', true); }
     if (t.w) for (const u of units) if (u.buildTarget === t) { u.task = 'idle'; u.buildTarget = null; }
@@ -693,7 +795,7 @@ function runAI(dt) {
   if (time < ai.nextThink) return;
   ai.nextThink = time + 2;
   const T = ENEMY, res = teams[T];
-  const mine = units.filter(u => u.team === T), vill = mine.filter(u => u.type === 'villager'), army = mine.filter(u => u.type !== 'villager');
+  const mine = units.filter(u => u.team === T), vill = mine.filter(u => u.type === 'villager'), army = mine.filter(u => u.type !== 'villager' && !UNITS[u.type].naval);
   const myB = buildings.filter(b => b.team === T);
   const tc = myB.find(b => b.type === 'towncentre');
   if (!tc) return;
@@ -733,6 +835,7 @@ function runAI(dt) {
   if (unfinished.length === 0 && builderFree) {
     if (used >= cap - 1 && cap < POP_MAX && res.wood >= BUILDINGS.house.cost.wood) aiPlace('house', builderFree);
     else if (barracks.length === 0 && res.wood >= BUILDINGS.barracks.cost.wood) aiPlace('barracks', builderFree);
+    else if (diff.water && unlocked(BUILDINGS.port) && time > 120 && barracks.length && myB.filter(b => b.type === 'port').length === 0 && canAfford(T, BUILDINGS.port.cost)) aiPlacePort(builderFree);
     else if (unlocked(BUILDINGS.stable) && barracks.length && myB.filter(b => b.type === 'stable').length === 0 && canAfford(T, BUILDINGS.stable.cost)) aiPlace('stable', builderFree);
     else if (unlocked(BUILDINGS.workshop) && barracks.length && time > 200 && myB.filter(b => b.type === 'workshop').length === 0 && canAfford(T, BUILDINGS.workshop.cost)) aiPlace('workshop', builderFree);
     else if (myB.filter(b => b.type === 'barracks').length < diff.aiBarracks && time > 240 && res.wood >= BUILDINGS.barracks.cost.wood + 60) aiPlace('barracks', builderFree);
@@ -744,7 +847,16 @@ function runAI(dt) {
   if (tc.queue.length === 0 && vill.length < 10 && used < cap) startTraining(tc, 'villager');
   for (const b of barracks) if (b.queue.length === 0 && used < cap && army.length < diff.aiMaxArmy) startTraining(b, army.length % 3 === 2 ? 'archer' : 'swordsman');
   for (const b of stables) if (b.queue.length === 0 && used < cap && army.length < diff.aiMaxArmy) startTraining(b, 'knight');
-  const siege = army.filter(u => UNITS[u.type].siege).length;
+  const ports = myB.filter(b => b.type === 'port' && b.progress >= 1);
+  for (const b of ports) if (b.queue.length === 0 && used < cap) {
+    const boats = mine.filter(u => u.type === 'fishingboat').length, ships = mine.filter(u => u.type === 'warship').length;
+    if (boats < 2) startTraining(b, 'fishingboat'); else if (unlocked(UNITS.warship) && ships < 1) startTraining(b, 'warship');
+  }
+  for (const u of mine) {
+    if (u.type === 'fishingboat' && u.task === 'idle') { let best = null, bd = 1e9; for (const r of resources) if (r.kind === 'fish' && r.left > 0) { const d = dist(r, u); if (d < bd) { bd = d; best = r; } } if (best) orderGather(u, best); }
+    if (u.type === 'warship' && u.task === 'idle' && !u.posted) { u.posted = true; orderMove(u, (RIVER_X0 + 2) * TILE, (BRIDGE_Y0 - 2) * TILE); }   // guard the bridge
+  }
+  const siege = army.filter(u => UNITS[u.type].siege && !UNITS[u.type].naval).length;
   for (const b of workshops) if (b.queue.length === 0 && used < cap && army.length < diff.aiMaxArmy && siege < 2) startTraining(b, unlocked(UNITS.cannon) ? 'cannon' : 'catapult');
 
   // 4. Attack when the army is big enough (and not too early), or defend when attacked
@@ -758,11 +870,23 @@ function runAI(dt) {
       if (s.task === 'attack' && s.target && s.target.hp > 0) continue;
       let best = null, bd = 1e9;
       const isSiege = !!UNITS[s.type].siege;
-      for (const t of targets) { if (isSiege && !t.w) continue; const d = dist(t, s) + (t.type === 'towncentre' ? -200 : 0) + (t.type === 'tower' || t.type === 'stonetower' ? -100 : 0) + (BUILDINGS[t.type] && BUILDINGS[t.type].wall ? 150 : 0); if (d < bd) { bd = d; best = t; } }
+      for (const t of targets) { if (isSiege && !t.w) continue; if (!t.w && (t.aboard || (UNITS[t.type].naval && UNITS[s.type].range < 60))) continue; const d = dist(t, s) + (t.type === 'towncentre' ? -200 : 0) + (t.type === 'tower' || t.type === 'stonetower' ? -100 : 0) + (BUILDINGS[t.type] && BUILDINGS[t.type].wall ? 150 : 0); if (d < bd) { bd = d; best = t; } }
       if (best) orderAttack(s, best);
     }
     if (army.length < Math.max(2, Math.floor(diff.aiAttackAt / 3))) { ai.attacking = false; for (const s of army) orderMove(s, tc.x, tc.y + 80); }
   }
+}
+// The computer's port: the shore spot nearest its town centre
+function aiPlacePort(builder) {
+  const tc = buildings.find(b => b.team === ENEMY && b.type === 'towncentre');
+  if (!tc) return;
+  let best = null, bd = 1e9;
+  for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) {
+    if (!canPlace('port', tx, ty)) continue;
+    const d = Math.hypot((tx + 1.5) * TILE - tc.x, (ty + 1) * TILE - tc.y);
+    if (d < bd) { bd = d; best = [tx, ty]; }
+  }
+  if (best) placeBuilding(ENEMY, 'port', best[0], best[1], builder);
 }
 function aiPlace(type, builder) {
   const tc = buildings.find(b => b.team === ENEMY && b.type === 'towncentre');
@@ -841,7 +965,7 @@ canvas.addEventListener('pointerup', e => {
 canvas.addEventListener('pointercancel', () => { pointer = null; wallDrag = null; });
 
 function thingAt(p) {
-  for (const u of units) if (dist(u, p) < UNITS[u.type].r + 8) return u;
+  for (const u of units) if (!u.aboard && dist(u, p) < UNITS[u.type].r + 8) return u;
   for (const b of buildings) if (overlapsBuilding(b, p.x, p.y, 0)) return b;
   for (const r of resources) if (dist(r, p) < r.r + 8) return r;
   return null;
@@ -859,13 +983,19 @@ function tapAt(p) {
   }
   const t = thingAt(p);
   const mySelectedUnits = selected.filter(s => !s.w && s.team === PLAYER);
-  if (t && t.left !== undefined) {                  // a tree, bush or gold rock
-    const vill = mySelectedUnits.filter(u => u.type === 'villager');
-    if (vill.length) { for (const v of vill) orderGather(v, t); sfx.order(); showOrderMark(p); }
+  if (t && t.left !== undefined) {                  // a tree, bush, gold rock or fish spot
+    const gatherers = mySelectedUnits.filter(u => t.kind === 'fish' ? u.type === 'fishingboat' : u.type === 'villager');
+    if (gatherers.length) { for (const v of gatherers) orderGather(v, t); sfx.order(); showOrderMark(p); }
+    else if (t.kind === 'fish' && mySelectedUnits.length) toast('Only a fishing boat can fish', true);
     else selectThing(t);
     return;
   }
   if (t && t.team === PLAYER) {
+    // Land units tapped onto your own transport climb aboard
+    if (!t.w && t.type === 'transport') {
+      const landers = mySelectedUnits.filter(u => !UNITS[u.type].naval && !UNITS[u.type].siege);
+      if (landers.length) { let room = UNITS.transport.cargo - t.cargo.length; for (const u of landers) { if (room-- <= 0) break; orderBoard(u, t); } sfx.order(); showOrderMark(p); return; }
+    }
     // Tap own unfinished building with villagers selected = help build; otherwise select it
     const vill = mySelectedUnits.filter(u => u.type === 'villager');
     if (t.w && t.progress < 1 && vill.length) { for (const v of vill) orderBuild(v, t); sfx.order(); return; }
@@ -877,9 +1007,14 @@ function tapAt(p) {
     else selectThing(t);
     return;
   }
-  // Empty ground: move the selected units, or set a rally point for a selected building
+  // Empty ground: move the selected units (a loaded transport goes to unload there), or set a rally point
   if (mySelectedUnits.length) {
-    mySelectedUnits.forEach((u, i) => orderMove(u, p.x + (i % 4 - 1.5) * 18, p.y + Math.floor(i / 4) * 18));
+    const onWater = isWaterAt(p.x, p.y);
+    mySelectedUnits.forEach((u, i) => {
+      if (u.type === 'transport' && u.cargo.length && !onWater) orderUnload(u, p.x, p.y);
+      else if (!UNITS[u.type].naval && onWater) toast('That is water', true);
+      else orderMove(u, p.x + (i % 4 - 1.5) * 18, p.y + Math.floor(i / 4) * 18);
+    });
     sfx.order(); showOrderMark(p);
   } else if (selected.length === 1 && selected[0].w && selected[0].team === PLAYER && BUILDINGS[selected[0].type].trains) {
     selected[0].rally = { x: p.x, y: p.y }; toast('Rally point set'); showOrderMark(p);
@@ -895,7 +1030,7 @@ function refreshActions() {
     const b = document.createElement('button'); b.innerHTML = label + (sub ? '<small>' + sub + '</small>' : '');
     if (cls) b.className = cls; b.addEventListener('click', () => { fn(); b.blur(); }); actionsEl.appendChild(b); return b;
   };
-  const army = () => units.filter(u => u.team === PLAYER && u.type !== 'villager');
+  const army = () => units.filter(u => u.team === PLAYER && u.type !== 'villager' && !UNITS[u.type].naval && !u.aboard);
   const idleV = () => units.filter(u => u.team === PLAYER && u.type === 'villager' && u.task === 'idle');
   if (!selected.length) {
     infoEl.innerHTML = '<b>Nothing selected</b>Tap a villager or a building';
@@ -905,7 +1040,7 @@ function refreshActions() {
     return;
   }
   const s = selected[0];
-  if (s.left !== undefined) { infoEl.innerHTML = '<b>' + (s.kind === 'tree' ? 'Tree' : s.kind === 'bush' ? 'Berry bush' : 'Gold rock') + '</b>' + s.left + ' ' + (s.kind === 'tree' ? 'wood' : s.kind === 'bush' ? 'food' : 'gold') + ' left'; return; }
+  if (s.left !== undefined) { infoEl.innerHTML = '<b>' + (s.kind === 'tree' ? 'Tree' : s.kind === 'bush' ? 'Berry bush' : s.kind === 'fish' ? 'Fish' : 'Gold rock') + '</b>' + s.left + ' ' + resKind(s) + ' left'; return; }
   if (s.team === ENEMY) { infoEl.innerHTML = '<b>Enemy ' + (s.w ? BUILDINGS[s.type].name : UNITS[s.type].name) + '</b>' + Math.ceil(s.hp) + ' / ' + s.maxHp + ' hp'; add('Attack with army', army().length + ' soldiers', () => { for (const u of army()) orderAttack(u, s); if (army().length) sfx.order(); else toast('No soldiers yet', true); }, 'danger'); return; }
   if (s.w) {
     const def = BUILDINGS[s.type];
@@ -917,13 +1052,14 @@ function refreshActions() {
   }
   // Units
   const vill = selected.filter(u => u.type === 'villager');
-  if (selected.length === 1) infoEl.innerHTML = '<b>' + UNITS[s.type].name + '</b>' + Math.ceil(s.hp) + ' / ' + s.maxHp + ' hp<br>' + taskText(s);
+  if (selected.length === 1) infoEl.innerHTML = '<b>' + UNITS[s.type].name + '</b>' + Math.ceil(s.hp) + ' / ' + s.maxHp + ' hp<br>' + (s.type === 'transport' ? 'Carrying ' + s.cargo.length + ' / ' + UNITS.transport.cargo + ' \u00B7 ' : '') + taskText(s);
+  if (selected.length === 1 && s.type === 'transport' && s.cargo.length) add('Unload here', 'onto the nearest shore', () => { orderUnload(s, s.x, s.y); sfx.order(); });
   else infoEl.innerHTML = '<b>' + selected.length + ' units</b>' + vill.length + ' villagers, ' + (selected.length - vill.length) + ' soldiers';
   if (vill.length) {
-    for (const t of ['house', 'farm', 'barracks', 'tower', 'wall', 'gate', 'stable', 'workshop', 'stonetower']) {
+    for (const t of ['house', 'farm', 'barracks', 'tower', 'wall', 'gate', 'stable', 'workshop', 'stonetower', 'port']) {
       const d = BUILDINGS[t];
       if (!unlocked(d)) continue;
-      add('Build ' + d.name, costText(d.cost) + (t === 'wall' ? ' each' : ''), () => { placing = placing === t ? null : t; refreshActions(); if (placing) toast(t === 'wall' ? 'Drag a line on the ground to build the wall' : 'Tap the ground to place the ' + d.name); }, placing === t ? 'on' : '');
+      add('Build ' + d.name, costText(d.cost) + (t === 'wall' ? ' each' : ''), () => { placing = placing === t ? null : t; refreshActions(); if (placing) toast(t === 'wall' ? 'Drag a line on the ground to build the wall' : t === 'port' ? 'Tap the shore next to the water to place the Port' : 'Tap the ground to place the ' + d.name); }, placing === t ? 'on' : '');
     }
   }
   add('Stop', '', () => { for (const u of selected) { u.task = 'idle'; u.target = null; u.dest = null; } placing = null; refreshActions(); });
@@ -932,6 +1068,7 @@ function refreshActions() {
 function taskText(u) {
   if (u.task === 'gather' && u.target) return 'Gathering ' + (u.target.kind === 'tree' ? 'wood' : u.target.kind === 'bush' ? 'food' : 'gold');
   if (u.task === 'farm') return 'Farming'; if (u.task === 'build') return 'Building'; if (u.task === 'attack') return 'Attacking'; if (u.task === 'move') return 'Moving';
+  if (u.task === 'board') return 'Boarding'; if (u.task === 'unload') return 'Going to unload';
   return 'Idle';
 }
 function lookAt(t) { cam.x = t.x - stage.clientWidth / zoom / 2; cam.y = t.y - stage.clientHeight / zoom / 2; clampCam(); }
@@ -963,6 +1100,7 @@ function draw() {
   const tx0 = Math.floor(cam.x / TILE), ty0 = Math.floor(cam.y / TILE), tx1 = Math.ceil((cam.x + W / zoom) / TILE), ty1 = Math.ceil((cam.y + H / zoom) / TILE);
   ctx.fillStyle = 'rgba(0,0,0,0.05)';
   for (let ty = ty0; ty < ty1; ty++) for (let tx = tx0; tx < tx1; tx++) if ((tx + ty) % 2 === 0) ctx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
+  if (diff.water) drawWater(tx0, ty0, tx1, ty1);
   // Map edge
   ctx.strokeStyle = '#2b4a22'; ctx.lineWidth = 6; ctx.strokeRect(0, 0, WORLD_W, WORLD_H);
 
@@ -972,7 +1110,7 @@ function draw() {
   // Placing ghost
   if (placing) { const def = BUILDINGS[placing]; ctx.font = '13px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(placing === 'wall' ? 'Drag a line to build the wall' : 'Tap the ground to place the ' + def.name, cam.x + W / zoom / 2, cam.y + 24); }
   if (wallDrag) { for (const [tx, ty] of wallTiles(wallDrag)) { ctx.fillStyle = canPlace('wall', tx, ty) ? 'rgba(255,255,255,0.45)' : 'rgba(255,80,80,0.45)'; ctx.fillRect(tx * TILE + 3, ty * TILE + 3, TILE - 6, TILE - 6); } }
-  for (const u of units) if (visible(u)) drawUnit(u);
+  for (const u of units) if (visible(u) && !u.aboard) drawUnit(u);
   for (const a of arrows) {
     const tx = a.kind ? a.tx : a.target.x, ty = a.kind ? a.ty : a.target.y;
     const arc = a.kind === 'rock' ? 70 : a.kind === 'ball' ? 30 : 18;
@@ -1013,7 +1151,21 @@ function drawBuilding(b) {
     if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.strokeRect(x - 3, y - 13, w + 6, h + 16); ctx.setLineDash([]); }
     return;
   }
-  if (b.type === 'farm') {
+  if (b.type === 'port') {
+    // A warehouse on stilts with a wooden pier, crane and barrels
+    ctx.fillStyle = '#8b6a3e'; ctx.fillRect(x, y + 10, w, h - 10);
+    ctx.fillStyle = '#6b4e2a'; for (let i = 0; i < 6; i++) ctx.fillRect(x, y + 14 + i * 11, w, 1.5);
+    ctx.fillStyle = '#efe3c8'; ctx.fillRect(x + 6, y + 4, w * 0.55, h * 0.55);
+    ctx.fillStyle = '#6b4a2b'; ctx.fillRect(x + 6, y + 4, w * 0.55, 2.5); ctx.fillRect(x + 6, y + 4, 2.5, h * 0.55);
+    ctx.fillStyle = '#4e5a6a'; ctx.beginPath(); ctx.moveTo(x + 2, y + 6); ctx.lineTo(x + 6 + w * 0.275, y - 10); ctx.lineTo(x + 10 + w * 0.55, y + 6); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = c; ctx.fillRect(x + 6 + w * 0.275 - 3, y - 12, 6, 4);
+    ctx.fillStyle = '#5a3a1e'; ctx.fillRect(x + 6 + w * 0.275 - 5, y + h * 0.55 - 10, 10, 14);
+    ctx.strokeStyle = '#5a3a1e'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + w - 18, y + h - 6); ctx.lineTo(x + w - 18, y + 2); ctx.lineTo(x + w - 2, y + 10); ctx.stroke();   // crane
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + w - 2, y + 10); ctx.lineTo(x + w - 2, y + 24); ctx.stroke();
+    ctx.fillStyle = '#7a4a2a'; ctx.fillRect(x + w - 30, y + h - 16, 9, 12); ctx.fillRect(x + w - 19, y + h - 16, 9, 12);
+    ctx.fillStyle = '#c9a66b'; ctx.fillRect(x + w - 30, y + h - 12, 9, 1.5); ctx.fillRect(x + w - 19, y + h - 12, 9, 1.5);
+    ctx.globalAlpha = 1;
+  } else if (b.type === 'farm') {
     // Tilled soil with crop rows and a fence
     ctx.fillStyle = '#9b7a46'; ctx.fillRect(x, y, w, h);
     ctx.fillStyle = '#7d5f33'; for (let i = 0; i < 5; i++) ctx.fillRect(x + 4, y + 5 + i * (h - 10) / 4.6, w - 8, 3);
@@ -1096,6 +1248,15 @@ function drawBuilding(b) {
   if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.strokeRect(x - 5, y - 5, w + 10, h + 10); ctx.setLineDash([]); }
 }
 function drawResource(r) {
+  if (r.kind === 'fish') {
+    // Rings on the water and a few silver fish breaking the surface
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1.5;
+    for (let i = 0; i < 2; i++) { const k = (time * 0.5 + i * 0.5) % 1; ctx.globalAlpha = 1 - k; ctx.beginPath(); ctx.ellipse(r.x, r.y, 6 + k * 14, 3 + k * 7, 0, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.globalAlpha = 1; ctx.fillStyle = '#cfd8e3';
+    for (let i = 0; i < 3; i++) { const a = time * 2 + i * 2.1; ctx.beginPath(); ctx.ellipse(r.x + Math.cos(a) * 7, r.y + Math.sin(a) * 4, 4, 1.6, a, 0, Math.PI * 2); ctx.fill(); }
+    if (selected.includes(r)) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(r.x, r.y, r.r + 6, 0, Math.PI * 2); ctx.stroke(); }
+    return;
+  }
   if (r.kind === 'tree') {
     ctx.fillStyle = '#6b4423'; ctx.fillRect(r.x - 3, r.y, 6, 12);
     ctx.fillStyle = '#2f7a3a'; ctx.beginPath(); ctx.arc(r.x, r.y - 4, 12, 0, Math.PI * 2); ctx.fill();
@@ -1126,6 +1287,7 @@ function drawUnit(u) {
   const work = working ? Math.max(0, Math.sin(ph * 1.2)) : fighting ? Math.max(0, Math.sin(ph * 1.6)) : 0;   // arm raised then struck
   const skin = SKIN[u.id % 4], hair = HAIR[(u.id * 7) % 4];
   if (u.type === 'catapult' || u.type === 'cannon') { drawSiege(u, def, c, sel, walking, fighting, ph); return; }
+  if (def.naval) { drawBoat(u, def, c, sel, walking, fighting, ph); return; }
   if (u.type === 'knight') { drawKnight(u, def, c, sel, walking, fighting, ph, skin); return; }
   const x = u.x, y = u.y - bob;                              // y is the hip line
 
@@ -1219,6 +1381,39 @@ function drawKnight(u, def, c, sel, walking, fighting, ph, skin) {
   ctx.lineCap = 'butt';
   if (u.hp < u.maxHp) { ctx.fillStyle = '#000'; ctx.fillRect(x - 10, y - 36, 20, 3); ctx.fillStyle = u.hp / u.maxHp > 0.5 ? '#7be495' : '#ff6b6b'; ctx.fillRect(x - 10, y - 36, 20 * u.hp / u.maxHp, 3); }
 }
+// Boats: a wooden hull with a sail; the fishing boat has a net, the transport a deck full of
+// passengers, the warship a cannon and a crow's nest
+function drawBoat(u, def, c, sel, walking, fighting, ph) {
+  const f = u.face, x = u.x, y = u.y + Math.sin(time * 2 + u.id) * 1.2;     // bobbing on the water
+  const L = u.type === 'fishingboat' ? 16 : 22;
+  if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y + 6, L + 8, 9, 0, 0, Math.PI * 2); ctx.stroke(); }
+  // wake
+  if (walking) { ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - f * L, y + 2); ctx.lineTo(x - f * (L + 14), y - 4); ctx.moveTo(x - f * L, y + 4); ctx.lineTo(x - f * (L + 14), y + 10); ctx.stroke(); }
+  // hull
+  ctx.fillStyle = '#6b4423'; ctx.beginPath(); ctx.moveTo(x - L, y - 2); ctx.lineTo(x + L, y - 2); ctx.lineTo(x + f * (L + 8), y + 1); ctx.lineTo(x + L - 4, y + 8); ctx.lineTo(x - L + 4, y + 8); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#8b5a2b'; ctx.fillRect(x - L + 2, y - 2, L * 2 - 4, 3);
+  ctx.fillStyle = c; ctx.fillRect(x - L + 2, y + 2, L * 2 - 4, 2);
+  if (u.type === 'fishingboat') {
+    ctx.fillStyle = '#5a3a1e'; ctx.fillRect(x - 1, y - 22, 2, 20);
+    ctx.fillStyle = '#f3ead6'; ctx.beginPath(); ctx.moveTo(x + 1, y - 21); ctx.lineTo(x + 12 * f, y - 8); ctx.lineTo(x + 1, y - 5); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x - 8 * f, y - 1); ctx.lineTo(x - 16 * f, y + 9); ctx.stroke();
+    if (u.carry > 0) { ctx.fillStyle = '#cfd8e3'; for (let i = 0; i < 3; i++) ctx.fillRect(x - 10 + i * 5, y - 5, 4, 2); }
+  } else if (u.type === 'transport') {
+    ctx.fillStyle = '#5a3a1e'; ctx.fillRect(x - 1, y - 26, 2, 24);
+    ctx.fillStyle = '#f3ead6'; ctx.beginPath(); ctx.moveTo(x - 10, y - 25); ctx.lineTo(x + 10, y - 25); ctx.lineTo(x + 8, y - 8); ctx.lineTo(x - 8, y - 8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = c; ctx.fillRect(x - 10, y - 25, 20, 3);
+    // passengers' heads peeking over the side
+    for (let i = 0; i < u.cargo.length; i++) { ctx.fillStyle = '#f1c9a5'; ctx.beginPath(); ctx.arc(x - 12 + i * 6, y - 5, 2.5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = c; ctx.fillRect(x - 14 + i * 6, y - 3, 4, 3); }
+  } else {
+    ctx.fillStyle = '#5a3a1e'; ctx.fillRect(x - 1, y - 30, 2, 28); ctx.fillRect(x - 7, y - 24, 14, 3);
+    ctx.fillStyle = '#e9e0cc'; ctx.beginPath(); ctx.moveTo(x - 12, y - 28); ctx.lineTo(x + 12, y - 28); ctx.lineTo(x + 9, y - 9); ctx.lineTo(x - 9, y - 9); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x - 12, y - 28); ctx.lineTo(x + 12, y - 28); ctx.lineTo(x + 11, y - 22); ctx.lineTo(x - 11, y - 22); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#4a4a4a'; ctx.fillRect(x - 8, y - 32, 16, 4);                            // crow's nest
+    ctx.fillStyle = '#2b2d33'; ctx.fillRect(x + 4 * f, y - 7, 12 * f, 4); ctx.fillStyle = '#c9a23a'; ctx.fillRect(x + 12 * f, y - 7.5, 2 * f, 5);   // cannon
+    if (fighting && Math.sin(ph * 0.9) > 0.8) { ctx.fillStyle = 'rgba(255,200,80,0.8)'; ctx.beginPath(); ctx.arc(x + 18 * f, y - 5, 4, 0, Math.PI * 2); ctx.fill(); }
+  }
+  if (u.hp < u.maxHp) { ctx.fillStyle = '#000'; ctx.fillRect(x - 12, y - 36, 24, 3); ctx.fillStyle = u.hp / u.maxHp > 0.5 ? '#7be495' : '#ff6b6b'; ctx.fillRect(x - 12, y - 36, 24 * u.hp / u.maxHp, 3); }
+}
 // Siege engines: a wooden catapult with a throwing arm, or a cannon barrel on a carriage
 function drawSiege(u, def, c, sel, walking, fighting, ph) {
   const f = u.face, x = u.x, y = u.y;
@@ -1259,12 +1454,35 @@ function drawEffect(e) {
   else if (e.kind === 'pop') { ctx.fillStyle = 'rgba(255,255,255,' + (1 - k) + ')'; for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.arc(e.x + Math.cos(i) * k * 16, e.y + Math.sin(i) * k * 16, 2, 0, Math.PI * 2); ctx.fill(); } }
   else if (e.kind === 'smoke') { ctx.fillStyle = 'rgba(80,80,80,' + (0.6 * (1 - k)) + ')'; for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(e.x + Math.cos(i * 1.3) * e.size * 0.3, e.y - k * 40 + Math.sin(i) * 8, e.size * 0.25 * (0.5 + k), 0, Math.PI * 2); ctx.fill(); } }
 }
+// The river: deep blue with moving ripples, a sandy shore line, and the wooden bridge
+function drawWater(tx0, ty0, tx1, ty1) {
+  for (let ty = Math.max(0, ty0); ty < Math.min(MAP_H, ty1); ty++) for (let tx = Math.max(0, tx0); tx < Math.min(MAP_W, tx1); tx++) {
+    const x = tx * TILE, y = ty * TILE;
+    if (isWaterTile(tx, ty)) {
+      ctx.fillStyle = '#2f6fb0'; ctx.fillRect(x, y, TILE, TILE);
+      ctx.fillStyle = 'rgba(255,255,255,0.14)';
+      const ph = (time * 0.6 + tx * 0.7 + ty * 1.3) % 1;
+      ctx.fillRect(x + 6 + ph * 14, y + 10 + ((tx + ty) % 3) * 9, 12, 2);
+      // light sand where water meets land
+      ctx.fillStyle = '#d9c48e';
+      if (!isWaterTile(tx - 1, ty)) ctx.fillRect(x, y, 4, TILE);
+      if (!isWaterTile(tx + 1, ty)) ctx.fillRect(x + TILE - 4, y, 4, TILE);
+      if (!isWaterTile(tx, ty - 1)) ctx.fillRect(x, y, TILE, 4);
+      if (!isWaterTile(tx, ty + 1)) ctx.fillRect(x, y + TILE - 4, TILE, 4);
+    } else if (isBridgeTile(tx, ty)) {
+      ctx.fillStyle = '#9a7048'; ctx.fillRect(x, y, TILE, TILE);
+      ctx.fillStyle = '#7a5434'; for (let i = 0; i < 4; i++) ctx.fillRect(x, y + 3 + i * 10, TILE, 1.5);
+      ctx.fillStyle = '#5a3a1e'; if (ty === BRIDGE_Y0) ctx.fillRect(x, y, TILE, 4); if (ty === BRIDGE_Y1) ctx.fillRect(x, y + TILE - 4, TILE, 4);
+    }
+  }
+}
 function drawMini() {
   const w = mini.clientWidth, h = mini.clientHeight, sx = w / WORLD_W, sy = h / WORLD_H;
   mctx.fillStyle = '#3d6a2d'; mctx.fillRect(0, 0, w, h);
+  if (diff.water) { mctx.fillStyle = '#2f6fb0'; for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) if (water[ty * MAP_W + tx]) mctx.fillRect(tx * TILE * sx, ty * TILE * sy, TILE * sx + 0.5, TILE * sy + 0.5); }
   for (const r of resources) { mctx.fillStyle = r.kind === 'tree' ? '#2f7a3a' : r.kind === 'bush' ? '#e5533d' : '#f4c542'; mctx.fillRect(r.x * sx - 1, r.y * sy - 1, 2, 2); }
   for (const b of buildings) { mctx.fillStyle = TEAM_COLOR[b.team]; mctx.fillRect((b.x - b.w / 2) * sx, (b.y - b.h / 2) * sy, Math.max(2, b.w * sx), Math.max(2, b.h * sy)); }
-  for (const u of units) { mctx.fillStyle = u.team === PLAYER ? '#cfe4ff' : '#ffb3b3'; mctx.fillRect(u.x * sx - 1, u.y * sy - 1, 2, 2); }
+  for (const u of units) { if (u.aboard) continue; mctx.fillStyle = u.team === PLAYER ? '#cfe4ff' : '#ffb3b3'; mctx.fillRect(u.x * sx - 1, u.y * sy - 1, 2, 2); }
   mctx.strokeStyle = '#fff'; mctx.lineWidth = 1; mctx.strokeRect(cam.x * sx, cam.y * sy, stage.clientWidth / zoom * sx, stage.clientHeight / zoom * sy);
 }
 function updateHud() {
