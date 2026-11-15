@@ -636,7 +636,8 @@ function moveCar(c, dt, isPlayer) {
     if (!hitSolid(nx, c.y, 14)) { c.x = nx; c.speed *= 0.6; }
     else if (!hitSolid(c.x, ny, 14)) { c.y = ny; c.speed *= 0.6; }
     else { c.speed *= -0.35; }
-    if (isPlayer) { sfx.crash(); c.hp = Math.max(10, c.hp - impact / 25); }
+    if (impact > 70) c.hp = Math.max(10, c.hp - impact / 25);
+    if (isPlayer) sfx.crash();
     if (hit.mesh && impact > 70) damageBuilding(hit, impact, nx, ny, isPlayer);
     c.stuck += dt;
   } else { c.x = nx; c.y = ny; c.stuck = 0; }
@@ -646,7 +647,7 @@ function moveCar(c, dt, isPlayer) {
     const d = dist(c, o); if (d > 34 || d === 0) continue;
     const push = (34 - d) / 2, ax = (c.x - o.x) / d, ay = (c.y - o.y) / d;
     c.x += ax * push; c.y += ay * push; o.x -= ax * push; o.y -= ay * push;
-    if (Math.abs(c.speed) > 80) { o.speed += c.speed * 0.3; c.speed *= 0.5; if (isPlayer) { sfx.crash(); c.hp = Math.max(10, c.hp - 4); if (o.kind === 'police') addWanted(0.5); else addWanted(0.15); } else if (o === player.car) sfx.crash(); }
+    if (Math.abs(c.speed) > 80) { o.speed += c.speed * 0.3; c.speed *= 0.5; c.hp = Math.max(10, c.hp - 4); o.hp = Math.max(10, o.hp - Math.abs(c.speed) / 30); if (isPlayer) { sfx.crash(); if (o.kind === 'police') addWanted(0.5); else addWanted(0.15); } else if (o === player.car) sfx.crash(); }
   }
   if (Math.abs(c.speed) > 50) for (const p of peds) if (p.state !== 'down' && dist(c, p) < 20) knockPed(p, c, isPlayer);
 }
@@ -978,16 +979,36 @@ function shadeHex(hex, amt) { const n = parseInt(hex.slice(1), 16); let r = n >>
 // --- cars: body + cabin per car, all wheels in one instanced mesh ---
 const GLASS = new THREE.MeshLambertMaterial({ color: 0x9fd3ff });
 const POLICE_RED = mat('#ff2a2a', { emissive: 0xaa0000 }), POLICE_BLUE = mat('#3a6bff', { emissive: 0x0022aa });
+const GLASS_CRACKED = new THREE.MeshLambertMaterial({ color: 0xaab4bc }), DENT = mat('#2a2a2e');
+// Show a car's knocks: dents, dull paint, grey cracked glass, drooping bumper (smoke is added in syncEffects)
+function applyCarDamage(c) {
+  const g = c.mesh, ud = g.userData; if (ud.shownHp === c.hp) return;
+  ud.shownHp = c.hp;
+  const d = 1 - c.hp / 100, L = c.w / S, Wd = c.h / S;
+  const body = g.getObjectByName('body'), cabin = g.getObjectByName('cabin'), front = g.getObjectByName('front');
+  const base = new THREE.Color(c.kind === 'police' || c.kind === 'policeparked' ? '#f4f4f4' : c.color);
+  body.material.color.copy(base).multiplyScalar(1 - d * 0.45);
+  const wantDents = Math.min(5, Math.floor(d * 6));
+  while (ud.dents < wantDents) {
+    ud.dents++;
+    const dent = box(0.5 + Math.random() * 0.5, 0.3, 0.35 + Math.random() * 0.3, DENT, (Math.random() - 0.5) * L * 0.9, 0.55 + (Math.random() - 0.5) * 0.3, (Math.random() < 0.5 ? -1 : 1) * Wd * 0.5);
+    dent.rotation.set(Math.random() * 0.4, Math.random() * 0.4, Math.random() * 0.4); g.add(dent);
+  }
+  cabin.material = d > 0.35 ? GLASS_CRACKED : GLASS;
+  front.rotation.z = d > 0.5 ? -0.35 : 0; front.position.y = d > 0.5 ? 0.45 : 0.6;
+}
 let wheelMesh = null; const wheelDummy = new THREE.Object3D();
 function carMesh(c) {
   const g = new THREE.Group();
   const isPolice = c.kind === 'police' || c.kind === 'policeparked';
   const col = isPolice ? '#f4f4f4' : c.color;
   const L = c.w / S, Wd = c.h / S;
-  const body = box(L, 0.55, Wd, mat(col), 0, 0.55, 0); body.castShadow = true; g.add(body);
-  const cabin = box(L * 0.48, 0.5, Wd * 0.86, GLASS, -L * 0.06, 1.05, 0); g.add(cabin);
+  const bodyMat = new THREE.MeshLambertMaterial({ color: new THREE.Color(col) });
+  const body = box(L, 0.55, Wd, bodyMat, 0, 0.55, 0); body.castShadow = true; body.name = 'body'; g.add(body);
+  const cabin = box(L * 0.48, 0.5, Wd * 0.86, GLASS, -L * 0.06, 1.05, 0); cabin.name = 'cabin'; g.add(cabin);
   const roofTop = box(L * 0.36, 0.08, Wd * 0.8, mat(isPolice ? '#1f4fd6' : col), -L * 0.06, 1.33, 0); g.add(roofTop);
-  const lightsF = box(0.08, 0.16, Wd * 0.9, mat('#fff6c4', { emissive: 0x665522 }), L / 2 - 0.02, 0.6, 0); g.add(lightsF);
+  const lightsF = box(0.08, 0.16, Wd * 0.9, mat('#fff6c4', { emissive: 0x665522 }), L / 2 - 0.02, 0.6, 0); lightsF.name = 'front'; g.add(lightsF);
+  g.userData.shownHp = 100; g.userData.dents = 0;
   const lightsB = box(0.08, 0.14, Wd * 0.9, mat('#ff3b3b', { emissive: 0x551111 }), -L / 2 + 0.02, 0.6, 0); g.add(lightsB);
   if (c.kind === 'taxi') { const sign = box(0.5, 0.2, 0.3, mat('#f4c542', { emissive: 0x443300 }), -L * 0.06, 1.47, 0); g.add(sign); }
   if (isPolice) { const bar = box(0.3, 0.14, Wd * 0.7, POLICE_RED, -L * 0.06, 1.44, 0); bar.name = 'bar'; g.add(bar); }
@@ -1004,6 +1025,7 @@ function syncCars() {
   const flash = Math.sin(time * 18) > 0;
   for (const c of cars) {
     if (!c.mesh) carMesh(c);
+    applyCarDamage(c);
     c.mesh.position.set(toX(c.x), 0, toZ(c.y)); c.mesh.rotation.y = yawFor(c.angle);
     const bar = c.mesh.getObjectByName('bar'); if (bar) { bar.material = (c.police ? flash : true) ? POLICE_RED : POLICE_BLUE; bar.visible = true; }
     c.mesh.visible = true;
@@ -1100,6 +1122,8 @@ function syncEffects() {
     if (v.z > 1) { d.style.display = 'none'; return; }
     d.style.display = 'block'; d.textContent = e.text; d.style.left = ((v.x + 1) / 2 * W) + 'px'; d.style.top = ((1 - v.y) / 2 * H) + 'px'; d.style.opacity = 1 - e.t / e.life;
   });
+  // smoke from damaged cars (worse = thicker and darker)
+  for (const c of cars) if (c.hp < 50 && Math.random() < (50 - c.hp) / 50 * 0.5) effects.push({ kind: 'puff', x: c.x + Math.cos(c.angle) * 18, y: c.y + Math.sin(c.angle) * 18, h: 1.1, t: 0, life: 1.4, size: 0.25, color: c.hp < 25 ? '#333' : '#8a8a8a', rise: 1.5 });
   // smoke from badly damaged buildings
   if (Math.random() < 0.25) for (const b of blocks) for (const o of b.buildings) if (o.damage > 0.6 && Math.random() < o.damage * 0.3) effects.push({ kind: 'puff', x: o.x + Math.random() * o.w, y: o.y + Math.random() * o.h, h: o.height + 0.2, t: 0, life: 2.5, size: 0.5, color: '#555', rise: 1.2 });
   // dust puffs and flying chips
