@@ -24,11 +24,22 @@
   #touchArea { position: fixed; left: 0; top: 60px; bottom: 0; width: 58%; }
   #stick { position: fixed; display: none; width: 130px; height: 130px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.35); pointer-events: none; }
   #knob { position: absolute; left: 40px; top: 40px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.55); }
-  #buttons { position: fixed; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: 84px 84px; gap: 12px; }
-  #buttons button { width: 84px; height: 84px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.4); background: rgba(28,39,66,0.8); color: #fff; font: inherit; font-size: 15px; font-weight: 800; touch-action: none; -webkit-tap-highlight-color: transparent; }
-  #buttons button.held { background: rgba(42,111,92,0.95); }
+  /* Right side: a row of small buttons, and under it the GO and BRAKE pedals (pedals only in a car) */
+  #buttons { position: fixed; right: calc(12px + env(safe-area-inset-right, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+  #buttons .small { display: flex; gap: 8px; }
+  #buttons .small button { width: 64px; height: 64px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.4); background: rgba(28,39,66,0.85); color: #fff; font: inherit; font-size: 13px; font-weight: 800; touch-action: none; -webkit-tap-highlight-color: transparent; }
+  #buttons .pedals { display: none; gap: 10px; }
+  body.incar #buttons .pedals { display: flex; }
+  #buttons .pedals button { width: 104px; height: 118px; border-radius: 18px; border: 3px solid rgba(255,255,255,0.4); color: #fff; font: inherit; font-size: 30px; font-weight: 900; touch-action: none; -webkit-tap-highlight-color: transparent; }
+  #buttons .pedals button small { display: block; font-size: 13px; font-weight: 800; }
+  #btnGo { background: rgba(47,158,104,0.9); } #btnBrake { background: rgba(196,86,74,0.9); }
+  #buttons button.held { filter: brightness(1.3); }
   #btnAct { background: rgba(42,111,92,0.95) !important; }
   #buttons button:disabled { opacity: 0.35; }
+  /* The steering wheel: bottom-left, only in a car. Touch its left half to turn left, right half to turn right. */
+  #wheel { position: fixed; display: none; left: calc(10px + env(safe-area-inset-left, 0px)); bottom: calc(10px + env(safe-area-inset-bottom, 0px)); width: 170px; height: 170px; touch-action: none; }
+  body.incar #wheel { display: block; }
+  body.incar #touchArea { display: none; }
   #top { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(10px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 8px; }
   .tb { height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: rgba(11,18,32,0.75); color: #fff; font: inherit; font-size: 12px; font-weight: 700; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   #toast { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); padding: 10px 20px; border-radius: 14px; background: rgba(11,18,32,0.85); font-size: 22px; font-weight: 800; text-align: center; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
@@ -52,11 +63,10 @@
 <div id="speed"></div>
 <div id="touchArea"></div>
 <div id="stick"><div id="knob"></div></div>
+<canvas id="wheel" width="340" height="340"></canvas>
 <div id="buttons">
-  <button id="btnHorn">HORN</button>
-  <button id="btnAct">ENTER</button>
-  <button id="btnPaint">PAINT</button>
-  <button id="btnBrake">BRAKE</button>
+  <div class="small"><button id="btnAct">ENTER</button><button id="btnHorn">HORN</button><button id="btnPaint">PAINT</button></div>
+  <div class="pedals"><button id="btnGo">&#9650;<small>GO</small></button><button id="btnBrake">&#9660;<small>BRAKE</small></button></div>
 </div>
 <div id="top">
   <button id="btnPause" class="tb">Pause</button>
@@ -112,7 +122,7 @@ const elMoney = document.getElementById('money'), elStars = document.getElementB
 const overlay = document.getElementById('overlay'), msgTitle = document.getElementById('msgTitle'), msgLine = document.getElementById('msgLine'), msgHint = document.getElementById('msgHint');
 const startRow = document.getElementById('startRow'), pauseRow = document.getElementById('pauseRow');
 const toastEl = document.getElementById('toast');
-const btnAct = document.getElementById('btnAct'), btnHorn = document.getElementById('btnHorn'), btnPaint = document.getElementById('btnPaint'), btnBrake = document.getElementById('btnBrake');
+const btnAct = document.getElementById('btnAct'), btnHorn = document.getElementById('btnHorn'), btnPaint = document.getElementById('btnPaint'), btnBrake = document.getElementById('btnBrake'), btnGo = document.getElementById('btnGo');
 
 // ---------- Sound (same engine as the other games) ----------
 const btnSound = document.getElementById('btnSound');
@@ -442,6 +452,62 @@ function hold(btn, on, off) {
   for (const t of ['pointerup', 'pointercancel']) btn.addEventListener(t, () => { btn.classList.remove('held'); off && off(); });
 }
 hold(btnBrake, () => braking = true, () => braking = false);
+let going = false;
+hold(btnGo, () => going = true, () => going = false);
+// The steering wheel: every finger on it counts for the half it is over
+const wheelEl = document.getElementById('wheel'), wctx = wheelEl.getContext('2d');
+const wheelFingers = {}; let steerL = 0, steerR = 0;
+function wheelHalf(e) { const r = wheelEl.getBoundingClientRect(); return e.clientX < r.left + r.width / 2 ? 'L' : 'R'; }
+wheelEl.addEventListener('pointerdown', e => { e.preventDefault(); wheelEl.setPointerCapture(e.pointerId); const h = wheelHalf(e); wheelFingers[e.pointerId] = h; if (h === 'L') steerL++; else steerR++; });
+wheelEl.addEventListener('pointermove', e => { const was = wheelFingers[e.pointerId]; if (!was) return; const h = wheelHalf(e); if (h !== was) { if (was === 'L') steerL = Math.max(0, steerL - 1); else steerR = Math.max(0, steerR - 1); wheelFingers[e.pointerId] = h; if (h === 'L') steerL++; else steerR++; } });
+for (const t of ['pointerup', 'pointercancel']) wheelEl.addEventListener(t, e => { const was = wheelFingers[e.pointerId]; if (!was) return; delete wheelFingers[e.pointerId]; if (was === 'L') steerL = Math.max(0, steerL - 1); else steerR = Math.max(0, steerR - 1); });
+// ---------- F1-style steering wheel (drawn by code) ----------
+// Draws a Formula-style rectangular wheel centred at (cx, cy), about "size" pixels wide, turned by
+// "angle" radians. pressL / pressR light up the grip being pushed. The little screen shows gear + speed.
+function drawF1Wheel(g, cx, cy, size, angle, pressL, pressR, gearText, speedText) {
+  const s = size / 200;                           // the wheel is designed on a 200-wide grid
+  g.save(); g.translate(cx, cy); g.rotate(angle); g.scale(s, s);
+  const rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+  // shadow
+  g.fillStyle = 'rgba(0,0,0,0.35)'; rr(-96, -62, 192, 140, 26); g.fill();
+  // grips: rubber, left and right, lit when pressed
+  for (const side of [-1, 1]) {
+    const lit = side < 0 ? pressL : pressR;
+    const grad = g.createLinearGradient(side * 100, 0, side * 60, 0);
+    grad.addColorStop(0, lit ? '#3b6fd6' : '#2a2d33'); grad.addColorStop(1, lit ? '#6f9bff' : '#4a4e56');
+    rr(side < 0 ? -100 : 60, -58, 40, 130, 20); g.fillStyle = grad; g.fill();
+    g.strokeStyle = lit ? '#bcd3ff' : 'rgba(255,255,255,0.25)'; g.lineWidth = 2; g.stroke();
+    // finger grooves
+    g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 2;
+    for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(side * 70, -30 + i * 24); g.lineTo(side * 92, -30 + i * 24); g.stroke(); }
+  }
+  // carbon body between the grips (with the U cut-out at the bottom)
+  const body = g.createLinearGradient(0, -60, 0, 70); body.addColorStop(0, '#1e2126'); body.addColorStop(1, '#0d0f12');
+  g.fillStyle = body; rr(-64, -66, 128, 112, 14); g.fill();
+  g.fillStyle = 'rgba(255,255,255,0.05)'; for (let i = -60; i < 60; i += 8) g.fillRect(i, -64, 3, 108);   // carbon weave
+  g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 1.5; rr(-64, -66, 128, 112, 14); g.stroke();
+  // top rim
+  rr(-70, -72, 140, 14, 7); g.fillStyle = '#3a3e46'; g.fill();
+  // screen: dark glass with green digits (gear big, speed small)
+  rr(-44, -54, 88, 44, 6); g.fillStyle = '#05080c'; g.fill(); g.strokeStyle = '#2b5a3a'; g.lineWidth = 1.5; g.stroke();
+  g.fillStyle = '#58ff8a'; g.font = '900 26px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(gearText, -18, -32);
+  g.fillStyle = '#9fe6ff'; g.font = '800 13px system-ui, sans-serif'; g.fillText(speedText, 20, -38);
+  g.fillStyle = '#ffd166'; g.font = '700 9px system-ui, sans-serif'; g.fillText('km/h', 20, -24);
+  // shift lights along the top of the screen
+  for (let i = 0; i < 7; i++) { g.fillStyle = i < 3 ? '#2ecc71' : i < 5 ? '#f4c542' : '#e74c3c'; g.globalAlpha = 0.9; g.beginPath(); g.arc(-36 + i * 12, -62, 3.2, 0, Math.PI * 2); g.fill(); }
+  g.globalAlpha = 1;
+  // buttons: coloured, with a glossy dot
+  const btns = [[-50, 2, '#e74c3c'], [-32, 14, '#3b7dd8'], [32, 14, '#f4c542'], [50, 2, '#2ecc71'], [-50, 28, '#ffffff'], [50, 28, '#9b59b6']];
+  for (const [x, y, col] of btns) { g.fillStyle = col; g.beginPath(); g.arc(x, y, 6, 0, Math.PI * 2); g.fill(); g.fillStyle = 'rgba(255,255,255,0.5)'; g.beginPath(); g.arc(x - 1.5, y - 1.5, 2, 0, Math.PI * 2); g.fill(); }
+  // rotary dials at the bottom
+  for (const x of [-22, 22]) { g.fillStyle = '#c9ccd3'; g.beginPath(); g.arc(x, 38, 9, 0, Math.PI * 2); g.fill(); g.fillStyle = '#111'; g.fillRect(x - 1.5, 30, 3, 8); g.strokeStyle = '#555'; g.lineWidth = 1; g.beginPath(); g.arc(x, 38, 9, 0, Math.PI * 2); g.stroke(); }
+  // centre badge
+  g.fillStyle = '#1f4fd6'; g.beginPath(); g.arc(0, 12, 8, 0, Math.PI * 2); g.fill(); g.fillStyle = '#fff'; g.font = '900 9px system-ui'; g.fillText('GP', 0, 12);
+  // the U cut-out at the bottom (painted in the strip's dark colour)
+  g.fillStyle = '#0f1526'; rr(-30, 50, 60, 24, 10); g.fill();
+  g.restore();
+}
+
 hold(btnPaint, () => painting = true, () => painting = false);
 hold(btnHorn, () => { if (player.car) { sfx.horn(); player.car.honk = 0.4; } });
 btnAct.addEventListener('click', () => { if (screen === 'play') enterExit(); });
@@ -450,7 +516,8 @@ window.addEventListener('keyup', e => { keys[e.key] = false; });
 function readInput() {
   let x = stick.x, y = stick.y;
   if (keys.ArrowLeft || keys.a) x = -1; if (keys.ArrowRight || keys.d) x = 1; if (keys.ArrowUp || keys.w) y = -1; if (keys.ArrowDown || keys.s) y = 1;
-  return { x, y, brake: braking || !!keys[' '], paint: painting || !!keys.f };
+  const steer = (steerR > 0 || keys.ArrowRight || keys.d ? 1 : 0) - (steerL > 0 || keys.ArrowLeft || keys.a ? 1 : 0);
+  return { x, y, steer, go: going || !!keys.ArrowUp || !!keys.w || !!keys.z, brake: braking || !!keys[' '] || !!keys.ArrowDown || !!keys.x, paint: painting || !!keys.f };
 }
 
 // Get into the nearest car, or out of the current one
@@ -470,6 +537,7 @@ function enterExit() {
     sfx.door();
   }
   btnAct.textContent = player.car ? 'EXIT' : 'ENTER';
+  document.body.classList.toggle('incar', !!player.car);
 }
 
 // ---------- Simulation ----------
@@ -482,24 +550,15 @@ function update(dt) {
   const rel = Math.atan2(inp.x, -inp.y);          // stick direction: 0 = straight ahead, left = negative
   if (player.car) {
     const c = player.car;
-    // Point the car where the thumb points: turn toward it, speed up the further the thumb is pushed.
-    // Pulling the thumb back brakes, then reverses.
-    const turnRate = (inp.brake ? 3.2 : 2.3) * Math.min(1, 0.35 + Math.abs(c.speed) / 140);
-    if (mag > 0.12) {
-      if (Math.abs(rel) < 2.2) {
-        c.angle += clamp(rel, -turnRate * dt, turnRate * dt) * (c.speed < -20 ? -1 : 1);
-        const throttle = mag * Math.max(0.25, Math.cos(rel));
-        c.speed += (c.speed < 0 ? CAR_BRAKE : CAR_ACCEL * throttle) * dt;
-      } else {
-        // reverse: brake first, then back up (steering the back end toward the thumb)
-        if (c.speed > 10) c.speed -= CAR_BRAKE * dt;
-        else { c.speed -= CAR_ACCEL * 0.6 * mag * dt; c.angle -= clamp(angleDiff(0, rel > 0 ? rel - Math.PI : rel + Math.PI), -1.6 * dt, 1.6 * dt); }
-      }
-    }
-    if (inp.brake) c.speed -= Math.sign(c.speed) * Math.min(Math.abs(c.speed), CAR_BRAKE * 1.3 * dt);
+    // Grand Prix style: steering wheel left/right, GO pedal, BRAKE pedal (hold BRAKE when stopped to reverse)
+    c.steerVis = (c.steerVis || 0) + (inp.steer - (c.steerVis || 0)) * Math.min(1, dt * 10);
+    const turnRate = 2.4 * Math.min(1, 0.3 + Math.abs(c.speed) / 150);
+    if (Math.abs(c.speed) > 2) c.angle += inp.steer * turnRate * dt * (c.speed < 0 ? -1 : 1);
+    if (inp.go) c.speed += (c.speed < 0 ? CAR_BRAKE : CAR_ACCEL) * dt;
+    else if (inp.brake) { if (c.speed > 5) c.speed -= CAR_BRAKE * dt; else c.speed -= CAR_ACCEL * 0.5 * dt; }
     c.speed -= Math.sign(c.speed) * Math.min(Math.abs(c.speed), CAR_FRICTION * dt);
-    c.speed = clamp(c.speed, -CAR_MAX * 0.35, CAR_MAX * (1 - (100 - c.hp) / 250));
-    if (inp.brake && Math.abs(c.speed) > 150 && Math.abs(rel) > 0.4 && Math.random() < 0.6) effects.push({ kind: 'skid', x: c.x - Math.cos(c.angle) * 14, y: c.y - Math.sin(c.angle) * 14, t: 0, life: 6 });
+    c.speed = clamp(c.speed, -CAR_MAX * 0.3, CAR_MAX * (1 - (100 - c.hp) / 250));
+    if (inp.brake && Math.abs(c.speed) > 150 && Math.random() < 0.6) effects.push({ kind: 'skid', x: c.x - Math.cos(c.angle) * 14, y: c.y - Math.sin(c.angle) * 14, t: 0, life: 6 });
     moveCar(c, dt, true);
     engineSound(Math.abs(c.speed) / CAR_MAX, true);
     if (inp.paint) paintShot(c.x, c.y, c.angle, dt);
@@ -671,7 +730,7 @@ function busted() {
   if (mission && mission.type !== 'getaway') { mission = null; }
   wanted = 0; wantedT = 0;
   for (const c of police) { c.police = false; c.kind = 'policeparked'; c.ai = false; c.speed = 0; } police = [];
-  if (player.car) { const c = player.car; c.driver = null; c.ai = false; player.car = null; btnAct.textContent = 'ENTER'; }
+  if (player.car) { const c = player.car; c.driver = null; c.ai = false; player.car = null; btnAct.textContent = 'ENTER'; document.body.classList.remove('incar'); }
   player.x = places.police.x; player.y = places.police.y + 10; player.angle = Math.PI / 2; camYaw = Math.PI / 2;
   updateHud();
 }
@@ -965,6 +1024,7 @@ function draw() {
   scene.background = sky; scene.fog.color = sky; hemi.intensity = 0.75 - night * 0.5; sun.intensity = 0.9 - night * 0.75;
   renderer.render(scene, camera);
   drawMini();
+  if (player.car) { const c = player.car; wctx.clearRect(0, 0, 340, 340); drawF1Wheel(wctx, 170, 170, 320, (c.steerVis || 0) * 1.1, steerL > 0 || keys.ArrowLeft, steerR > 0 || keys.ArrowRight, String(1 + Math.min(5, Math.floor(Math.abs(c.speed) / CAR_MAX * 6))), String(Math.round(Math.abs(c.speed) / 3))); }
 }
 function drawMini() {
   const w = 112, h = 84, sx = w / WORLD_W, sy = h / WORLD_H;
@@ -1001,7 +1061,7 @@ function startGame() {
   for (const c of cars) removeCarMesh(c);
   spawnTraffic(); spawnPeds(); buildPeopleMeshes(PEDESTRIANS + 2); clearDecals(); effects = []; police = []; mission = null; wanted = 0; bustT = 0;
   for (const p of peds) { p.trousers = pick(['#2c3e50', '#3d3d3d', '#5a4a3a', '#1f3a5a', '#6b6b6b']); p.hair = pick(['#2b1d12', '#5a3a1e', '#111', '#8a6a3a', '#c9c9c9']); p.face = 0; p.phase = Math.random() * 6; }
-  player.car = null; player.x = places.taxi.x - 60; player.y = places.taxi.y; player.angle = 0; camYaw = 0; btnAct.textContent = 'ENTER';
+  player.car = null; player.x = places.taxi.x - 60; player.y = places.taxi.y; player.angle = 0; camYaw = 0; btnAct.textContent = 'ENTER'; document.body.classList.remove('incar');
   updateCamera(true);
   screen = 'play'; overlay.classList.add('hidden'); updateHud();
   toast('Welcome to the city', 'Walk to a car and press ENTER');
@@ -1011,7 +1071,7 @@ btnPauseEl.addEventListener('click', () => { if (screen !== 'play') return; scre
 document.getElementById('btnResume').addEventListener('click', () => { screen = 'play'; overlay.classList.add('hidden'); });
 document.getElementById('btnQuit').addEventListener('click', () => { screen = 'title'; engineSound(0, false); sirenSound(false, 0); msgTitle.textContent = 'City Rush'; msgLine.textContent = 'Walk around the city, get into any car and drive. Taxi, pizza, ambulance, race and getaway jobs are marked by light beams. Bump people or splat them with paint and the police will chase you!'; msgHint.textContent = 'RM ' + money + ' saved · ' + stats.jobs + ' jobs done. Turn the phone sideways.'; startRow.style.display = 'flex'; pauseRow.style.display = 'none'; overlay.classList.remove('hidden'); });
 resize();
-msgHint.textContent = 'Turn the phone sideways. Put your thumb anywhere on the left half and drag to walk or drive; the car goes where you point. ENTER gets in and out of cars.' + (money ? ' You have RM ' + money + ' saved.' : '');
+msgHint.textContent = 'Turn the phone sideways. Walk: thumb anywhere on the left and drag. Drive: steering wheel on the left (touch its left or right side), GO and BRAKE on the right. ENTER gets in and out of cars.' + (money ? ' You have RM ' + money + ' saved.' : '');
 requestAnimationFrame(t => { last = t; loop(t); });
 
 </script>

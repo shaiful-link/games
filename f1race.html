@@ -85,7 +85,7 @@
 // =====================================================
 // GRAND PRIX - a behind-the-car Formula-style racing game (OutRun / Top Gear style road)
 // Turn the phone sideways. The road is in the middle, the buttons are on the two side strips.
-// LEFT thumb:   ◀ steer left (upper button)   ▶ steer right (lower button)
+// LEFT thumb:   an F1-style steering wheel - touch its left half to steer left, right half to steer right
 // RIGHT thumb:  ▲ Accelerate (big upper button)   ▼ Brake (lower button)
 //               You can hold Accelerate and steer at the same time.
 // Stay on the dark road: grass and sand are slow. Brake for the hairpins (watch the 100 / 50 boards).
@@ -1178,6 +1178,7 @@ let stripGradient = null;
 // The four big buttons: { x, y, w, h } in screen pixels
 const pads = { left: { x: 0, y: 0, w: 0, h: 0 }, right: { x: 0, y: 0, w: 0, h: 0 }, accel: { x: 0, y: 0, w: 0, h: 0 }, brake: { x: 0, y: 0, w: 0, h: 0 } };
 let leftStrip = { x: 0, y: 0, w: 0, h: 0 }, rightStrip = { x: 0, y: 0, w: 0, h: 0 };
+let wheel = { cx: 0, cy: 0, size: 0 };                   // the steering wheel in the left strip
 
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 2);     // sharp, but not more pixels than a phone can push every frame
@@ -1200,6 +1201,7 @@ function resize() {
     const bh = Math.max(72, Math.floor(avail / 2));
     pads.left  = { x: side, y: topGap, w: bw, h: bh };
     pads.right = { x: side, y: topGap + bh + gap, w: bw, h: bh };
+    wheel = { cx: strip / 2, cy: topGap + avail / 2, size: Math.min(strip - 6, avail * 0.7) };
     const accelH = Math.max(72, Math.floor(avail * 0.58)), brakeH = Math.max(72, avail - accelH);
     pads.accel = { x: screenW - strip + side, y: topGap, w: bw, h: accelH };
     pads.brake = { x: screenW - strip + side, y: topGap + accelH + gap, w: bw, h: brakeH };
@@ -1212,6 +1214,7 @@ function resize() {
     const bw = Math.floor(screenW / 4) - 12;
     pads.left  = { x: 8, y: top + h * 0.3, w: bw, h: Math.max(72, h * 0.5) };
     pads.right = { x: 8 + bw + 8, y: top + h * 0.3, w: bw, h: Math.max(72, h * 0.5) };
+    wheel = { cx: screenW / 4, cy: top + h / 2, size: Math.min(screenW / 2 - 16, h * 0.9) };
     const rw = Math.floor(screenW / 2) - 16;
     pads.accel = { x: screenW / 2 + 8, y: top, w: rw, h: Math.max(72, h * 0.6) };
     pads.brake = { x: screenW / 2 + 8, y: top + h * 0.6 + 10, w: rw, h: Math.max(72, h * 0.4 - 10) };
@@ -2139,9 +2142,58 @@ function drawPad(pad, text, sub, color, down) {
   label(text, pad.x + pad.w / 2, cy - (sub ? 8 : 0), Math.min(34, pad.w * 0.42), '#ffffff', 900, 'center', 'rgba(0,0,0,0.35)');
   if (sub) label(sub, pad.x + pad.w / 2, cy + 18, Math.min(12, pad.w * 0.15), 'rgba(255,255,255,0.85)', 800);
 }
+// ---------- F1-style steering wheel (drawn by code) ----------
+// Draws a Formula-style rectangular wheel centred at (cx, cy), about "size" pixels wide, turned by
+// "angle" radians. pressL / pressR light up the grip being pushed. The little screen shows gear + speed.
+function drawF1Wheel(g, cx, cy, size, angle, pressL, pressR, gearText, speedText) {
+  const s = size / 200;                           // the wheel is designed on a 200-wide grid
+  g.save(); g.translate(cx, cy); g.rotate(angle); g.scale(s, s);
+  const rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+  // shadow
+  g.fillStyle = 'rgba(0,0,0,0.35)'; rr(-96, -62, 192, 140, 26); g.fill();
+  // grips: rubber, left and right, lit when pressed
+  for (const side of [-1, 1]) {
+    const lit = side < 0 ? pressL : pressR;
+    const grad = g.createLinearGradient(side * 100, 0, side * 60, 0);
+    grad.addColorStop(0, lit ? '#3b6fd6' : '#2a2d33'); grad.addColorStop(1, lit ? '#6f9bff' : '#4a4e56');
+    rr(side < 0 ? -100 : 60, -58, 40, 130, 20); g.fillStyle = grad; g.fill();
+    g.strokeStyle = lit ? '#bcd3ff' : 'rgba(255,255,255,0.25)'; g.lineWidth = 2; g.stroke();
+    // finger grooves
+    g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 2;
+    for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(side * 70, -30 + i * 24); g.lineTo(side * 92, -30 + i * 24); g.stroke(); }
+  }
+  // carbon body between the grips (with the U cut-out at the bottom)
+  const body = g.createLinearGradient(0, -60, 0, 70); body.addColorStop(0, '#1e2126'); body.addColorStop(1, '#0d0f12');
+  g.fillStyle = body; rr(-64, -66, 128, 112, 14); g.fill();
+  g.fillStyle = 'rgba(255,255,255,0.05)'; for (let i = -60; i < 60; i += 8) g.fillRect(i, -64, 3, 108);   // carbon weave
+  g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 1.5; rr(-64, -66, 128, 112, 14); g.stroke();
+  // top rim
+  rr(-70, -72, 140, 14, 7); g.fillStyle = '#3a3e46'; g.fill();
+  // screen: dark glass with green digits (gear big, speed small)
+  rr(-44, -54, 88, 44, 6); g.fillStyle = '#05080c'; g.fill(); g.strokeStyle = '#2b5a3a'; g.lineWidth = 1.5; g.stroke();
+  g.fillStyle = '#58ff8a'; g.font = '900 26px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(gearText, -18, -32);
+  g.fillStyle = '#9fe6ff'; g.font = '800 13px system-ui, sans-serif'; g.fillText(speedText, 20, -38);
+  g.fillStyle = '#ffd166'; g.font = '700 9px system-ui, sans-serif'; g.fillText('km/h', 20, -24);
+  // shift lights along the top of the screen
+  for (let i = 0; i < 7; i++) { g.fillStyle = i < 3 ? '#2ecc71' : i < 5 ? '#f4c542' : '#e74c3c'; g.globalAlpha = 0.9; g.beginPath(); g.arc(-36 + i * 12, -62, 3.2, 0, Math.PI * 2); g.fill(); }
+  g.globalAlpha = 1;
+  // buttons: coloured, with a glossy dot
+  const btns = [[-50, 2, '#e74c3c'], [-32, 14, '#3b7dd8'], [32, 14, '#f4c542'], [50, 2, '#2ecc71'], [-50, 28, '#ffffff'], [50, 28, '#9b59b6']];
+  for (const [x, y, col] of btns) { g.fillStyle = col; g.beginPath(); g.arc(x, y, 6, 0, Math.PI * 2); g.fill(); g.fillStyle = 'rgba(255,255,255,0.5)'; g.beginPath(); g.arc(x - 1.5, y - 1.5, 2, 0, Math.PI * 2); g.fill(); }
+  // rotary dials at the bottom
+  for (const x of [-22, 22]) { g.fillStyle = '#c9ccd3'; g.beginPath(); g.arc(x, 38, 9, 0, Math.PI * 2); g.fill(); g.fillStyle = '#111'; g.fillRect(x - 1.5, 30, 3, 8); g.strokeStyle = '#555'; g.lineWidth = 1; g.beginPath(); g.arc(x, 38, 9, 0, Math.PI * 2); g.stroke(); }
+  // centre badge
+  g.fillStyle = '#1f4fd6'; g.beginPath(); g.arc(0, 12, 8, 0, Math.PI * 2); g.fill(); g.fillStyle = '#fff'; g.font = '900 9px system-ui'; g.fillText('GP', 0, 12);
+  // the U cut-out at the bottom (painted in the strip's dark colour)
+  g.fillStyle = '#0f1526'; rr(-30, 50, 60, 24, 10); g.fill();
+  g.restore();
+}
+
 function drawControls() {
-  drawPad(pads.left, '◀', 'LEFT', '#3b6fd6', held.left > 0 || keys.ArrowLeft);
-  drawPad(pads.right, '▶', 'RIGHT', '#3b6fd6', held.right > 0 || keys.ArrowRight);
+  const share = player ? player.speed / MAX_SPEED : 0;
+  drawF1Wheel(ctx, wheel.cx, wheel.cy, wheel.size, (player ? player.steer : 0) * 1.1, held.left > 0 || keys.ArrowLeft, held.right > 0 || keys.ArrowRight, String((player && player.gear || 0) + 1), String(Math.round(share * TOP_KMH)));
+  label('◀', wheel.cx - wheel.size * 0.42, wheel.cy + wheel.size * 0.5, 16, 'rgba(255,255,255,0.6)', 900);
+  label('▶', wheel.cx + wheel.size * 0.42, wheel.cy + wheel.size * 0.5, 16, 'rgba(255,255,255,0.6)', 900);
   drawPad(pads.accel, '▲', 'GO', '#2f9e68', held.accel > 0 || keys.ArrowUp || keys.z);
   drawPad(pads.brake, '▼', 'BRAKE', '#c4564a', held.brake > 0 || keys.ArrowDown || keys.x);
 }
@@ -2229,7 +2281,7 @@ function cardTitle() {
   label('Grand Prix', 0, -112, 48, '#f5c518', 900, 'center', '#3a2a00');
   label('Behind-the-car Formula racing', 0, -78, 13.5, 'rgba(255,255,255,0.65)', 600);
   drawCarSide(ctx, 0, -28, 220, TEAMS[myTeamId], clock * 6);
-  label('Left thumb: ◀ ▶ steer      Right thumb: ▲ accelerate  ▼ brake', 0, 22, 14, '#ffffff', 600);
+  label('Left thumb: steering wheel (left / right side)      Right thumb: ▲ accelerate  ▼ brake', 0, 22, 14, '#ffffff', 600);
   label('Stay on the road, brake for the hairpins, pass all seven rivals!', 0, 42, 13, 'rgba(255,255,255,0.8)', 600);
   drawKey('Quick race', -116, 80, 208, 50, '#3c9e82', () => { sfx.select(); mode = 'quick'; setScreen('cars'); });
   drawKey('Championship', 116, 80, 208, 50, '#cf8a34', () => { sfx.select(); mode = 'champ'; setScreen('cars'); });
@@ -2397,9 +2449,10 @@ function resetInput() {
 }
 function inRect(r, x, y) { return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h; }
 function padAt(x, y) {
-  for (const name of ['left', 'right', 'accel', 'brake']) if (inRect(pads[name], x, y)) return name;
+  // the whole left strip is the steering wheel: left half turns left, right half turns right
+  if (inRect(leftStrip, x, y) && y > 46) return x < wheel.cx ? 'left' : 'right';
+  for (const name of ['accel', 'brake']) if (inRect(pads[name], x, y)) return name;
   // a finger a little outside a button still counts for the nearest button in that strip
-  if (inRect(leftStrip, x, y) && y > pads.left.y) return y < pads.right.y ? 'left' : 'right';
   if (inRect(rightStrip, x, y) && y > pads.accel.y) return y < pads.brake.y ? 'accel' : 'brake';
   return null;
 }
