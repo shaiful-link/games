@@ -37,7 +37,7 @@
   #btnAct { background: rgba(42,111,92,0.95) !important; }
   #buttons button:disabled { opacity: 0.35; }
   /* The steering wheel: bottom-left, only in a car. Touch its left half to turn left, right half to turn right. */
-  #wheel { position: fixed; display: none; left: calc(10px + env(safe-area-inset-left, 0px)); bottom: calc(10px + env(safe-area-inset-bottom, 0px)); width: 170px; height: 170px; touch-action: none; }
+  #wheel { position: fixed; display: none; left: calc(14px + env(safe-area-inset-left, 0px)); bottom: calc(10px + env(safe-area-inset-bottom, 0px)); width: 190px; height: 190px; touch-action: none; }
   body.incar #wheel { display: block; }
   body.incar #touchArea { display: none; }
   #top { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(10px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 8px; }
@@ -454,13 +454,45 @@ function hold(btn, on, off) {
 hold(btnBrake, () => braking = true, () => braking = false);
 let going = false;
 hold(btnGo, () => going = true, () => going = false);
-// The steering wheel: every finger on it counts for the half it is over
+// The steering wheel: put a thumb on it and turn it like a real wheel. Full lock is 110 degrees each
+// way; let go and it springs back to the middle.
 const wheelEl = document.getElementById('wheel'), wctx = wheelEl.getContext('2d');
-const wheelFingers = {}; let steerL = 0, steerR = 0;
-function wheelHalf(e) { const r = wheelEl.getBoundingClientRect(); return e.clientX < r.left + r.width / 2 ? 'L' : 'R'; }
-wheelEl.addEventListener('pointerdown', e => { e.preventDefault(); wheelEl.setPointerCapture(e.pointerId); const h = wheelHalf(e); wheelFingers[e.pointerId] = h; if (h === 'L') steerL++; else steerR++; });
-wheelEl.addEventListener('pointermove', e => { const was = wheelFingers[e.pointerId]; if (!was) return; const h = wheelHalf(e); if (h !== was) { if (was === 'L') steerL = Math.max(0, steerL - 1); else steerR = Math.max(0, steerR - 1); wheelFingers[e.pointerId] = h; if (h === 'L') steerL++; else steerR++; } });
-for (const t of ['pointerup', 'pointercancel']) wheelEl.addEventListener(t, e => { const was = wheelFingers[e.pointerId]; if (!was) return; delete wheelFingers[e.pointerId]; if (was === 'L') steerL = Math.max(0, steerL - 1); else steerR = Math.max(0, steerR - 1); });
+const WHEEL_LOCK = 110 * Math.PI / 180;
+let wheelAngle = 0, wheelFinger = null, wheelLastA = 0;
+function fingerAngle(e) { const r = wheelEl.getBoundingClientRect(); return Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)); }
+wheelEl.addEventListener('pointerdown', e => { e.preventDefault(); if (wheelFinger !== null) return; wheelEl.setPointerCapture(e.pointerId); wheelFinger = e.pointerId; wheelLastA = fingerAngle(e); });
+wheelEl.addEventListener('pointermove', e => { if (e.pointerId !== wheelFinger) return; const a = fingerAngle(e); wheelAngle = clamp(wheelAngle + angleDiff(wheelLastA, a), -WHEEL_LOCK, WHEEL_LOCK); wheelLastA = a; });
+for (const t of ['pointerup', 'pointercancel']) wheelEl.addEventListener(t, e => { if (e.pointerId === wheelFinger) wheelFinger = null; });
+// A normal round steering wheel: leather rim, three spokes, a horn pad with a little display
+function drawRoundWheel(g, cx, cy, size, angle, gearText, speedText) {
+  const R = size / 2 - 6;
+  g.save(); g.translate(cx, cy);
+  g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.arc(4, 6, R, 0, Math.PI * 2); g.fill();
+  g.rotate(angle);
+  // rim
+  const rim = g.createRadialGradient(-R * 0.3, -R * 0.3, R * 0.5, 0, 0, R); rim.addColorStop(0, '#3a3d44'); rim.addColorStop(1, '#15171b');
+  g.lineWidth = R * 0.26; g.strokeStyle = rim; g.beginPath(); g.arc(0, 0, R * 0.87, 0, Math.PI * 2); g.stroke();
+  g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,0.22)'; g.beginPath(); g.arc(0, 0, R * 0.99, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.arc(0, 0, R * 0.75, 0, Math.PI * 2); g.stroke();
+  // stitching
+  g.setLineDash([4, 6]); g.strokeStyle = 'rgba(230,200,120,0.5)'; g.lineWidth = 1.5; g.beginPath(); g.arc(0, 0, R * 0.87, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
+  // top-centre marker so you can see how far it is turned
+  g.fillStyle = '#e04b4b'; g.fillRect(-4, -R * 0.99, 8, R * 0.24);
+  // spokes
+  g.strokeStyle = '#2b2e35'; g.lineWidth = R * 0.17; g.lineCap = 'round';
+  for (const a of [Math.PI, 0, Math.PI / 2]) { g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(a) * R * 0.78, Math.sin(a) * R * 0.78); g.stroke(); }
+  g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = 3; for (const a of [Math.PI, 0, Math.PI / 2]) { g.beginPath(); g.moveTo(0, -3); g.lineTo(Math.cos(a) * R * 0.74, Math.sin(a) * R * 0.74 - 3); g.stroke(); }
+  // horn pad
+  const pad = g.createRadialGradient(-R * 0.1, -R * 0.1, 2, 0, 0, R * 0.36); pad.addColorStop(0, '#4a4e58'); pad.addColorStop(1, '#1b1d22');
+  g.fillStyle = pad; g.beginPath(); g.arc(0, 0, R * 0.36, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 2; g.stroke();
+  g.restore();
+  // dashboard readout under the wheel centre (does not rotate)
+  g.save(); g.translate(cx, cy);
+  g.fillStyle = '#05080c'; g.beginPath(); g.arc(0, 0, R * 0.27, 0, Math.PI * 2); g.fill();
+  g.fillStyle = gearText === 'R' ? '#ffb347' : '#58ff8a'; g.font = '900 ' + Math.round(R * 0.26) + 'px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(gearText, 0, -R * 0.07);
+  g.fillStyle = '#9fe6ff'; g.font = '800 ' + Math.round(R * 0.13) + 'px system-ui, sans-serif'; g.fillText(speedText, 0, R * 0.12);
+  g.restore();
+}
 // ---------- F1-style steering wheel (drawn by code) ----------
 // Draws a Formula-style rectangular wheel centred at (cx, cy), about "size" pixels wide, turned by
 // "angle" radians. pressL / pressR light up the grip being pushed. The little screen shows gear + speed.
@@ -516,7 +548,8 @@ window.addEventListener('keyup', e => { keys[e.key] = false; });
 function readInput() {
   let x = stick.x, y = stick.y;
   if (keys.ArrowLeft || keys.a) x = -1; if (keys.ArrowRight || keys.d) x = 1; if (keys.ArrowUp || keys.w) y = -1; if (keys.ArrowDown || keys.s) y = 1;
-  const steer = (steerR > 0 || keys.ArrowRight || keys.d ? 1 : 0) - (steerL > 0 || keys.ArrowLeft || keys.a ? 1 : 0);
+  let steer = clamp(wheelAngle / WHEEL_LOCK, -1, 1);
+  if (keys.ArrowRight || keys.d) steer = 1; if (keys.ArrowLeft || keys.a) steer = -1;
   return { x, y, steer, go: going || !!keys.ArrowUp || !!keys.w || !!keys.z, brake: braking || !!keys[' '] || !!keys.ArrowDown || !!keys.x, paint: painting || !!keys.f };
 }
 
@@ -537,7 +570,7 @@ function enterExit() {
     sfx.door();
   }
   btnAct.textContent = player.car ? 'EXIT' : 'ENTER';
-  document.body.classList.toggle('incar', !!player.car);
+  document.body.classList.toggle('incar', !!player.car); wheelAngle = 0;
 }
 
 // ---------- Simulation ----------
@@ -551,13 +584,15 @@ function update(dt) {
   if (player.car) {
     const c = player.car;
     // Grand Prix style: steering wheel left/right, GO pedal, BRAKE pedal (hold BRAKE when stopped to reverse)
-    c.steerVis = (c.steerVis || 0) + (inp.steer - (c.steerVis || 0)) * Math.min(1, dt * 10);
-    const turnRate = 2.4 * Math.min(1, 0.3 + Math.abs(c.speed) / 150);
-    if (Math.abs(c.speed) > 2) c.angle += inp.steer * turnRate * dt * (c.speed < 0 ? -1 : 1);
-    if (inp.go) c.speed += (c.speed < 0 ? CAR_BRAKE : CAR_ACCEL) * dt;
-    else if (inp.brake) { if (c.speed > 5) c.speed -= CAR_BRAKE * dt; else c.speed -= CAR_ACCEL * 0.5 * dt; }
+    // the wheel springs back to the middle when no thumb is on it
+    if (wheelFinger === null) wheelAngle -= Math.sign(wheelAngle) * Math.min(Math.abs(wheelAngle), 3.5 * dt);
+    c.steerVis = (c.steerVis || 0) + (inp.steer - (c.steerVis || 0)) * Math.min(1, dt * 5);      // eases in, not twitchy
+    const turnRate = 1.5 * Math.min(1, 0.3 + Math.abs(c.speed) / 170);
+    if (Math.abs(c.speed) > 2) c.angle += c.steerVis * turnRate * dt * (c.speed < 0 ? -1 : 1);
+    if (inp.brake) { if (c.speed > 5) c.speed -= CAR_BRAKE * dt; else c.speed -= CAR_ACCEL * 1.1 * dt; }   // BRAKE wins: slow down, then reverse
+    else if (inp.go) c.speed += (c.speed < 0 ? CAR_BRAKE : CAR_ACCEL) * dt;
     c.speed -= Math.sign(c.speed) * Math.min(Math.abs(c.speed), CAR_FRICTION * dt);
-    c.speed = clamp(c.speed, -CAR_MAX * 0.3, CAR_MAX * (1 - (100 - c.hp) / 250));
+    c.speed = clamp(c.speed, -CAR_MAX * 0.4, CAR_MAX * (1 - (100 - c.hp) / 250));
     if (inp.brake && Math.abs(c.speed) > 150 && Math.random() < 0.6) effects.push({ kind: 'skid', x: c.x - Math.cos(c.angle) * 14, y: c.y - Math.sin(c.angle) * 14, t: 0, life: 6 });
     moveCar(c, dt, true);
     engineSound(Math.abs(c.speed) / CAR_MAX, true);
@@ -1009,7 +1044,7 @@ function updateCamera(first) {
     const sx = (px + (tx - px) * k) * S, sz = (pz + (tz - pz) * k) * S;
     for (const o of solids) if (!o.tree && !o.pond && !o.wall && sx > o.x - 12 && sx < o.x + o.w + 12 && sz > o.y - 12 && sz < o.y + o.h + 12) lift = Math.max(lift, (HEIGHTS[o.kind] || 2.6) + 1.2);
   }
-  up = Math.max(up, lift);
+  if (lift > 0) { up = Math.max(up, lift); tx = px - Math.cos(camYaw) * back * 0.45; tz = pz - Math.sin(camYaw) * back * 0.45; }   // closer in, looking down over the roof
   if (first) { camPos.set(tx, up, tz); camLook.set(lx, 1, lz); }
   else { camPos.lerp(new THREE.Vector3(tx, up, tz), 0.12); camLook.lerp(new THREE.Vector3(lx, 1, lz), 0.18); }
   camera.position.copy(camPos); camera.lookAt(camLook);
@@ -1024,7 +1059,7 @@ function draw() {
   scene.background = sky; scene.fog.color = sky; hemi.intensity = 0.75 - night * 0.5; sun.intensity = 0.9 - night * 0.75;
   renderer.render(scene, camera);
   drawMini();
-  if (player.car) { const c = player.car; wctx.clearRect(0, 0, 340, 340); drawF1Wheel(wctx, 170, 170, 320, (c.steerVis || 0) * 1.1, steerL > 0 || keys.ArrowLeft, steerR > 0 || keys.ArrowRight, String(1 + Math.min(5, Math.floor(Math.abs(c.speed) / CAR_MAX * 6))), String(Math.round(Math.abs(c.speed) / 3))); }
+  if (player.car) { const c = player.car; wctx.clearRect(0, 0, 340, 340); drawRoundWheel(wctx, 170, 170, 330, wheelAngle, c.speed < -3 ? 'R' : String(1 + Math.min(5, Math.floor(Math.abs(c.speed) / CAR_MAX * 6))), Math.round(Math.abs(c.speed) / 3) + ' km/h'); }
 }
 function drawMini() {
   const w = 112, h = 84, sx = w / WORLD_W, sy = h / WORLD_H;
@@ -1071,7 +1106,7 @@ btnPauseEl.addEventListener('click', () => { if (screen !== 'play') return; scre
 document.getElementById('btnResume').addEventListener('click', () => { screen = 'play'; overlay.classList.add('hidden'); });
 document.getElementById('btnQuit').addEventListener('click', () => { screen = 'title'; engineSound(0, false); sirenSound(false, 0); msgTitle.textContent = 'City Rush'; msgLine.textContent = 'Walk around the city, get into any car and drive. Taxi, pizza, ambulance, race and getaway jobs are marked by light beams. Bump people or splat them with paint and the police will chase you!'; msgHint.textContent = 'RM ' + money + ' saved · ' + stats.jobs + ' jobs done. Turn the phone sideways.'; startRow.style.display = 'flex'; pauseRow.style.display = 'none'; overlay.classList.remove('hidden'); });
 resize();
-msgHint.textContent = 'Turn the phone sideways. Walk: thumb anywhere on the left and drag. Drive: steering wheel on the left (touch its left or right side), GO and BRAKE on the right. ENTER gets in and out of cars.' + (money ? ' You have RM ' + money + ' saved.' : '');
+msgHint.textContent = 'Turn the phone sideways. Walk: thumb anywhere on the left and drag. Drive: turn the steering wheel on the left with your thumb, GO and BRAKE on the right (hold BRAKE when stopped to reverse). ENTER gets in and out of cars.' + (money ? ' You have RM ' + money + ' saved.' : '');
 requestAnimationFrame(t => { last = t; loop(t); });
 
 </script>
