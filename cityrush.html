@@ -107,7 +107,8 @@ const PITCH = BLOCK + ROAD;                   // distance from one road to the n
 const WORLD_W = COLS * PITCH + ROAD, WORLD_H = ROWS * PITCH + ROAD;
 const SIDEWALK = 16;                          // pavement width inside each block
 const WALK_SPEED = 120;                       // player on foot, units per second
-const CAR_MAX = 430, CAR_ACCEL = 260, CAR_BRAKE = 520, CAR_FRICTION = 90;
+const CAR_MAX = 300, CAR_ACCEL = 170, CAR_BRAKE = 520, CAR_FRICTION = 90;   // top speed and pick-up (lower = calmer)
+const DAY_NIGHT = false;                      // true = the city slowly turns to night and back
 const TRAFFIC_CARS = 30, PEDESTRIANS = 70;
 const LIGHT_CYCLE = 7;                        // seconds of green per direction at the traffic lights
 const WANTED_DECAY = 22;                      // seconds without police near you to lose one star
@@ -577,7 +578,7 @@ function enterExit() {
 // ---------- Simulation ----------
 let camYaw = 0;                                   // which way the camera looks, in map angle
 function update(dt) {
-  time += dt; dayT = (dayT + dt / 300) % 1;
+  time += dt; if (DAY_NIGHT) dayT = (dayT + dt / 300) % 1;
   for (const l of lights) l.t += dt;
   const inp = readInput();
   const mag = Math.min(1, Math.hypot(inp.x, inp.y));
@@ -746,7 +747,7 @@ function updatePolice(dt) {
     const wantAng = Math.atan2(ty - c.y, tx - c.x);
     const diff = angleDiff(c.angle, wantAng);
     c.angle += clamp(diff, -3.2 * dt, 3.2 * dt);
-    const targetSpeed = d < 50 ? 40 : Math.abs(diff) > 1.2 ? 120 : 300 + want * 20;
+    const targetSpeed = d < 50 ? 40 : Math.abs(diff) > 1.2 ? 110 : 230 + want * 15;   // police a little faster than traffic, slower than you flat out
     c.speed += clamp(targetSpeed - c.speed, -500 * dt, 220 * dt);
     moveCar(c, dt, false);
     if (c.stuck > 1.2) { c.speed = -120; c.angle += 1.5 * dt; if (c.stuck > 2.2) c.stuck = 0; }
