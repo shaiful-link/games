@@ -632,10 +632,12 @@ function moveCar(c, dt, isPlayer) {
   const nx = c.x + Math.cos(c.angle) * c.speed * dt, ny = c.y + Math.sin(c.angle) * c.speed * dt;
   const hit = hitSolid(nx, ny, 14);
   if (hit) {
+    const impact = Math.abs(c.speed);
     if (!hitSolid(nx, c.y, 14)) { c.x = nx; c.speed *= 0.6; }
     else if (!hitSolid(c.x, ny, 14)) { c.y = ny; c.speed *= 0.6; }
     else { c.speed *= -0.35; }
-    if (isPlayer) { sfx.crash(); c.hp = Math.max(10, c.hp - Math.abs(c.speed) / 25); }
+    if (isPlayer) { sfx.crash(); c.hp = Math.max(10, c.hp - impact / 25); }
+    if (hit.mesh && impact > 70) damageBuilding(hit, impact, nx, ny, isPlayer);
     c.stuck += dt;
   } else { c.x = nx; c.y = ny; c.stuck = 0; }
   for (const o of cars) {
@@ -725,6 +727,44 @@ function updatePed(p, dt) {
 }
 function walkAngle(p) { const per = (p.b.w + p.b.h) * 2, d = ((p.t % 1) + 1) % 1 * per; let a = d < p.b.w ? 0 : d < p.b.w + p.b.h ? Math.PI / 2 : d < p.b.w * 2 + p.b.h ? Math.PI : -Math.PI / 2; return p.dirSign > 0 ? a : a + Math.PI; }
 
+// A car hitting a building: a crack on that wall, a puff of dust, darker battered walls, and smoke
+// from the roof once it is badly damaged. Buildings never fall down.
+let crackTex = null;
+function crackTexture() {
+  if (crackTex) return crackTex;
+  const c = document.createElement('canvas'); c.width = 128; c.height = 128; const g = c.getContext('2d');
+  g.strokeStyle = 'rgba(20,20,20,0.9)'; g.lineWidth = 3; g.lineCap = 'round';
+  const branch = (x, y, a, len, w) => { if (len < 6) return; g.lineWidth = w; g.beginPath(); g.moveTo(x, y); const nx = x + Math.cos(a) * len, ny = y + Math.sin(a) * len; g.lineTo(nx, ny); g.stroke(); branch(nx, ny, a + (Math.random() - 0.5) * 1.2, len * 0.7, w * 0.75); if (Math.random() < 0.7) branch(nx, ny, a + (Math.random() - 0.5) * 2.4, len * 0.55, w * 0.6); };
+  for (let i = 0; i < 6; i++) branch(64, 64, i * 1.05 + Math.random() * 0.5, 30 + Math.random() * 14, 3.5);
+  g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.arc(64, 64, 9, 0, Math.PI * 2); g.fill();
+  crackTex = new THREE.CanvasTexture(c); return crackTex;
+}
+function damageBuilding(o, impact, x, y, byPlayer) {
+  if (o.lastHit && time - o.lastHit < 0.7) return;       // one crash counts once, not every frame of the scrape
+  o.lastHit = time;
+  o.damage = Math.min(1, o.damage + impact / 1000);       // about four hard crashes to wreck a building
+  // walls and roof get darker and greyer the more battered they are
+  const k = 1 - o.damage * 0.55;
+  o.sideMat.color.setRGB(k, k * 0.97, k * 0.93); o.roofMat.color.set(shadeHex(o.color, -0.25)).multiplyScalar(k);
+  // a crack on the wall that was hit (at most 6 per building)
+  if (o.cracks < 6) {
+    o.cracks++;
+    const left = Math.abs(x - o.x), right = Math.abs(x - (o.x + o.w)), top = Math.abs(y - o.y), bottom = Math.abs(y - (o.y + o.h));
+    const m = Math.min(left, right, top, bottom);
+    const crack = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), new THREE.MeshLambertMaterial({ map: crackTexture(), transparent: true, depthWrite: false }));
+    const hy = 0.6 + Math.random() * Math.min(1.2, o.height - 0.8);
+    if (m === left) { crack.position.set(toX(o.x) - 0.02, hy, toZ(clamp(y, o.y + 8, o.y + o.h - 8))); crack.rotation.y = -Math.PI / 2; }
+    else if (m === right) { crack.position.set(toX(o.x + o.w) + 0.02, hy, toZ(clamp(y, o.y + 8, o.y + o.h - 8))); crack.rotation.y = Math.PI / 2; }
+    else if (m === top) { crack.position.set(toX(clamp(x, o.x + 8, o.x + o.w - 8)), hy, toZ(o.y) - 0.02); crack.rotation.y = Math.PI; }
+    else { crack.position.set(toX(clamp(x, o.x + 8, o.x + o.w - 8)), hy, toZ(o.y + o.h) + 0.02); }
+    crack.rotation.z = Math.random() * 6; scene.add(crack); decalMeshes.push(crack);
+  }
+  // dust burst and falling bits
+  for (let i = 0; i < 6; i++) effects.push({ kind: 'puff', x: x + rand(-10, 10), y: y + rand(-10, 10), h: 0.3 + Math.random() * 1.2, t: 0, life: 0.9 + Math.random() * 0.5, size: 0.3 + Math.random() * 0.4, color: '#b9a98a' });
+  for (let i = 0; i < 4; i++) effects.push({ kind: 'chip', x, y, h: 1 + Math.random(), vx: rand(-60, 60), vy: rand(-60, 60), vh: 2 + Math.random() * 2, t: 0, life: 1.2, color: o.color });
+  if (byPlayer) { sfx.crash(); effects.push({ kind: 'text', x, y, text: pick(['CRASH!', 'Oops!', 'My wall!']), t: 0, life: 1 }); }
+}
+const decalMeshes = [];
 // Police: as long as you have stars, police cars hunt you down. Stand still next to one and you are busted.
 function updatePolice(dt) {
   const me = playerPos();
@@ -855,10 +895,10 @@ function buildBuildings() {
     const w = o.w / S, d = o.h / S;
     const t = wallTexture(o.kind, o.color).clone(); t.needsUpdate = true; t.repeat.set(Math.max(1, Math.round(w / 2.6)), Math.max(1, Math.round(h / 2.6)));
     const side = new THREE.MeshLambertMaterial({ map: t });
-    const roof = mat(shadeHex(o.color, -0.25));
+    const roof = new THREE.MeshLambertMaterial({ color: new THREE.Color(shadeHex(o.color, -0.25)) });
     const m = new THREE.Mesh(BOX, [side, side, roof, roof, side, side]);
     m.scale.set(w, h, d); m.position.set(toX(o.x) + w / 2, h / 2, toZ(o.y) + d / 2); m.castShadow = true; m.receiveShadow = true;
-    scene.add(m);
+    scene.add(m); o.mesh = m; o.sideMat = side; o.roofMat = roof; o.height = h; o.damage = 0; o.cracks = 0;
     if (o.kind === 'house') { const r = box(w + 0.3, 0.25, d + 0.3, mat('#8a4a3a'), m.position.x, h + 0.12, m.position.z); scene.add(r); }
     if (SIGNS[o.kind]) { const [txt, col, bg] = SIGNS[o.kind]; const sg = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(w * 0.8, 5), 1.1), new THREE.MeshLambertMaterial({ map: signTexture(txt, col, bg) })); sg.position.set(m.position.x, h - 0.9, toZ(o.y) + d + 0.03); scene.add(sg); }
     if (o.kind === 'hospital') { const cross = box(1.6, 0.4, 0.2, mat('#e04b4b'), m.position.x, h + 0.6, toZ(o.y) + d - 0.2); scene.add(cross); scene.add(box(0.4, 1.6, 0.2, mat('#e04b4b'), m.position.x, h + 0.6, toZ(o.y) + d - 0.2)); }
@@ -980,7 +1020,8 @@ function syncPeople() {
 const PLAYER_LOOK = { color: '#ff8c42', skin: '#e0a97f', hair: '#2b1d12', trousers: '#2c3e50' };
 
 // --- splats, paintballs, skid marks, mission markers, floating words ---
-const splatGeo = new THREE.CircleGeometry(0.5, 10), skidGeo = new THREE.PlaneGeometry(0.5, 0.5), ballGeo = new THREE.SphereGeometry(0.14, 6, 6);
+const splatGeo = new THREE.CircleGeometry(0.5, 10), skidGeo = new THREE.PlaneGeometry(0.5, 0.5), ballGeo = new THREE.SphereGeometry(0.14, 6, 6), puffGeo = new THREE.SphereGeometry(1, 6, 5);
+const puffMeshes = [];
 const splatMeshes = [], skidMeshes = [], ballMeshes = [];
 function addSplat(sp) {
   const m = new THREE.Mesh(sp.car ? new THREE.SphereGeometry(0.35, 6, 6) : splatGeo, mat(sp.color));
@@ -1024,6 +1065,17 @@ function syncEffects() {
     const v = new THREE.Vector3(toX(e.x), 1.9 + e.t * 0.8, toZ(e.y)).project(camera);
     if (v.z > 1) { d.style.display = 'none'; return; }
     d.style.display = 'block'; d.textContent = e.text; d.style.left = ((v.x + 1) / 2 * W) + 'px'; d.style.top = ((1 - v.y) / 2 * H) + 'px'; d.style.opacity = 1 - e.t / e.life;
+  });
+  // smoke from badly damaged buildings
+  if (Math.random() < 0.25) for (const b of blocks) for (const o of b.buildings) if (o.damage > 0.6 && Math.random() < o.damage * 0.3) effects.push({ kind: 'puff', x: o.x + Math.random() * o.w, y: o.y + Math.random() * o.h, h: o.height + 0.2, t: 0, life: 2.5, size: 0.5, color: '#555', rise: 1.2 });
+  // dust puffs and flying chips
+  const puffs = effects.filter(e => e.kind === 'puff' || e.kind === 'chip');
+  while (puffMeshes.length < puffs.length && puffMeshes.length < 160) { const m = new THREE.Mesh(puffGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true })); scene.add(m); puffMeshes.push(m); }
+  puffMeshes.forEach((m, i) => {
+    const e = puffs[i]; if (!e) { m.visible = false; return; }
+    m.visible = true; const k = e.t / e.life; m.material.color.set(e.color);
+    if (e.kind === 'puff') { m.material.opacity = 0.7 * (1 - k); const sz = e.size * (1 + k * 2.2); m.scale.set(sz, sz, sz); m.position.set(toX(e.x), e.h + k * (e.rise || 0.6), toZ(e.y)); }
+    else { m.material.opacity = 1; m.scale.set(0.18, 0.18, 0.18); e.x += e.vx / 60; e.y += e.vy / 60; e.vh -= 9 / 60; e.h = Math.max(0.1, e.h + e.vh / 60); m.position.set(toX(e.x), e.h, toZ(e.y)); }
   });
   // mission arrow
   if (mission && mission.target) { const me = playerPos(); arrowPivot.visible = true; arrowPivot.position.set(toX(me.x), 2.6 + Math.sin(time * 5) * 0.15, toZ(me.y)); arrowPivot.rotation.y = yawFor(Math.atan2(mission.target.y - me.y, mission.target.x - me.x)); }
@@ -1097,6 +1149,8 @@ function startGame() {
   resize();
   if (!built) { makeCity(); buildGround(); buildBuildings(); built = true; }
   for (const c of cars) removeCarMesh(c);
+  for (const m of decalMeshes) scene.remove(m); decalMeshes.length = 0;
+  for (const b of blocks) for (const o of b.buildings) if (o.mesh) { o.damage = 0; o.cracks = 0; o.sideMat.color.setRGB(1, 1, 1); o.roofMat.color.set(shadeHex(o.color, -0.25)); }
   spawnTraffic(); spawnPeds(); buildPeopleMeshes(PEDESTRIANS + 2); clearDecals(); effects = []; police = []; mission = null; wanted = 0; bustT = 0;
   for (const p of peds) { p.trousers = pick(['#2c3e50', '#3d3d3d', '#5a4a3a', '#1f3a5a', '#6b6b6b']); p.hair = pick(['#2b1d12', '#5a3a1e', '#111', '#8a6a3a', '#c9c9c9']); p.face = 0; p.phase = Math.random() * 6; }
   player.car = null; player.x = places.taxi.x - 60; player.y = places.taxi.y; player.angle = 0; camYaw = 0; btnAct.textContent = 'ENTER'; document.body.classList.remove('incar');
