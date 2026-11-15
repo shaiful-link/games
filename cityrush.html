@@ -297,8 +297,9 @@ function lanePoint(ix, iy, dirIndex) {
   // the lane position at the crossing (ix, iy) for a car driving in direction dirIndex
   const cx = ix * PITCH + ROAD / 2, cy = iy * PITCH + ROAD / 2;
   const [dx, dy] = DIRS[dirIndex];
-  // offset is perpendicular to the direction of travel: left side
-  const lx = -dy, ly = dx;                                 // left of (dx, dy) in screen coordinates (y down)
+  // offset is perpendicular to the direction of travel: the LEFT side, as in Malaysia
+  // (map y grows downwards, so the left of a direction (dx, dy) is (dy, -dx))
+  const lx = dy, ly = -dx;
   return { x: cx + lx * ROAD * 0.19, y: cy + ly * ROAD * 0.19 };
 }
 function spawnTraffic() {
