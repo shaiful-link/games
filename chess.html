@@ -261,6 +261,16 @@
   }
   #overlay p  { margin: 0 0 6px; font-size: 16px; color: rgba(255,255,255,0.8); }
   #modes { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 300px; }
+  #levels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; width: 100%; max-width: 300px; margin-bottom: 10px; }
+  #levels button { height: 48px; border: 0; border-radius: 12px; background: rgba(255,255,255,0.1); color: #fff; font: inherit; font-size: 18px; font-weight: 800; position: relative; touch-action: manipulation; -webkit-tap-highlight-color: transparent; box-shadow: 0 3px 0 rgba(0,0,0,0.35); }
+  #levels button.done { background: linear-gradient(#34917a, #24634f); }
+  #levels button.done::after { content: '\2713'; position: absolute; top: 3px; right: 6px; font-size: 11px; color: #bff0d4; }
+  #levels button.next { outline: 2px solid #f4d35e; }
+  #levels button:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,0.35); }
+  #start .pick { margin: 0 0 8px; font-size: 13px; color: rgba(255,255,255,0.65); }
+  #themeNote { margin-top: 10px !important; }
+  #themeTag { position: fixed; left: 50%; top: calc(52px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); padding: 6px 14px; border-radius: 10px; background: rgba(11,18,32,0.85); color: #fff; font-size: 13px; font-weight: 700; pointer-events: none; opacity: 0; transition: opacity 0.4s; z-index: 5; }
+  #themeTag.show { opacity: 1; }
   #modes button { flex: none; height: 54px; }
   #modes button.main {
     background: linear-gradient(#34917a, #24634f);
@@ -302,6 +312,7 @@
 </style>
 </head>
 <body>
+<div id="themeTag"></div>
 <div id="app">
   <div id="top">
     <div id="status">Chess</div>
@@ -335,12 +346,13 @@
       <canvas id="logo" width="140" height="70"></canvas>
       <h1>Chess</h1>
       <p>Play the computer, or a friend on one phone</p>
+      <p class="pick">Play the computer &middot; pick a level</p>
+      <div id="levels"></div>
+      <p id="levelNote" class="pick"></p>
       <div id="modes">
-        <button data-mode="easy" class="main">1 player &middot; Easy</button>
-        <button data-mode="medium">1 player &middot; Medium</button>
-        <button data-mode="hard">1 player &middot; Hard</button>
         <button data-mode="two">2 players</button>
       </div>
+      <p id="themeNote" class="pick"></p>
     </div>
     <div id="card" class="hidden">
       <h1 id="msgTitle">Alhamdulillah</h1>
@@ -384,13 +396,43 @@ const FRAME_SHARE    = 0.055;         // width of the wooden frame, as a share o
 const MAX_PARTICLES  = 150;           // most puff + confetti bits alive at once (keeps cheap phones smooth)
 const CONFETTI_COUNT = 90;            // confetti pieces thrown on a win
 const CARD_GUARD_MS  = 800;           // taps on the result card are ignored for this long after it appears
-const LIGHT_SQUARE   = '#f0d9b5';     // board colours
-const DARK_SQUARE    = '#b58863';
+// Looks: the board, frame, pieces and page background change every game (one after another).
+// Square colours are mid tones so ivory and charcoal pieces both stand out on them.
+//   texture: wood | marble | granite | glass | tile      material (pieces): ivory | wood | marble | granite | glass
+function svgBg(svg) { return 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")'; }
+const THEMES = [
+  { name: 'Classic wood', light: '#f0d9b5', dark: '#b58863', frame: ['#7a4d2b', '#5c3719', '#40240f'], frameLine: 'rgba(255,214,150,0.35)', coords: 'rgba(255,225,180,0.85)', texture: 'wood', material: 'ivory',
+    bg: 'radial-gradient(120% 70% at 50% 0%, #1b2a4d 0%, rgba(27,42,77,0) 70%), radial-gradient(90% 60% at 50% 100%, #14213d 0%, rgba(20,33,61,0) 70%), #0b1220' },
+  { name: 'Rawdah', light: '#dfe6cf', dark: '#3f7a4c', frame: ['#f7f3ea', '#e6dfd0', '#cfc5b0'], frameLine: 'rgba(212,175,55,0.9)', coords: 'rgba(90,70,30,0.9)', texture: 'marble', material: 'marble',
+    bg: svgBg('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="220" viewBox="0 0 200 220"><rect width="200" height="220" fill="#0e4a2f"/><path d="M20 200 V110 A80 80 0 0 1 180 110 V200" fill="none" stroke="#d4af37" stroke-width="3" opacity="0.55"/><path d="M50 200 V125 A50 50 0 0 1 150 125 V200" fill="none" stroke="#f3e9c6" stroke-width="2" opacity="0.35"/><circle cx="100" cy="40" r="6" fill="#d4af37" opacity="0.6"/><rect x="0" y="200" width="200" height="20" fill="#0b3d26"/></svg>') + ' center / 200px 220px repeat #0e4a2f' },
+  { name: 'Mountain morning', light: '#c6cfdb', dark: '#5a6a80', frame: ['#6e727a', '#4b4f57', '#2d3036'], frameLine: 'rgba(255,255,255,0.3)', coords: 'rgba(230,235,245,0.9)', texture: 'granite', material: 'granite',
+    bg: svgBg('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fb2e5"/><stop offset="1" stop-color="#e9d6b8"/></linearGradient></defs><rect width="800" height="600" fill="url(#s)"/><circle cx="640" cy="120" r="46" fill="#fff3c4" opacity="0.9"/><path d="M0 420 L140 230 L230 330 L330 180 L450 360 L560 240 L680 380 L800 260 V600 H0Z" fill="#5f7a9a"/><path d="M330 180 L300 230 L360 230Z M140 230 L118 262 L164 262Z M560 240 L540 268 L582 268Z" fill="#f4f7fb"/><path d="M0 500 L120 400 L260 470 L400 380 L540 480 L680 410 L800 470 V600 H0Z" fill="#3e5a4a"/><path d="M0 560 Q200 520 400 560 T800 560 V600 H0Z" fill="#2c4536"/></svg>') + ' center / cover no-repeat #5f7a9a' },
+  { name: 'Relaxing beach', light: '#f1e3bf', dark: '#3d9bb5', frame: ['#e9dcc3', '#cdbb98', '#a8946f'], frameLine: 'rgba(255,255,255,0.5)', coords: 'rgba(90,70,40,0.85)', texture: 'glass', material: 'glass',
+    bg: svgBg('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="k" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fd0f5"/><stop offset="1" stop-color="#fde6c8"/></linearGradient><linearGradient id="w" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1f8fb8"/><stop offset="1" stop-color="#5ecbe0"/></linearGradient></defs><rect width="800" height="600" fill="url(#k)"/><circle cx="160" cy="130" r="50" fill="#fff6c8"/><rect y="300" width="800" height="200" fill="url(#w)"/><path d="M0 330 Q100 315 200 330 T400 330 T600 330 T800 330" fill="none" stroke="#ffffff" stroke-width="4" opacity="0.6"/><path d="M0 470 Q200 440 400 470 T800 470 V600 H0Z" fill="#f3dfa8"/><path d="M0 490 Q200 460 400 490 T800 490" fill="none" stroke="#fff" stroke-width="6" opacity="0.7"/><path d="M700 480 Q690 380 720 300" stroke="#7a4b2a" stroke-width="10" fill="none" stroke-linecap="round"/><path d="M720 300 q-60 -30 -90 10 q50 -5 90 -10 q20 -60 70 -70 q-40 30 -70 70 q60 -20 100 20 q-50 -10 -100 -20 q-10 60 -60 80 q40 -40 60 -80" fill="#2f9a4a"/></svg>') + ' center / cover no-repeat #5ecbe0' },
+  { name: 'Birthday party', light: '#f4d2e4', dark: '#7a48a8', frame: ['#ff8fb6', '#e2609a', '#b63f78'], frameLine: 'rgba(255,255,255,0.5)', coords: 'rgba(255,255,255,0.95)', texture: 'tile', material: 'ivory',
+    bg: svgBg('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400"><rect width="400" height="400" fill="#2a1a4a"/><g opacity="0.9"><ellipse cx="70" cy="90" rx="28" ry="36" fill="#ff6b8a"/><path d="M70 126 q10 30 -5 60" stroke="#fff" stroke-width="2" fill="none"/><ellipse cx="300" cy="70" rx="28" ry="36" fill="#ffd166"/><path d="M300 106 q-10 30 5 60" stroke="#fff" stroke-width="2" fill="none"/><ellipse cx="210" cy="250" rx="28" ry="36" fill="#4dd4ac"/><path d="M210 286 q10 30 -5 60" stroke="#fff" stroke-width="2" fill="none"/><ellipse cx="350" cy="300" rx="24" ry="31" fill="#6fb6ff"/></g><g fill="#fff"><rect x="40" y="200" width="8" height="8" transform="rotate(20 44 204)"/><rect x="150" y="40" width="8" height="8" transform="rotate(40 154 44)"/><rect x="250" y="160" width="8" height="8" transform="rotate(10 254 164)"/><rect x="120" y="330" width="8" height="8" transform="rotate(50 124 334)"/><rect x="330" y="200" width="8" height="8" transform="rotate(30 334 204)"/></g><g fill="#ffd166"><circle cx="100" cy="300" r="4"/><circle cx="370" cy="140" r="4"/><circle cx="20" cy="40" r="4"/><circle cx="280" cy="380" r="4"/></g></svg>') + ' center / 400px 400px repeat #2a1a4a' },
+  { name: 'Shopping mall', light: '#d8dadf', dark: '#6f7580', frame: ['#2e3138', '#1a1c21', '#0b0c0f'], frameLine: 'rgba(255,255,255,0.35)', coords: 'rgba(255,255,255,0.85)', texture: 'tile', material: 'glass',
+    bg: svgBg('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice"><rect width="800" height="600" fill="#141821"/><rect y="420" width="800" height="180" fill="#2a2f3a"/><g fill="#ffd27a" opacity="0.85"><rect x="30" y="120" width="150" height="120" rx="6"/><rect x="220" y="120" width="150" height="120" rx="6"/><rect x="430" y="120" width="150" height="120" rx="6"/><rect x="620" y="120" width="150" height="120" rx="6"/><rect x="30" y="280" width="150" height="120" rx="6"/><rect x="220" y="280" width="150" height="120" rx="6"/><rect x="430" y="280" width="150" height="120" rx="6"/><rect x="620" y="280" width="150" height="120" rx="6"/></g><g fill="#141821" opacity="0.8"><rect x="60" y="150" width="40" height="60"/><rect x="250" y="150" width="90" height="20"/><rect x="460" y="160" width="50" height="50"/><rect x="650" y="150" width="90" height="20"/><rect x="60" y="310" width="90" height="20"/><rect x="270" y="320" width="50" height="50"/><rect x="460" y="310" width="90" height="20"/><rect x="660" y="320" width="40" height="60"/></g><g fill="#ffe9b8" opacity="0.5"><rect x="30" y="430" width="150" height="90" rx="6"/><rect x="220" y="430" width="150" height="90" rx="6"/><rect x="430" y="430" width="150" height="90" rx="6"/><rect x="620" y="430" width="150" height="90" rx="6"/></g><g stroke="#3a4050" stroke-width="2"><path d="M0 420 H800 M0 480 H800 M0 540 H800"/></g><circle cx="400" cy="40" r="30" fill="#fff" opacity="0.25"/></svg>') + ' center / cover no-repeat #141821' }
+];
+let theme = THEMES[0];
+let LIGHT_SQUARE = theme.light, DARK_SQUARE = theme.dark;
+// Pick the next look (remembered between games, so it keeps rotating) and repaint everything
+function nextTheme() {
+  let n = 0;
+  try { n = Number(localStorage.getItem('chessGameNo') || 0); } catch (e) {}
+  theme = THEMES[n % THEMES.length];
+  try { localStorage.setItem('chessGameNo', String(n + 1)); } catch (e) {}
+  LIGHT_SQUARE = theme.light; DARK_SQUARE = theme.dark;
+  document.body.style.background = theme.bg;
+  if (typeof buildPictures === 'function' && typeof cell !== 'undefined') buildPictures(window.devicePixelRatio || 1);
+  const tag = document.getElementById('themeTag');
+  if (tag) { tag.textContent = theme.name; tag.classList.add('show'); clearTimeout(nextTheme.timer); nextTheme.timer = setTimeout(() => tag.classList.remove('show'), 2200); }
+}
 // Messages shown at the end (the zikir is also spoken)
 const MSG_WIN  = 'Alhamdulillah';
 const MSG_LOSE = 'Insya-Allah lain kali';
 const MSG_DRAW = 'Seri · Alhamdulillah';
-// How the three computer levels think is set in LEVELS further down (depth, time, randomness).
+// How the ten computer levels think is set in LEVELS further down (depth, time, randomness).
 
 // =====================================================
 // CHESS RULES AND COMPUTER PLAYER
@@ -892,17 +934,26 @@ function search(s, depth, alpha, beta, ply, ctx) {
 }
 
 // The three levels
-const LEVELS = {
-  easy:   { maxDepth: 1, timeMs: 200, random: 0.30 },      // one move ahead, and 30% of the time just a random move
-  medium: { maxDepth: 3, timeMs: 250, random: 0 },
-  hard:   { maxDepth: 5, timeMs: 900, random: 0 }
-};
+// Ten levels: how many moves ahead the computer looks, how long it may think, and how often
+// it just plays a random move instead (level 1 is very forgiving, level 10 thinks hard).
+const LEVELS = [
+  { maxDepth: 1, timeMs: 150, random: 0.55 },
+  { maxDepth: 1, timeMs: 200, random: 0.35 },
+  { maxDepth: 1, timeMs: 200, random: 0.15 },
+  { maxDepth: 2, timeMs: 250, random: 0.15 },
+  { maxDepth: 2, timeMs: 250, random: 0 },
+  { maxDepth: 3, timeMs: 300, random: 0 },
+  { maxDepth: 3, timeMs: 500, random: 0 },
+  { maxDepth: 4, timeMs: 700, random: 0 },
+  { maxDepth: 5, timeMs: 900, random: 0 },
+  { maxDepth: 6, timeMs: 1500, random: 0 }
+];
 
 // Start choosing a move. The work is split into steps (one per search depth) so the screen
 // can breathe between steps when there is no Web Worker.
 //   keys = positionKey() texts of the game so far, so the computer treats a third repetition as a draw
 function startSearch(s, level, keys) {
-  const cfg = LEVELS[level] || LEVELS.medium;
+  const cfg = LEVELS[(Number(level) || 5) - 1] || LEVELS[4];
   const moves = legalMoves(s);
   const job = { done: false, best: null, depth: 0, moves: moves };
   if (moves.length === 0) { job.done = true; return job; }
@@ -1265,8 +1316,13 @@ function screenToSquare(r, c) {
   return flipped ? squareAt(7 - r, 7 - c) : squareAt(r, c);
 }
 
-function startGame(newMode) {
+let levelNo = 1;
+let cleared = [];
+try { cleared = JSON.parse(localStorage.getItem('chessCleared') || '[]'); } catch (e) { cleared = []; }
+function startGame(newMode, level) {
   if (newMode) mode = newMode;
+  if (level) levelNo = level;
+  nextTheme();                   // every game gets a fresh look
   setPosition(newState());
 }
 
@@ -1342,7 +1398,7 @@ function askComputer() {
   thinking = true;
   updateHud();
   const id = ++aiRequest;
-  const s = state, level = mode, keysNow = keys.slice();
+  const s = state, level = levelNo, keysNow = keys.slice();
   aiTimer = setTimeout(() => {
     if (id !== aiRequest) return;
     if (worker) {
@@ -1396,7 +1452,8 @@ function endGame() {
   else title = result.winner === WHITE ? MSG_WIN : MSG_LOSE;
   const humanWon = result.winner !== 0 && (mode === 'two' || result.winner === WHITE);
   msgTitle.textContent = title;
-  msgLine.textContent = resultText(result);
+  msgLine.textContent = resultText(result) + (mode !== 'two' && humanWon ? ' \u00B7 Level ' + levelNo + ' cleared' : '');
+  if (mode !== 'two' && humanWon && !cleared.includes(levelNo)) { cleared.push(levelNo); try { localStorage.setItem('chessCleared', JSON.stringify(cleared)); } catch (e) {} }
   updateHud();
 
   // Tune and confetti. Against the computer only your own win is a party.
@@ -1418,6 +1475,7 @@ function endGame() {
 
 // Back to the start screen
 function showStartScreen() {
+  buildLevelButtons();
   clearTimeout(aiTimer);
   aiRequest++;
   playing = false;
@@ -1477,7 +1535,7 @@ function updateHud() {
     elStatus.textContent = 'Check!';
     elStatus.classList.add('check');
   } else if (playing) {
-    elStatus.textContent = (state.turn === WHITE ? 'White' : 'Black') + ' to move';
+    elStatus.textContent = (mode === 'two' ? '' : 'Level ' + levelNo + ' \u00B7 ') + (state.turn === WHITE ? 'White' : 'Black') + ' to move';
     elStatus.classList.add(state.turn === WHITE ? 'white' : 'black');
   } else {
     elStatus.textContent = 'Chess';
@@ -1591,6 +1649,35 @@ function drawGrain(g, x, y, w, h, lines, colour, rnd) {
   g.restore();
 }
 
+// Surface textures for the squares and frame: wood grain, marble veins, granite speckles,
+// a glass gloss, or thin tile grooves
+function paintTexture(g, x, y, w, h, texture, light, rnd, amount) {
+  if (texture === 'wood') { drawGrain(g, x, y, w, h, amount, light ? 'rgba(140,100,50,0.10)' : 'rgba(60,30,10,0.14)', rnd); return; }
+  g.save();
+  g.beginPath(); g.rect(x, y, w, h); g.clip();
+  if (texture === 'marble') {
+    g.strokeStyle = light ? 'rgba(120,120,110,0.18)' : 'rgba(255,255,255,0.16)';
+    for (let i = 0; i < Math.max(2, amount / 3); i++) {
+      g.lineWidth = 0.6 + rnd() * 0.8; g.globalAlpha = 0.4 + rnd() * 0.6;
+      const x0 = x + rnd() * w, y0 = y + rnd() * h;
+      g.beginPath(); g.moveTo(x0, y0); g.bezierCurveTo(x0 + w * 0.3, y0 + (rnd() - 0.5) * h, x0 + w * 0.6, y0 + (rnd() - 0.5) * h, x0 + w, y0 + (rnd() - 0.5) * h * 0.5); g.stroke();
+    }
+  } else if (texture === 'granite') {
+    for (let i = 0; i < amount * 12; i++) {
+      g.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.22)';
+      g.fillRect(x + rnd() * w, y + rnd() * h, 1 + rnd() * 1.2, 1 + rnd() * 1.2);
+    }
+  } else if (texture === 'glass') {
+    const gl = g.createLinearGradient(x, y, x + w, y + h);
+    gl.addColorStop(0, 'rgba(255,255,255,0.35)'); gl.addColorStop(0.45, 'rgba(255,255,255,0.05)'); gl.addColorStop(0.5, 'rgba(255,255,255,0.25)'); gl.addColorStop(1, 'rgba(0,0,0,0.12)');
+    g.fillStyle = gl; g.fillRect(x, y, w, h);
+  } else if (texture === 'tile') {
+    g.strokeStyle = 'rgba(0,0,0,0.18)'; g.lineWidth = 1; g.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    g.fillStyle = 'rgba(255,255,255,0.12)'; g.fillRect(x + 1, y + 1, w - 2, 2);
+  }
+  g.restore();
+}
+
 // Trace a rectangle with rounded corners (older phones do not have a built-in one)
 function roundedRect(g, x, y, w, h, radius) {
   g.beginPath();
@@ -1610,21 +1697,21 @@ function buildBoardImage(dpr) {
   const g = made.g;
   const rnd = makeRandom(20240);
 
-  // Frame: dark walnut, lighter at the top, with long grain lines
+  // Frame in the theme's colours, lighter at the top, textured like the squares
   const frameShade = g.createLinearGradient(0, 0, 0, full);
-  frameShade.addColorStop(0, '#7a4d2b');
-  frameShade.addColorStop(0.5, '#5c3719');
-  frameShade.addColorStop(1, '#40240f');
+  frameShade.addColorStop(0, theme.frame[0]);
+  frameShade.addColorStop(0.5, theme.frame[1]);
+  frameShade.addColorStop(1, theme.frame[2]);
   g.fillStyle = frameShade;
   roundedRect(g, 0, 0, full, full, 10);
   g.fill();
   g.save();
   roundedRect(g, 0, 0, full, full, 10);
   g.clip();
-  drawGrain(g, 0, 0, full, full, 60, 'rgba(0,0,0,0.20)', rnd);
+  paintTexture(g, 0, 0, full, full, theme.texture, false, rnd, 60);
   g.restore();
   // A thin bright line on the outer edge so the frame looks rounded
-  g.strokeStyle = 'rgba(255,214,150,0.35)';
+  g.strokeStyle = theme.frameLine;
   g.lineWidth = 1;
   roundedRect(g, 0.75, 0.75, full - 1.5, full - 1.5, 9.5);
   g.stroke();
@@ -1636,7 +1723,7 @@ function buildBoardImage(dpr) {
       const light = (r + c) % 2 === 0;
       g.fillStyle = light ? LIGHT_SQUARE : DARK_SQUARE;
       g.fillRect(x, y, cell, cell);
-      drawGrain(g, x, y, cell, cell, 5, light ? 'rgba(140,100,50,0.10)' : 'rgba(60,30,10,0.14)', rnd);
+      paintTexture(g, x, y, cell, cell, theme.texture, light, rnd, 5);
     }
   }
 
@@ -1665,7 +1752,7 @@ function buildBoardImage(dpr) {
   g.strokeRect(edge - 2.5, edge - 2.5, inner + 5, inner + 5);
 
   // Coordinates in the frame: letters along the bottom, numbers down the left side
-  g.fillStyle = 'rgba(255,225,180,0.85)';
+  g.fillStyle = theme.coords;
   g.font = '600 ' + Math.max(8, Math.round(edge * 0.62)) + 'px system-ui, sans-serif';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
@@ -1850,19 +1937,32 @@ function paintPiece(g, type, colour, x, y, size, pixelScale) {
   g.lineWidth = colour === WHITE ? 4.4 : 3.6;
   g.stroke(shape);
 
-  // Body colour: ivory for White, charcoal for Black
+  // Body colour depends on the theme's material. White stays light and Black stays dark
+  // whatever the material, so the two sides are always easy to tell apart.
+  const MATERIALS = {
+    ivory:   { w: ['#fff8e8', '#efe2c4', '#cdb88f'], b: ['#5c5c68', '#34343d', '#17171d'] },
+    wood:    { w: ['#f3dfb0', '#dcbb84', '#b48c52'], b: ['#7a4e2a', '#4e2f15', '#2a1708'] },
+    marble:  { w: ['#fffdf7', '#f1ede3', '#d2cbbb'], b: ['#555560', '#33333b', '#17171c'] },
+    granite: { w: ['#f2f3f5', '#d3d7dc', '#a8aeb6'], b: ['#50545c', '#2f3238', '#15171a'] },
+    glass:   { w: ['#ffffff', '#e4eef8', '#bccfe0'], b: ['#44566a', '#243140', '#0d141c'] }
+  };
+  const mat = MATERIALS[theme.material] || MATERIALS.ivory;
+  const stops = colour === WHITE ? mat.w : mat.b;
   const body = g.createLinearGradient(20, 0, 80, 0);
-  if (colour === WHITE) {
-    body.addColorStop(0, '#fff8e8');
-    body.addColorStop(0.55, '#efe2c4');
-    body.addColorStop(1, '#cdb88f');
-  } else {
-    body.addColorStop(0, '#5c5c68');
-    body.addColorStop(0.5, '#34343d');
-    body.addColorStop(1, '#17171d');
-  }
+  body.addColorStop(0, stops[0]); body.addColorStop(0.55, stops[1]); body.addColorStop(1, stops[2]);
+  if (theme.material === 'glass') g.globalAlpha = 0.82;      // a little see-through
   g.fillStyle = body;
   g.fill(shape);
+  g.globalAlpha = 1;
+  // Material marks inside the silhouette: grain, veins or speckles
+  g.save();
+  g.clip(shape);
+  const prnd = makeRandom(1000 + type * 7 + (colour === WHITE ? 1 : 2));
+  if (theme.material === 'wood') drawGrain(g, 0, 0, 100, 100, 14, colour === WHITE ? 'rgba(120,80,30,0.22)' : 'rgba(0,0,0,0.30)', prnd);
+  else if (theme.material === 'marble') paintTexture(g, 0, 0, 100, 100, 'marble', colour === WHITE, prnd, 12);
+  else if (theme.material === 'granite') paintTexture(g, 0, 0, 100, 100, 'granite', colour === WHITE, prnd, 10);
+  else if (theme.material === 'glass') { const band = g.createLinearGradient(0, 0, 100, 100); band.addColorStop(0.3, 'rgba(255,255,255,0)'); band.addColorStop(0.42, 'rgba(255,255,255,0.55)'); band.addColorStop(0.5, 'rgba(255,255,255,0)'); g.fillStyle = band; g.fillRect(0, 0, 100, 100); }
+  g.restore();
 
   // Shading, kept inside the silhouette: light from the upper left, shadow to the lower right
   g.save();
@@ -2286,6 +2386,23 @@ document.getElementById('btnMode').addEventListener('click', () => { sfx.button(
 for (const btn of document.querySelectorAll('#modes button')) {
   btn.addEventListener('click', () => { sfx.button(); startGame(btn.dataset.mode); });
 }
+// Level buttons: any level can be played; cleared ones are green with a tick, the next one is outlined
+const levelsEl = document.getElementById('levels'), levelNote = document.getElementById('levelNote');
+function buildLevelButtons() {
+  levelsEl.innerHTML = '';
+  const next = LEVELS.findIndex((lv, i) => !cleared.includes(i + 1));
+  LEVELS.forEach((lv, i) => {
+    const b = document.createElement('button');
+    b.textContent = i + 1;
+    if (cleared.includes(i + 1)) b.classList.add('done');
+    if (i === next) b.classList.add('next');
+    b.addEventListener('click', () => { sfx.button(); startGame('ai', i + 1); });
+    levelsEl.appendChild(b);
+  });
+  levelNote.textContent = next < 0 ? 'All 10 levels cleared. Alhamdulillah!' : cleared.length ? cleared.length + ' of 10 cleared \u00B7 next: level ' + (next + 1) : 'Beat the computer to clear a level';
+  document.getElementById('themeNote').textContent = 'The board changes its look every game';
+}
+buildLevelButtons();
 // The result card ignores taps for a moment after it pops in, so a tap meant for the board
 // does not start a new game by accident
 function cardReady() { return performance.now() - cardShownAt >= CARD_GUARD_MS; }
@@ -2326,7 +2443,7 @@ window.CH = {
   // Run the computer right now (no waiting, no worker) and return its move as square names
   ai(level, fen) {
     const s = fen ? parseFEN(fen) : state;
-    const m = chooseMove(s, level || mode, fen ? [] : keys);
+    const m = chooseMove(s, level || levelNo, fen ? [] : keys);
     return m ? { from: squareName(m.from), to: squareName(m.to), promo: m.promo } : null;
   },
   perft(depth, fen) { return perft(fen ? parseFEN(fen) : state, depth); },
