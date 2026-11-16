@@ -647,7 +647,7 @@ function moveCar(c, dt, isPlayer) {
     const d = dist(c, o); if (d > 34 || d === 0) continue;
     const push = (34 - d) / 2, ax = (c.x - o.x) / d, ay = (c.y - o.y) / d;
     c.x += ax * push; c.y += ay * push; o.x -= ax * push; o.y -= ay * push;
-    if (Math.abs(c.speed) > 80) { o.speed += c.speed * 0.3; c.speed *= 0.5; c.hp = Math.max(10, c.hp - 4); o.hp = Math.max(10, o.hp - Math.abs(c.speed) / 30); if (isPlayer) { sfx.crash(); if (o.kind === 'police') addWanted(0.5); else addWanted(0.15); } else if (o === player.car) sfx.crash(); }
+    if (Math.abs(c.speed) > 80) { o.speed += c.speed * 0.3; c.speed *= 0.5; c.hp = Math.max(10, c.hp - 4); o.hp = Math.max(10, o.hp - Math.abs(c.speed) / 30); if (isPlayer) { sfx.crash(); toast('Maafkan saya langgar kereta'); if (o.kind === 'police') addWanted(0.5); else addWanted(0.15); } else if (o === player.car) sfx.crash(); }
   }
   if (Math.abs(c.speed) > 50) for (const p of peds) if (p.state !== 'down' && dist(c, p) < 20) knockPed(p, c, isPlayer);
 }
@@ -748,6 +748,7 @@ function crackTexture() {
 function damageBuilding(o, impact, x, y, byPlayer) {
   if (o.lastHit && time - o.lastHit < 0.7) return;       // one crash counts once, not every frame of the scrape
   o.lastHit = time;
+  if (byPlayer) toast('Alamak tersilap langgar rumah');
   o.damage = Math.min(1, o.damage + impact / 1000);       // about four hard crashes to wreck a building
   // walls and roof get darker and greyer the more battered they are
   const k = 1 - o.damage * 0.55;
@@ -810,7 +811,7 @@ function updatePolice(dt) {
 function busted() {
   bustT = 0; sfx.lose();
   const fine = Math.min(money, FINE); money -= fine; saveProgress();
-  if (mission && mission.type === 'getaway') { missionFail('Busted!'); } else { toast('BUSTED', 'Fine RM ' + fine + ' · back to the police station'); speak(MSG_LOSE); }
+  if (mission && mission.type === 'getaway') { missionFail('Nakal lagi. Polis dah tangkap'); } else { toast('Nakal lagi. Polis dah tangkap', 'Fine RM ' + fine + ' · back to the police station'); speak(MSG_LOSE); }
   if (mission && mission.type !== 'getaway') { mission = null; }
   wanted = 0; wantedT = 0;
   for (const c of police) { c.police = false; c.kind = 'policeparked'; c.ai = false; c.speed = 0; } police = [];
@@ -968,7 +969,7 @@ function hitPoles(c, isPlayer) {
     pl.bent = true; pl.t = 0; pl.dir = c.speed >= 0 ? c.angle : c.angle + Math.PI;
     c.speed *= 0.8;
     effects.push({ kind: 'chip', x: pl.x, y: pl.y, h: 2.6, vx: rand(-40, 40), vy: rand(-40, 40), vh: 1, t: 0, life: 1.2, color: '#9fd3ff' });
-    if (isPlayer) { sfx.crash(); c.hp = Math.max(10, c.hp - 3); addWanted(0.1); effects.push({ kind: 'text', x: pl.x, y: pl.y, text: 'CLANG!', t: 0, life: 1 }); }
+    if (isPlayer) { sfx.crash(); c.hp = Math.max(10, c.hp - 3); addWanted(0.1); toast('O o silap maafkan saya'); effects.push({ kind: 'text', x: pl.x, y: pl.y, text: 'CLANG!', t: 0, life: 1 }); }
   }
 }
 const GREEN = new THREE.Color(0x2ecc71), RED = new THREE.Color(0xe74c3c);
