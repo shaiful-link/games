@@ -671,6 +671,7 @@ function paintShot(x, y, angle, dt) {
   for (const p of peds) if (p.state !== 'down' && pointNearLine(p, x, y, ex, ey, 14)) { p.paint = color; p.panic = 4; p.state = 'run'; addWanted(0.25); effects.push({ kind: 'text', x: p.x, y: p.y, text: pick(['Hey!', 'My shirt!', 'Stop that!']), t: 0, life: 1.2 }); hitSomething = true; }
   for (const c of cars) if (c !== player.car && pointNearLine(c, x, y, ex, ey, 22)) { addSplat({ car: c, ox: rand(-1.4, 1.4), oz: rand(-0.8, 0.8), color }); if (c.kind === 'police') addWanted(0.6); else addWanted(0.1); hitSomething = true; }
   if (!hitSomething) addSplat({ x: ex, y: ey, color });
+  else if (time - (paintShot.lastToast || -9) > 1.2) { paintShot.lastToast = time; toast('Ala kotor lagi'); }   // shown when the paint lands on someone or a car
 }
 function pointNearLine(p, x1, y1, x2, y2, r) {
   const dx = x2 - x1, dy = y2 - y1, L = dx * dx + dy * dy;
